@@ -1,0 +1,36 @@
+{
+  "name": "facerix-template",
+  "version": "0.0.1",
+  "description": "Template for Facerix Progressive Web Apps",
+  "main": "index.html",
+  "type": "module",
+  "scripts": {
+    "start": "pnpm run dev",
+    "dev": "concurrently -k -n ts,assets,serve -c blue,magenta,green \"npm:dev:ts\" \"npm:dev:assets\" \"npm:dev:serve\"",
+    "dev:ts": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "dev:assets": "chokidar \"*.html\" \"main.css\" \"manifest.json\" \"*.svg\" \"*.ico\" \"*.png\" \"sw*.js\" \"icons/**\" \"images/**\" -c \"node scripts/copy-assets.mjs\" --initial",
+    "dev:serve": "live-server dist --no-browser --port=8080",
+    "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json",
+    "test": "pnpm run typecheck && node --test \"tests/**/*.test.ts\"",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "author": "Rylee Corradini",
+  "license": "GPL-3.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.3.0",
+  "devDependencies": {
+    "@types/node": "^24.12.4",
+    "chokidar-cli": "^3.0.0",
+    "concurrently": "^9.2.1",
+    "live-server": "^1.2.2",
+    "oxlint": "^0.15.0",
+    "prettier": "^3.0.0",
+    "typescript": "^6.0.3"
+  }
+}
