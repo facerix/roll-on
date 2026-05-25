@@ -27,7 +27,7 @@ This activates pre-commit hooks that run lint and format checks before each comm
 
 ### Commands
 
-- **`pnpm start` / `pnpm dev`** — runs three concurrent processes: `tsc --watch`, a chokidar asset-copy watcher, and live-server on port 8080 serving `dist/`
+- **`pnpm start` / `pnpm dev`** — runs three concurrent processes: `tsc --watch`, a chokidar asset-copy watcher, and live-server on port 8018 serving `dist/`
 - **`pnpm build`** — one-shot `tsc` build + asset copy into `dist/`
 - **`pnpm typecheck`** — type-check src and tests without emitting
 - **`pnpm test`** — typecheck + run `node --test` against `.ts` files

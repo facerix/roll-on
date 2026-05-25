@@ -4,7 +4,7 @@
   /* Chrome-only for now but this will allow smooth size transitions */
   interpolate-size: allow-keywords;
 
-  --accent-color: #2ec6fe;
+  --accent-color: #e88a2a;
 }
 
 html {
@@ -22,8 +22,8 @@ body {
   flex-direction: column;
   padding: 0;
   margin: 0;
-  background-color: #f0f0f0;
-  color: #303030;
+  background-color: #0c0c2e;
+  color: #e8e0d0;
 
   font-family: Futura, 'Trebuchet MS', Arial, sans-serif;
   font-style: normal;
@@ -100,12 +100,11 @@ main {
 
   padding: 8px;
   overflow-y: auto;
-  background-color: #fafafa;
+  background-color: #141438;
 }
 
 .btn,
-button,
-input[type='file']::file-selector-button {
+button {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -138,30 +137,16 @@ input[type='file']::file-selector-button {
   }
 }
 
-input[type='file'] {
-  border-radius: 5px;
-  border: 1px solid #ccc;
-  cursor: pointer;
-
-  &::file-selector-button {
-    display: inline-flex;
-  }
-
-  &:not(:disabled):hover,
-  &:not(:disabled):focus-visible {
-    outline: var(--accent-color) auto 1px;
-
-    &::file-selector-button {
-      background-color: #ddbfc67a;
-    }
-  }
-}
-
 a.btn {
   &:not(:disabled):hover,
   &:not(:disabled):focus-visible {
     text-decoration: underline;
   }
+}
+
+a[href] {
+  color: #e88a2a;
+  /* text-decoration: none; */
 }
 
 a:focus-visible {
@@ -201,7 +186,7 @@ a:focus-visible {
 
 .u-fill-height {
   height: -webkit-fill-available;
-  height: 100vh;
+  height: 100dvh;
 }
 
 .u-stretch-height {

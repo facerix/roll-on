@@ -1,5 +1,15 @@
 # AGENTS.md
 
+## Roll On — Domain Context
+
+Roll On is an experimental 18-wheeler driving game with retro pixel-art arcade aesthetics. The player controls a truck on highways/roads. Game data (scores, runs) is stored in localStorage under the key `scores` via the `DataStore` singleton.
+
+Key gameplay concepts agents should understand:
+- Driving physics and controls (steering, acceleration, braking)
+- Road/terrain generation and rendering
+- Score tracking and high-score persistence
+- Arcade-style game loop (start screen, gameplay, game over)
+
 Agent-specific guidance. See [README.md](README.md) for project overview, architecture, and coding standards.
 
 ## TypeScript
@@ -127,7 +137,7 @@ UpdateNotification (dispatched by component)
 
 Run `pnpm test` (typecheck + `node --test`). Tests live in `tests/`, import source with relative paths and the `.ts` extension, and run directly under Node 24's built-in type stripping (no compile step).
 
-For manual UI testing: use @Browser at `http://localhost:8080` (assume `pnpm dev` is already running). Verify UI, interactions, console, service worker.
+For manual UI testing: use @Browser at `http://localhost:8018` (assume `pnpm dev` is already running). Verify UI, interactions, console, service worker.
 
 ## Checklist
 

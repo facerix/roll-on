@@ -7,7 +7,7 @@
  * Creates cache configuration from a version string and provides shared resource lists
  */
 const CacheConfig = {
-  create(version, prefix = 'app-cache-') {
+  create(version, prefix = 'rollon-cache-') {
     return {
       version,
       name: `${prefix}v${version}`,
@@ -38,6 +38,9 @@ const CacheConfig = {
       '/icons/icon512_maskable.png',
       '/icons/icon512_rounded.png',
       '/icons/icon-192x192.png',
+      '/images/title.jpg',
+      '/fonts/bigsquaredots/stylesheet.css',
+      '/fonts/bigsquaredots/BigSquareDots.woff2',
     ];
   },
 };

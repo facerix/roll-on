@@ -22,7 +22,6 @@ For the full license text, see: https://www.gnu.org/licenses/gpl-3.0.txt
 
 ADDITIONAL TERMS:
 
-This template is provided as-is for creating Progressive Web Applications.
-Any applications built using this template must also be licensed under GPL-3.0
-or a compatible license, ensuring that derivative works remain free and open
-source.
+Roll On is an experimental 18-wheeler driving game built as a Progressive Web
+Application. Any derivative works must also be licensed under GPL-3.0 or a
+compatible license, ensuring they remain free and open source.

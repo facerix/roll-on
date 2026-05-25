@@ -31,7 +31,7 @@ const files = [
 ];
 
 // Directories copied recursively.
-const dirs = ['icons', 'images'];
+const dirs = ['icons', 'images', 'fonts'];
 
 async function run() {
   await mkdir(dist, { recursive: true });
