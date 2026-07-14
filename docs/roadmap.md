@@ -38,7 +38,12 @@ Goal: the truck *feels* like 80,000 lbs before we draw a road.
   deceleration preserve momentum without allowing reverse motion. World position integrates from
   speed and cab heading. Covered by `tests/unit/truck.test.ts`; playable on the blank-canvas
   checkpoint through `index.ts`. See `docs/m1-plan.md` M1.2.
-- [ ] **Steering + jackknife model**: trailer trails the cab with lag; aggressive inputs at high speed widen the angle past a threshold → jackknife state.
+- [x] **Steering + trailer articulation**. ✓ Speed-scaled steering authority with smoothed cab yaw;
+  kinematic trailer heading follows with visible lag and continuous reversal. Separate oriented cab
+  and trailer placeholders expose articulation in the playable build. Covered by
+  `tests/unit/truck.test.ts` and `tests/unit/renderer.test.ts`. See `docs/m1-plan.md` M1.3.
+- [ ] **Jackknife model**: aggressive inputs at high speed widen the articulation angle past a
+  threshold → jackknife state.
   - *Test*: hard steer at top speed past threshold transitions to jackknife; gentle steer doesn't.
   - *Test*: brushing a "barrier" while jackknifing → catastrophic crash.
 - [ ] **Defensive fishtail**: jackknife angle has a hit-zone that can swipe trailing enemies (stub the enemy as a point for now).

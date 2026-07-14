@@ -32,11 +32,22 @@ export interface RectDrawable {
   color: Color;
 }
 
+/** Solid rectangle rotated around its center point. */
+export interface OrientedRectDrawable {
+  kind: 'oriented-rect';
+  centerX: number;
+  centerY: number;
+  w: number;
+  h: number;
+  rotationRadians: number;
+  color: Color;
+}
+
 /**
  * Discriminated union. Grows over time (sprites, lines, text). The `kind`
  * tag exists so the renderer's switch is exhaustiveness-checked by TS.
  */
-export type Drawable = RectDrawable;
+export type Drawable = RectDrawable | OrientedRectDrawable;
 
 export interface Scene {
   /** Background color painted before any drawable. */
@@ -89,18 +100,24 @@ export class Canvas2DRenderer implements Renderer {
     ctx.fillRect(0, 0, scene.width, scene.height);
 
     // Drawables in caller-controlled order.
-    //
-    // TODO(kaizen): when `Drawable` grows a second variant, restore the
-    // exhaustiveness check:
-    //   default: { const _: never = d; throw new Error(`Unknown drawable: ${d}`); }
-    // With only one variant today, TS can't narrow `d` to `never` in the
-    // default arm, so the check is dead code that doesn't compile.
     for (const d of scene.drawables) {
       switch (d.kind) {
         case 'rect':
           ctx.fillStyle = d.color;
           ctx.fillRect(d.x, d.y, d.w, d.h);
           break;
+        case 'oriented-rect':
+          ctx.fillStyle = d.color;
+          ctx.save();
+          ctx.translate(d.centerX, d.centerY);
+          ctx.rotate(d.rotationRadians);
+          ctx.fillRect(-d.w / 2, -d.h / 2, d.w, d.h);
+          ctx.restore();
+          break;
+        default: {
+          const exhaustive: never = d;
+          throw new Error(`Unhandled drawable kind: ${String(exhaustive)}`);
+        }
       }
     }
   }

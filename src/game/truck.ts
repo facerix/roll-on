@@ -43,6 +43,14 @@ export interface TruckTuning {
   readonly coastDecelerationMetersPerSecondSquared: number;
   /** Additional slowdown at full service-brake input. */
   readonly brakeDecelerationMetersPerSecondSquared: number;
+  /** Maximum cab yaw rate once steering has full speed authority. */
+  readonly maxSteeringYawRateRadiansPerSecond: number;
+  /** First-order response rate used to approach the requested cab yaw. */
+  readonly steeringResponsePerSecond: number;
+  /** Speed at which steering reaches full yaw authority. */
+  readonly steeringFullResponseSpeedMetersPerSecond: number;
+  /** Hitch-to-trailer-axle distance used by the kinematic follower. */
+  readonly trailerWheelbaseMeters: number;
 }
 
 export const DEFAULT_TRUCK_TUNING: TruckTuning = Object.freeze({
@@ -52,6 +60,10 @@ export const DEFAULT_TRUCK_TUNING: TruckTuning = Object.freeze({
   engineAccelerationMetersPerSecondSquared: 6.2,
   coastDecelerationMetersPerSecondSquared: 0.5,
   brakeDecelerationMetersPerSecondSquared: 8,
+  maxSteeringYawRateRadiansPerSecond: 0.75,
+  steeringResponsePerSecond: 3,
+  steeringFullResponseSpeedMetersPerSecond: 15,
+  trailerWheelbaseMeters: 12,
 });
 
 const TRUCK_STATUSES = new Set<TruckStatus>(['driving', 'jackknifed', 'crashed']);
@@ -123,21 +135,47 @@ export function stepTruck(
     tuning.maxForwardSpeedMetersPerSecond
   );
 
-  // Trapezoidal integration avoids using either the old or new speed alone
-  // for the whole step. Heading is fixed until M1.3 adds steering.
+  // Steering authority grows with speed. A first-order response prevents the
+  // cab from snapping instantly to its requested yaw rate.
   const averageSpeed = (state.speedMetersPerSecond + nextSpeed) / 2;
+  const steeringAuthority = clamp(
+    averageSpeed / tuning.steeringFullResponseSpeedMetersPerSecond,
+    0,
+    1
+  );
+  const targetYawRate =
+    controls.steering * tuning.maxSteeringYawRateRadiansPerSecond * steeringAuthority;
+  const steeringResponseFraction = 1 - Math.exp(-tuning.steeringResponsePerSecond * dtSeconds);
+  const nextYawRate =
+    state.yawRateRadiansPerSecond +
+    (targetYawRate - state.yawRateRadiansPerSecond) * steeringResponseFraction;
+  const headingDelta = ((state.yawRateRadiansPerSecond + nextYawRate) / 2) * dtSeconds;
+  const movementHeading = normalizeAngle(state.headingRadians + headingDelta / 2);
+  const nextHeading = normalizeAngle(state.headingRadians + headingDelta);
+
+  // Trapezoidal speed integration avoids using either the old or new speed
+  // alone for the whole step.
   const distanceTravelled = averageSpeed * dtSeconds;
   const nextPosition: WorldPosition = {
-    lateralMeters:
-      state.position.lateralMeters + Math.sin(state.headingRadians) * distanceTravelled,
-    distanceMeters:
-      state.position.distanceMeters + Math.cos(state.headingRadians) * distanceTravelled,
+    lateralMeters: state.position.lateralMeters + Math.sin(movementHeading) * distanceTravelled,
+    distanceMeters: state.position.distanceMeters + Math.cos(movementHeading) * distanceTravelled,
   };
+
+  // A single-track trailer follower: its axle rotates toward the cab according
+  // to speed and current articulation, but cannot snap directly to cab heading.
+  const articulation = angleDelta(movementHeading, state.trailerHeadingRadians);
+  const trailerYawRate = (averageSpeed / tuning.trailerWheelbaseMeters) * Math.sin(articulation);
+  const nextTrailerHeading = normalizeAngle(
+    state.trailerHeadingRadians + trailerYawRate * dtSeconds
+  );
 
   return createTruckState({
     ...state,
     position: nextPosition,
+    headingRadians: nextHeading,
     speedMetersPerSecond: nextSpeed,
+    yawRateRadiansPerSecond: nextYawRate,
+    trailerHeadingRadians: nextTrailerHeading,
   });
 }
 
@@ -204,6 +242,16 @@ function validateTuning(tuning: TruckTuning): void {
     'tuning.brakeDecelerationMetersPerSecondSquared',
     tuning.brakeDecelerationMetersPerSecondSquared
   );
+  assertFinite(
+    'tuning.maxSteeringYawRateRadiansPerSecond',
+    tuning.maxSteeringYawRateRadiansPerSecond
+  );
+  assertFinite('tuning.steeringResponsePerSecond', tuning.steeringResponsePerSecond);
+  assertFinite(
+    'tuning.steeringFullResponseSpeedMetersPerSecond',
+    tuning.steeringFullResponseSpeedMetersPerSecond
+  );
+  assertFinite('tuning.trailerWheelbaseMeters', tuning.trailerWheelbaseMeters);
   assertPositive('tuning.maxForwardSpeedMetersPerSecond', tuning.maxForwardSpeedMetersPerSecond);
   assertPositive(
     'tuning.engineAccelerationMetersPerSecondSquared',
@@ -217,6 +265,16 @@ function validateTuning(tuning: TruckTuning): void {
     'tuning.brakeDecelerationMetersPerSecondSquared',
     tuning.brakeDecelerationMetersPerSecondSquared
   );
+  assertPositive(
+    'tuning.maxSteeringYawRateRadiansPerSecond',
+    tuning.maxSteeringYawRateRadiansPerSecond
+  );
+  assertPositive('tuning.steeringResponsePerSecond', tuning.steeringResponsePerSecond);
+  assertPositive(
+    'tuning.steeringFullResponseSpeedMetersPerSecond',
+    tuning.steeringFullResponseSpeedMetersPerSecond
+  );
+  assertPositive('tuning.trailerWheelbaseMeters', tuning.trailerWheelbaseMeters);
 }
 
 function assertFinite(label: string, value: number): void {
@@ -239,4 +297,12 @@ function assertPositive(label: string, value: number): void {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function normalizeAngle(angle: number): number {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+
+function angleDelta(a: number, b: number): number {
+  return normalizeAngle(a - b);
 }

@@ -143,7 +143,15 @@ Keep the playfield blank so longitudinal feel is easy to judge.
 
 ## M1.3 — Cab steering and trailer articulation
 
+**Status:** Complete (2026-07-14).
+
 Add a lightweight articulated-vehicle model rather than full rigid-body physics.
+
+Implemented with speed-scaled steering authority, first-order cab yaw response, midpoint heading
+integration, and a single-track trailer follower driven by speed, articulation, and a 12 m
+hitch-to-axle wheelbase. The renderer now supports backend-neutral oriented rectangles, and the
+playable checkpoint projects separate rotated cab and trailer placeholders. Jackknife thresholds
+remain M1.4 work. Covered by `tests/unit/truck.test.ts` and `tests/unit/renderer.test.ts`.
 
 - Steering changes cab heading according to speed and steering input.
 - The trailer follows cab heading with a deliberate lag.
@@ -242,10 +250,10 @@ Then perform a browser smoke test at `http://localhost:8018`:
 
 - [x] Truck state and controls are world-space, renderer-independent data.
 - [x] Longitudinal motion meets the agreed provisional tuning targets.
-- [ ] Cab steering and trailer lag are deterministic and tested.
+- [x] Cab steering and trailer lag are deterministic and tested.
 - [ ] Jackknife entry, recovery, and crash rules are explicit and tested.
 - [ ] The fishtail swipe geometry is available for future collision queries.
-- [ ] The playable placeholder visibly separates cab and trailer.
+- [x] The playable placeholder visibly separates cab and trailer.
 - [ ] Debug telemetry supports tuning without contaminating simulation.
 - [ ] Automated verification passes.
 - [ ] A browser smoke test passes without console errors.

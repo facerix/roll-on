@@ -14,6 +14,10 @@ const TUNING: TruckTuning = {
   engineAccelerationMetersPerSecondSquared: 6.2,
   coastDecelerationMetersPerSecondSquared: 0.5,
   brakeDecelerationMetersPerSecondSquared: 8,
+  maxSteeringYawRateRadiansPerSecond: 0.75,
+  steeringResponsePerSecond: 3,
+  steeringFullResponseSpeedMetersPerSecond: 15,
+  trailerWheelbaseMeters: 12,
 };
 
 const NO_CONTROLS: TruckControls = {
@@ -195,6 +199,107 @@ test('equivalent fixed-step simulations produce identical longitudinal state', (
   assert.deepEqual(a, b);
 });
 
+test('zero steering preserves cab heading when yaw rate is settled', () => {
+  const moving = {
+    ...validState(),
+    speedMetersPerSecond: 20,
+    yawRateRadiansPerSecond: 0,
+  };
+
+  const next = stepTruck(moving, { ...NO_CONTROLS, throttle: 1 }, 0.5, TUNING);
+
+  assert.equal(next.headingRadians, moving.headingRadians);
+  assert.equal(next.yawRateRadiansPerSecond, 0);
+});
+
+test('steering cannot rotate the cab while the truck is at rest', () => {
+  const state = validState();
+
+  const next = stepTruck(state, { ...NO_CONTROLS, steering: 1 }, 1, TUNING);
+
+  assert.equal(next.headingRadians, state.headingRadians);
+  assert.equal(next.yawRateRadiansPerSecond, 0);
+});
+
+test('gentle steering produces a bounded cab heading change', () => {
+  const moving = {
+    ...validState(),
+    headingRadians: 0,
+    trailerHeadingRadians: 0,
+    speedMetersPerSecond: 20,
+  };
+
+  const next = stepTruck(moving, { throttle: 1, brake: 0, steering: 0.25 }, 1, TUNING);
+
+  assert.ok(next.headingRadians > 0);
+  assert.ok(next.headingRadians < TUNING.maxSteeringYawRateRadiansPerSecond);
+  assert.ok(next.yawRateRadiansPerSecond > 0);
+  assert.ok(next.yawRateRadiansPerSecond < TUNING.maxSteeringYawRateRadiansPerSecond * 0.25);
+});
+
+test('trailer follows cab heading without snapping to it', () => {
+  const articulated = {
+    ...validState(),
+    headingRadians: 0.5,
+    trailerHeadingRadians: 0,
+    speedMetersPerSecond: 20,
+  };
+
+  const next = stepTruck(articulated, { ...NO_CONTROLS, throttle: 1 }, 0.1, TUNING);
+
+  assert.ok(next.trailerHeadingRadians > articulated.trailerHeadingRadians);
+  assert.ok(next.trailerHeadingRadians < articulated.headingRadians);
+});
+
+test('hard steering makes the cab lead the delayed trailer', () => {
+  const moving = {
+    ...validState(),
+    headingRadians: 0,
+    trailerHeadingRadians: 0,
+    speedMetersPerSecond: 25,
+  };
+
+  const next = stepFor(moving, { throttle: 1, brake: 0, steering: 1 }, 1);
+  const articulation = angleDelta(next.headingRadians, next.trailerHeadingRadians);
+
+  assert.ok(next.headingRadians > 0);
+  assert.ok(next.trailerHeadingRadians > 0);
+  assert.ok(articulation > 0);
+});
+
+test('steering reversal changes trailer heading continuously without snapping', () => {
+  const moving = {
+    ...validState(),
+    headingRadians: 0,
+    trailerHeadingRadians: 0,
+    speedMetersPerSecond: 25,
+  };
+  const turningRight = stepFor(moving, { throttle: 1, brake: 0, steering: 1 }, 1);
+
+  const firstLeftStep = stepTruck(
+    turningRight,
+    { throttle: 1, brake: 0, steering: -1 },
+    1 / 60,
+    TUNING
+  );
+  const trailerChange = Math.abs(
+    angleDelta(firstLeftStep.trailerHeadingRadians, turningRight.trailerHeadingRadians)
+  );
+
+  assert.ok(trailerChange > 0);
+  assert.ok(trailerChange < 0.1);
+});
+
+test('steering simulation is deterministic across equivalent fixed steps', () => {
+  const moving = { ...validState(), speedMetersPerSecond: 15 };
+  const controls: TruckControls = { throttle: 0.8, brake: 0, steering: -0.6 };
+
+  const a = stepFor(moving, controls, 3);
+  const b = stepFor(moving, controls, 3);
+
+  assert.deepEqual(a, b);
+});
+
 test('createTruckState rejects non-finite state values', () => {
   const state = validState();
 
@@ -266,6 +371,10 @@ test('stepTruck rejects invalid tuning', () => {
         engineAccelerationMetersPerSecondSquared: 6.2,
         coastDecelerationMetersPerSecondSquared: 0.5,
         brakeDecelerationMetersPerSecondSquared: 8,
+        maxSteeringYawRateRadiansPerSecond: 0.75,
+        steeringResponsePerSecond: 3,
+        steeringFullResponseSpeedMetersPerSecond: 15,
+        trailerWheelbaseMeters: 12,
       }),
     TypeError
   );
@@ -297,6 +406,38 @@ test('stepTruck rejects invalid tuning', () => {
       }),
     RangeError
   );
+  assert.throws(
+    () =>
+      stepTruck(state, NO_CONTROLS, 1 / 60, {
+        ...TUNING,
+        maxSteeringYawRateRadiansPerSecond: 0,
+      }),
+    RangeError
+  );
+  assert.throws(
+    () =>
+      stepTruck(state, NO_CONTROLS, 1 / 60, {
+        ...TUNING,
+        steeringResponsePerSecond: Number.NaN,
+      }),
+    TypeError
+  );
+  assert.throws(
+    () =>
+      stepTruck(state, NO_CONTROLS, 1 / 60, {
+        ...TUNING,
+        steeringFullResponseSpeedMetersPerSecond: -1,
+      }),
+    RangeError
+  );
+  assert.throws(
+    () =>
+      stepTruck(state, NO_CONTROLS, 1 / 60, {
+        ...TUNING,
+        trailerWheelbaseMeters: 0,
+      }),
+    RangeError
+  );
 });
 
 test('stepTruck rejects non-finite or negative dt', () => {
@@ -306,3 +447,7 @@ test('stepTruck rejects non-finite or negative dt', () => {
   assert.throws(() => stepTruck(state, NO_CONTROLS, Number.POSITIVE_INFINITY, TUNING), TypeError);
   assert.throws(() => stepTruck(state, NO_CONTROLS, -0.001, TUNING), RangeError);
 });
+
+function angleDelta(a: number, b: number): number {
+  return Math.atan2(Math.sin(a - b), Math.cos(a - b));
+}

@@ -12,17 +12,20 @@ import {
 } from '/src/game/truck.js';
 
 function startSmokeTestGame(): void {
-  // M1.2 playable checkpoint: world-space longitudinal truck motion projected
-  // onto the blank prototype canvas. Steering intentionally lands in M1.3.
+  // M1.3 playable checkpoint: world-space articulated truck motion projected
+  // as separate rotated cab and trailer placeholders on a blank canvas.
   const gameRoot = h('main', { id: 'game-root', style: 'background:#000;' });
   document.body.appendChild(gameRoot);
 
   const width = 320;
   const height = 480;
-  const truckWidth = 24;
-  const truckHeight = 48;
+  const cabWidth = 20;
+  const cabHeight = 28;
+  const trailerWidth = 18;
+  const trailerHeight = 42;
+  const hitchLength = cabHeight / 2 + trailerHeight / 2 + 3;
   const pixelsPerMeter = 0.75;
-  const startingScreenY = height - truckHeight - 24;
+  const startingScreenY = height - 100;
   let truck = createTruckState({
     position: { lateralMeters: 0, distanceMeters: 0 },
     headingRadians: 0,
@@ -47,11 +50,12 @@ function startSmokeTestGame(): void {
       truck = stepTruck(truck, controls, dt, DEFAULT_TRUCK_TUNING);
     },
     buildScene: (): Scene => {
-      // Projection belongs here, outside simulation. Cab heading is zero until
-      // M1.3, so forward world distance travels upward on screen.
-      const truckScreenX =
-        width / 2 - truckWidth / 2 + truck.position.lateralMeters * pixelsPerMeter;
-      const truckScreenY = startingScreenY - truck.position.distanceMeters * pixelsPerMeter;
+      // Projection belongs here, outside simulation. Positive world distance
+      // travels upward on screen; positive heading rotates clockwise/right.
+      const cabCenterX = width / 2 + truck.position.lateralMeters * pixelsPerMeter;
+      const cabCenterY = startingScreenY - truck.position.distanceMeters * pixelsPerMeter;
+      const trailerCenterX = cabCenterX - Math.sin(truck.trailerHeadingRadians) * hitchLength;
+      const trailerCenterY = cabCenterY + Math.cos(truck.trailerHeadingRadians) * hitchLength;
 
       return {
         clear: '#0c0c2e',
@@ -59,11 +63,21 @@ function startSmokeTestGame(): void {
         height,
         drawables: [
           {
-            kind: 'rect',
-            x: truckScreenX,
-            y: truckScreenY,
-            w: truckWidth,
-            h: truckHeight,
+            kind: 'oriented-rect',
+            centerX: trailerCenterX,
+            centerY: trailerCenterY,
+            w: trailerWidth,
+            h: trailerHeight,
+            rotationRadians: truck.trailerHeadingRadians,
+            color: '#d29f2b',
+          },
+          {
+            kind: 'oriented-rect',
+            centerX: cabCenterX,
+            centerY: cabCenterY,
+            w: cabWidth,
+            h: cabHeight,
+            rotationRadians: truck.headingRadians,
             color: '#f5c542',
           },
         ],
