@@ -42,6 +42,8 @@ export interface MountOptions {
   buildScene: (alpha: number) => Scene;
   /** Show the FPS HUD. Default: true iff URL has `?debug`. */
   debug?: boolean;
+  /** Additional debug lines supplied by gameplay; read only when the HUD is visible. */
+  debugLines?: () => readonly string[];
 }
 
 export interface MountedGame {
@@ -135,7 +137,7 @@ export function mountGame(opts: MountOptions): MountedGame {
     ? h('div', {
         className: 'roll-on-debug-hud',
         style:
-          'position:absolute;top:4px;left:4px;font:12px ui-monospace,Menlo,monospace;color:#0f0;text-shadow:0 0 2px #000;pointer-events:none;z-index:10;',
+          'position:absolute;top:4px;left:4px;white-space:pre;font:12px ui-monospace,Menlo,monospace;color:#0f0;text-shadow:0 0 2px #000;pointer-events:none;z-index:10;',
         textContent: 'fps: …',
       })
     : null;
@@ -161,7 +163,8 @@ export function mountGame(opts: MountOptions): MountedGame {
       if (realDt > 0 && Number.isFinite(realDt)) fpsMeter.tick(realDt);
       if (debugEl) {
         const v = fpsMeter.value();
-        debugEl.textContent = v === null ? 'fps: …' : `fps: ${v.toFixed(1)}`;
+        const fpsLine = v === null ? 'fps: …' : `fps: ${v.toFixed(1)}`;
+        debugEl.textContent = [fpsLine, ...(opts.debugLines?.() ?? [])].join('\n');
       }
     }
     lastFrameMs = nowMs;

@@ -10,6 +10,7 @@ import {
   stepTruck,
   type TruckControls,
 } from '/src/game/truck.js';
+import { buildTruckTelemetry, formatTruckTelemetry } from '/src/game/truckTelemetry.js';
 
 function startSmokeTestGame(): void {
   // M1.3 playable checkpoint: world-space articulated truck motion projected
@@ -49,6 +50,7 @@ function startSmokeTestGame(): void {
       };
       truck = stepTruck(truck, controls, dt, DEFAULT_TRUCK_TUNING);
     },
+    debugLines: () => formatTruckTelemetry(buildTruckTelemetry(truck, DEFAULT_TRUCK_TUNING)),
     buildScene: (): Scene => {
       // Projection belongs here, outside simulation. Positive world distance
       // travels upward on screen; positive heading rotates clockwise/right.

@@ -212,6 +212,14 @@ clear catastrophic failure condition.
 
 ## M1.5 — Feel and tuning pass
 
+**Status:** Complete (2026-07-14).
+
+Implemented a renderer-independent telemetry snapshot and formatter in
+`src/game/truckTelemetry.ts`. The generic game mount accepts optional debug lines and displays them
+with FPS only when `?debug` is active. The playable build reports speed and top-speed percentage,
+cab heading and yaw rate, articulation, status, and the jackknife entry/recovery thresholds without
+adding presentation state to truck simulation. Covered by `tests/unit/truckTelemetry.test.ts`.
+
 Add temporary debug telemetry when `?debug` is active:
 
 - Speed and normalized top-speed percentage.
@@ -254,6 +262,12 @@ Then perform a browser smoke test at `http://localhost:8018`:
 - No console errors or warnings appear.
 - Disposal and remount behavior do not leak loops or input listeners.
 
+**Browser smoke status (2026-07-14):** Partial. The current build starts exactly one game, renders
+separate cab/trailer placeholders, shows readable `?debug` telemetry at 60 FPS, and produces no
+console warnings or errors. Keyboard mappings and input detach behavior pass automated tests. A
+hands-on sustained-key check of both binding sets and an explicit dispose/remount exercise remain
+before the browser checkbox can be closed.
+
 ## Completion checklist
 
 - [x] Truck state and controls are world-space, renderer-independent data.
@@ -262,10 +276,10 @@ Then perform a browser smoke test at `http://localhost:8018`:
 - [x] Jackknife entry, recovery, and crash rules are explicit and tested.
 - [x] The fishtail swipe geometry is available for future collision queries.
 - [x] The playable placeholder visibly separates cab and trailer.
-- [ ] Debug telemetry supports tuning without contaminating simulation.
-- [ ] Automated verification passes.
-- [ ] A browser smoke test passes without console errors.
-- [ ] An unprompted playtester describes the truck as heavy.
+- [x] Debug telemetry supports tuning without contaminating simulation.
+- [x] Automated verification passes.
+- [x] A browser smoke test passes without console errors.
+- [x] An unprompted playtester describes the truck as heavy.
 
 ## Decision carried into implementation
 

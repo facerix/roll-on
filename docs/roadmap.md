@@ -49,6 +49,9 @@ Goal: the truck *feels* like 80,000 lbs before we draw a road.
 - [x] **Defensive fishtail geometry**. ✓ A jackknifed trailer exposes a renderer-independent
   world-space capsule from hitch to axle, sized by physical trailer width, for future enemy collision
   queries. Covered by `tests/unit/truck.test.ts`.
+- [x] **Feel/debug telemetry**. ✓ `?debug` reports speed, normalized top speed, cab heading and yaw,
+  trailer articulation, lifecycle status, and jackknife thresholds through a renderer-independent
+  telemetry snapshot. Covered by `tests/unit/truckTelemetry.test.ts`. See `docs/m1-plan.md` M1.5.
 
 Exit criterion: a developer can play the truck on a blank canvas and a teammate can describe it as "heavy" without prompting.
 
