@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import {
   createTruckState,
+  getTrailerSwipeHitZone,
+  resolveTruckImpact,
   stepTruck,
   type TruckControls,
   type TruckState,
@@ -18,6 +20,10 @@ const TUNING: TruckTuning = {
   steeringResponsePerSecond: 3,
   steeringFullResponseSpeedMetersPerSecond: 15,
   trailerWheelbaseMeters: 12,
+  trailerWidthMeters: 2.6,
+  jackknifeEntryAngleRadians: (12 * Math.PI) / 180,
+  jackknifeRecoveryAngleRadians: (7 * Math.PI) / 180,
+  jackknifeMinimumSpeedMetersPerSecond: 20,
 };
 
 const NO_CONTROLS: TruckControls = {
@@ -300,6 +306,146 @@ test('steering simulation is deterministic across equivalent fixed steps', () =>
   assert.deepEqual(a, b);
 });
 
+test('hard high-speed steering crosses the jackknife threshold', () => {
+  const moving = {
+    ...validState(),
+    headingRadians: 0,
+    trailerHeadingRadians: 0,
+    speedMetersPerSecond: 35,
+  };
+
+  const next = stepFor(moving, { throttle: 1, brake: 0, steering: 1 }, 2);
+
+  assert.equal(next.status, 'jackknifed');
+});
+
+test('gentle high-speed steering stays below the jackknife threshold', () => {
+  const moving = {
+    ...validState(),
+    headingRadians: 0,
+    trailerHeadingRadians: 0,
+    speedMetersPerSecond: 35,
+  };
+
+  const next = stepFor(moving, { throttle: 1, brake: 0, steering: 0.25 }, 4);
+
+  assert.equal(next.status, 'driving');
+});
+
+test('large low-speed articulation does not enter jackknife state', () => {
+  const slowAndBent = {
+    ...validState(),
+    headingRadians: TUNING.jackknifeEntryAngleRadians + 0.1,
+    trailerHeadingRadians: 0,
+    speedMetersPerSecond: TUNING.jackknifeMinimumSpeedMetersPerSecond - 1,
+  };
+
+  const next = stepTruck(slowAndBent, NO_CONTROLS, 0, TUNING);
+
+  assert.equal(next.status, 'driving');
+});
+
+test('jackknife hysteresis prevents status flicker between thresholds', () => {
+  const betweenThresholds = {
+    ...validState(),
+    headingRadians: (TUNING.jackknifeEntryAngleRadians + TUNING.jackknifeRecoveryAngleRadians) / 2,
+    trailerHeadingRadians: 0,
+    speedMetersPerSecond: 25,
+    status: 'jackknifed' as const,
+  };
+
+  const next = stepTruck(betweenThresholds, NO_CONTROLS, 0, TUNING);
+
+  assert.equal(next.status, 'jackknifed');
+});
+
+test('jackknifed truck recovers below the recovery threshold', () => {
+  const nearlyAligned = {
+    ...validState(),
+    headingRadians: TUNING.jackknifeRecoveryAngleRadians - 0.01,
+    trailerHeadingRadians: 0,
+    speedMetersPerSecond: 25,
+    status: 'jackknifed' as const,
+  };
+
+  const next = stepTruck(nearlyAligned, NO_CONTROLS, 0, TUNING);
+
+  assert.equal(next.status, 'driving');
+});
+
+test('jackknifed trailer exposes a world-space swipe capsule', () => {
+  const jackknifed = {
+    ...validState(),
+    position: { lateralMeters: 10, distanceMeters: 20 },
+    headingRadians: 0.5,
+    trailerHeadingRadians: 0,
+    speedMetersPerSecond: 25,
+    status: 'jackknifed' as const,
+  };
+
+  const hitZone = getTrailerSwipeHitZone(jackknifed, TUNING);
+
+  assert.deepEqual(hitZone, {
+    segment: {
+      start: { lateralMeters: 10, distanceMeters: 20 },
+      end: { lateralMeters: 10, distanceMeters: 8 },
+    },
+    radiusMeters: 1.3,
+  });
+  assert.equal(getTrailerSwipeHitZone({ ...jackknifed, status: 'driving' }, TUNING), null);
+});
+
+test('trailer swipe capsule follows trailer orientation', () => {
+  const sidewaysTrailer = {
+    ...validState(),
+    position: { lateralMeters: 10, distanceMeters: 20 },
+    headingRadians: 0,
+    trailerHeadingRadians: Math.PI / 2,
+    speedMetersPerSecond: 25,
+    status: 'jackknifed' as const,
+  };
+
+  const hitZone = getTrailerSwipeHitZone(sidewaysTrailer, TUNING);
+
+  assert.ok(hitZone !== null);
+  assert.ok(Math.abs(hitZone.segment.end.lateralMeters - -2) < 1e-12);
+  assert.ok(Math.abs(hitZone.segment.end.distanceMeters - 20) < 1e-12);
+});
+
+test('barrier impact while jackknifed causes a catastrophic crash', () => {
+  const jackknifed = {
+    ...validState(),
+    speedMetersPerSecond: 25,
+    status: 'jackknifed' as const,
+  };
+
+  const crashed = resolveTruckImpact(jackknifed, { kind: 'barrier' });
+
+  assert.equal(crashed.status, 'crashed');
+  assert.equal(crashed.speedMetersPerSecond, 0);
+  assert.equal(crashed.yawRateRadiansPerSecond, 0);
+});
+
+test('barrier impact while aligned does not trigger the jackknife crash rule', () => {
+  const driving = { ...validState(), speedMetersPerSecond: 25 };
+
+  const next = resolveTruckImpact(driving, { kind: 'barrier' });
+
+  assert.equal(next.status, 'driving');
+  assert.equal(next.speedMetersPerSecond, driving.speedMetersPerSecond);
+});
+
+test('crashed truck remains inert under subsequent controls', () => {
+  const crashed = {
+    ...validState(),
+    status: 'crashed' as const,
+  };
+
+  const next = stepTruck(crashed, { throttle: 1, brake: 0, steering: 1 }, 1, TUNING);
+
+  assert.deepEqual(next, crashed);
+});
+
 test('createTruckState rejects non-finite state values', () => {
   const state = validState();
 
@@ -375,6 +521,10 @@ test('stepTruck rejects invalid tuning', () => {
         steeringResponsePerSecond: 3,
         steeringFullResponseSpeedMetersPerSecond: 15,
         trailerWheelbaseMeters: 12,
+        trailerWidthMeters: 2.6,
+        jackknifeEntryAngleRadians: (12 * Math.PI) / 180,
+        jackknifeRecoveryAngleRadians: (7 * Math.PI) / 180,
+        jackknifeMinimumSpeedMetersPerSecond: 20,
       }),
     TypeError
   );
@@ -437,6 +587,26 @@ test('stepTruck rejects invalid tuning', () => {
         trailerWheelbaseMeters: 0,
       }),
     RangeError
+  );
+  assert.throws(
+    () => stepTruck(state, NO_CONTROLS, 1 / 60, { ...TUNING, trailerWidthMeters: 0 }),
+    RangeError
+  );
+  assert.throws(
+    () =>
+      stepTruck(state, NO_CONTROLS, 1 / 60, {
+        ...TUNING,
+        jackknifeRecoveryAngleRadians: TUNING.jackknifeEntryAngleRadians,
+      }),
+    RangeError
+  );
+  assert.throws(
+    () =>
+      stepTruck(state, NO_CONTROLS, 1 / 60, {
+        ...TUNING,
+        jackknifeMinimumSpeedMetersPerSecond: Number.NaN,
+      }),
+    TypeError
   );
 });
 

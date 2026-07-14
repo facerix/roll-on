@@ -56,6 +56,12 @@ function startSmokeTestGame(): void {
       const cabCenterY = startingScreenY - truck.position.distanceMeters * pixelsPerMeter;
       const trailerCenterX = cabCenterX - Math.sin(truck.trailerHeadingRadians) * hitchLength;
       const trailerCenterY = cabCenterY + Math.cos(truck.trailerHeadingRadians) * hitchLength;
+      const colors =
+        truck.status === 'crashed'
+          ? { cab: '#ff1744', trailer: '#8b0000' }
+          : truck.status === 'jackknifed'
+            ? { cab: '#ff9500', trailer: '#ff3b30' }
+            : { cab: '#f5c542', trailer: '#d29f2b' };
 
       return {
         clear: '#0c0c2e',
@@ -69,7 +75,7 @@ function startSmokeTestGame(): void {
             w: trailerWidth,
             h: trailerHeight,
             rotationRadians: truck.trailerHeadingRadians,
-            color: '#d29f2b',
+            color: colors.trailer,
           },
           {
             kind: 'oriented-rect',
@@ -78,7 +84,7 @@ function startSmokeTestGame(): void {
             w: cabWidth,
             h: cabHeight,
             rotationRadians: truck.headingRadians,
-            color: '#f5c542',
+            color: colors.cab,
           },
         ],
       };

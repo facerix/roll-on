@@ -42,11 +42,13 @@ Goal: the truck *feels* like 80,000 lbs before we draw a road.
   kinematic trailer heading follows with visible lag and continuous reversal. Separate oriented cab
   and trailer placeholders expose articulation in the playable build. Covered by
   `tests/unit/truck.test.ts` and `tests/unit/renderer.test.ts`. See `docs/m1-plan.md` M1.3.
-- [ ] **Jackknife model**: aggressive inputs at high speed widen the articulation angle past a
-  threshold → jackknife state.
-  - *Test*: hard steer at top speed past threshold transitions to jackknife; gentle steer doesn't.
-  - *Test*: brushing a "barrier" while jackknifing → catastrophic crash.
-- [ ] **Defensive fishtail**: jackknife angle has a hit-zone that can swipe trailing enemies (stub the enemy as a point for now).
+- [x] **Jackknife model**. ✓ Hard steering above 20 m/s enters jackknife at 12° articulation; recovery
+  requires dropping below 7°. Hysteresis prevents boundary flicker, and a barrier impact while
+  jackknifed produces an inert catastrophic-crash state. Covered by `tests/unit/truck.test.ts`. See
+  `docs/m1-plan.md` M1.4.
+- [x] **Defensive fishtail geometry**. ✓ A jackknifed trailer exposes a renderer-independent
+  world-space capsule from hitch to axle, sized by physical trailer width, for future enemy collision
+  queries. Covered by `tests/unit/truck.test.ts`.
 
 Exit criterion: a developer can play the truck on a blank canvas and a teammate can describe it as "heavy" without prompting.
 

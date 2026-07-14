@@ -51,7 +51,28 @@ export interface TruckTuning {
   readonly steeringFullResponseSpeedMetersPerSecond: number;
   /** Hitch-to-trailer-axle distance used by the kinematic follower. */
   readonly trailerWheelbaseMeters: number;
+  /** Physical trailer width used as the radius of its swipe capsule. */
+  readonly trailerWidthMeters: number;
+  /** Absolute articulation required to enter the jackknife state. */
+  readonly jackknifeEntryAngleRadians: number;
+  /** Lower articulation required to recover, providing state hysteresis. */
+  readonly jackknifeRecoveryAngleRadians: number;
+  /** Jackknifing is disabled below this speed for stable maneuvering. */
+  readonly jackknifeMinimumSpeedMetersPerSecond: number;
 }
+
+export interface WorldSegment {
+  readonly start: WorldPosition;
+  readonly end: WorldPosition;
+}
+
+/** Capsule occupied by the swinging trailer while jackknifed. */
+export interface TrailerSwipeHitZone {
+  readonly segment: WorldSegment;
+  readonly radiusMeters: number;
+}
+
+export type TruckImpact = { readonly kind: 'barrier' };
 
 export const DEFAULT_TRUCK_TUNING: TruckTuning = Object.freeze({
   // Approximately 89 mph.
@@ -64,6 +85,10 @@ export const DEFAULT_TRUCK_TUNING: TruckTuning = Object.freeze({
   steeringResponsePerSecond: 3,
   steeringFullResponseSpeedMetersPerSecond: 15,
   trailerWheelbaseMeters: 12,
+  trailerWidthMeters: 2.6,
+  jackknifeEntryAngleRadians: (12 * Math.PI) / 180,
+  jackknifeRecoveryAngleRadians: (7 * Math.PI) / 180,
+  jackknifeMinimumSpeedMetersPerSecond: 20,
 });
 
 const TRUCK_STATUSES = new Set<TruckStatus>(['driving', 'jackknifed', 'crashed']);
@@ -119,6 +144,9 @@ export function stepTruck(
         `${tuning.maxForwardSpeedMetersPerSecond}, got ${state.speedMetersPerSecond}`
     );
   }
+  if (state.status === 'crashed') {
+    return createTruckState(state);
+  }
 
   const speedRatio = state.speedMetersPerSecond / tuning.maxForwardSpeedMetersPerSecond;
   const engineAcceleration =
@@ -168,6 +196,8 @@ export function stepTruck(
   const nextTrailerHeading = normalizeAngle(
     state.trailerHeadingRadians + trailerYawRate * dtSeconds
   );
+  const nextArticulation = Math.abs(angleDelta(nextHeading, nextTrailerHeading));
+  const nextStatus = nextTruckStatus(state.status, nextArticulation, nextSpeed, tuning);
 
   return createTruckState({
     ...state,
@@ -176,6 +206,54 @@ export function stepTruck(
     speedMetersPerSecond: nextSpeed,
     yawRateRadiansPerSecond: nextYawRate,
     trailerHeadingRadians: nextTrailerHeading,
+    status: nextStatus,
+  });
+}
+
+/**
+ * Return the world-space capsule swept by the trailer while jackknifed.
+ * Future enemy collision can test a point/body against this capsule without
+ * depending on sprite size or camera projection.
+ */
+export function getTrailerSwipeHitZone(
+  state: TruckState,
+  tuning: TruckTuning
+): TrailerSwipeHitZone | null {
+  validateTruckState(state);
+  validateTuning(tuning);
+  if (state.status !== 'jackknifed') return null;
+
+  return {
+    segment: {
+      start: {
+        lateralMeters: state.position.lateralMeters,
+        distanceMeters: state.position.distanceMeters,
+      },
+      end: {
+        lateralMeters:
+          state.position.lateralMeters -
+          Math.sin(state.trailerHeadingRadians) * tuning.trailerWheelbaseMeters,
+        distanceMeters:
+          state.position.distanceMeters -
+          Math.cos(state.trailerHeadingRadians) * tuning.trailerWheelbaseMeters,
+      },
+    },
+    radiusMeters: tuning.trailerWidthMeters / 2,
+  };
+}
+
+/** Resolve impacts already detected by a world/collision system. */
+export function resolveTruckImpact(state: TruckState, impact: TruckImpact): TruckState {
+  validateTruckState(state);
+  if (typeof impact !== 'object' || impact === null || impact.kind !== 'barrier') {
+    throw new TypeError(`Unknown truck impact: ${String(impact)}`);
+  }
+  if (state.status !== 'jackknifed') return createTruckState(state);
+  return createTruckState({
+    ...state,
+    speedMetersPerSecond: 0,
+    yawRateRadiansPerSecond: 0,
+    status: 'crashed',
   });
 }
 
@@ -252,6 +330,13 @@ function validateTuning(tuning: TruckTuning): void {
     tuning.steeringFullResponseSpeedMetersPerSecond
   );
   assertFinite('tuning.trailerWheelbaseMeters', tuning.trailerWheelbaseMeters);
+  assertFinite('tuning.trailerWidthMeters', tuning.trailerWidthMeters);
+  assertFinite('tuning.jackknifeEntryAngleRadians', tuning.jackknifeEntryAngleRadians);
+  assertFinite('tuning.jackknifeRecoveryAngleRadians', tuning.jackknifeRecoveryAngleRadians);
+  assertFinite(
+    'tuning.jackknifeMinimumSpeedMetersPerSecond',
+    tuning.jackknifeMinimumSpeedMetersPerSecond
+  );
   assertPositive('tuning.maxForwardSpeedMetersPerSecond', tuning.maxForwardSpeedMetersPerSecond);
   assertPositive(
     'tuning.engineAccelerationMetersPerSecondSquared',
@@ -275,6 +360,45 @@ function validateTuning(tuning: TruckTuning): void {
     tuning.steeringFullResponseSpeedMetersPerSecond
   );
   assertPositive('tuning.trailerWheelbaseMeters', tuning.trailerWheelbaseMeters);
+  assertPositive('tuning.trailerWidthMeters', tuning.trailerWidthMeters);
+  assertPositive('tuning.jackknifeEntryAngleRadians', tuning.jackknifeEntryAngleRadians);
+  assertPositive('tuning.jackknifeRecoveryAngleRadians', tuning.jackknifeRecoveryAngleRadians);
+  assertPositive(
+    'tuning.jackknifeMinimumSpeedMetersPerSecond',
+    tuning.jackknifeMinimumSpeedMetersPerSecond
+  );
+  if (tuning.jackknifeRecoveryAngleRadians >= tuning.jackknifeEntryAngleRadians) {
+    throw new RangeError(
+      `jackknifeRecoveryAngleRadians must be less than entry angle, got ` +
+        `${tuning.jackknifeRecoveryAngleRadians} >= ${tuning.jackknifeEntryAngleRadians}`
+    );
+  }
+  if (tuning.jackknifeMinimumSpeedMetersPerSecond > tuning.maxForwardSpeedMetersPerSecond) {
+    throw new RangeError(
+      `jackknifeMinimumSpeedMetersPerSecond must not exceed maximum speed, got ` +
+        `${tuning.jackknifeMinimumSpeedMetersPerSecond} > ` +
+        `${tuning.maxForwardSpeedMetersPerSecond}`
+    );
+  }
+}
+
+function nextTruckStatus(
+  current: TruckStatus,
+  articulationRadians: number,
+  speedMetersPerSecond: number,
+  tuning: TruckTuning
+): TruckStatus {
+  if (current === 'crashed') return 'crashed';
+  if (current === 'jackknifed') {
+    return articulationRadians <= tuning.jackknifeRecoveryAngleRadians ? 'driving' : 'jackknifed';
+  }
+  if (
+    speedMetersPerSecond >= tuning.jackknifeMinimumSpeedMetersPerSecond &&
+    articulationRadians >= tuning.jackknifeEntryAngleRadians
+  ) {
+    return 'jackknifed';
+  }
+  return 'driving';
 }
 
 function assertFinite(label: string, value: number): void {

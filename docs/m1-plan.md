@@ -175,7 +175,15 @@ make articulation and steering lag immediately legible.
 
 ## M1.4 — Jackknife, recovery, and fishtail
 
+**Status:** Complete (2026-07-14).
+
 Treat jackknifing as an explicit game mechanic layered on top of articulation.
+
+Implemented with an initial 12° entry threshold, 7° recovery threshold, and 20 m/s minimum speed.
+State hysteresis keeps the boundary stable; jackknifed trailers expose a world-space capsule from
+hitch to axle for future collision queries. Generic barrier-impact resolution produces an inert
+`crashed` state only when jackknifed. The playable checkpoint uses explicit orange/red status colors
+to make the risk state legible. Covered by `tests/unit/truck.test.ts`.
 
 - Crossing the configured articulation threshold enters `jackknifed`.
 - Recovery requires dropping below a lower recovery threshold. This hysteresis prevents state
@@ -251,8 +259,8 @@ Then perform a browser smoke test at `http://localhost:8018`:
 - [x] Truck state and controls are world-space, renderer-independent data.
 - [x] Longitudinal motion meets the agreed provisional tuning targets.
 - [x] Cab steering and trailer lag are deterministic and tested.
-- [ ] Jackknife entry, recovery, and crash rules are explicit and tested.
-- [ ] The fishtail swipe geometry is available for future collision queries.
+- [x] Jackknife entry, recovery, and crash rules are explicit and tested.
+- [x] The fishtail swipe geometry is available for future collision queries.
 - [x] The playable placeholder visibly separates cab and trailer.
 - [ ] Debug telemetry supports tuning without contaminating simulation.
 - [ ] Automated verification passes.
