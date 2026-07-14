@@ -27,7 +27,6 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
 
 - **Dual rAF loops in the smoke build**: `FixedStepLoop` runs its own rAF for game ticks; `mountGame` runs a separate rAF for the FPS meter (because the loop doesn't currently surface real-dt to its caller). Two ~60Hz callbacks where one would do. Cheap but redundant. Fix path: add an `onTick(realDt)` hook to `FixedStepLoop`, route the FPS meter through it, and drop the mount's rAF.
 - **Lint rule banning `Math.random()` in game code**: pending. Game code must pull from `Rng` (passed in by construction) for determinism. One stray `Math.random()` silently breaks replay. Add as an oxlint rule or a grep-based test when convenient.
-- **Renderer exhaustiveness check**: when `Drawable` gains a second variant, restore the `default: const _: never = d` exhaustiveness assertion in `Canvas2DRenderer.draw`. Today TS can't narrow with a single-arm switch so it's dead code that doesn't compile. Marked with a TODO in the source.
 - **devicePixelRatio handling**: `Canvas2DRenderer` assumes its context is already sized correctly for DPR. The mount module (M0 item 4) owns canvas sizing. When we wire it up, decide between "internal resolution = CSS px × DPR" (crisp on retina, more pixels to fill) and "internal resolution = fixed virtual pixels with CSS upscale" (true retro vibe, possibly mandatory once we want the CRT look).
 - **Canvas context-loss recovery**: `imageSmoothingEnabled` is set once at construction. Browsers can reset context state on `webglcontextlost`/-equivalents; for Canvas 2D this is rare but possible. Revisit if we see smoothing creep back on.
 
@@ -38,6 +37,10 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
 - **`DataStore` schema churn**: deferred — during prototyping we accept tearing down localStorage and starting fresh whenever the shape changes. Revisit once gameplay stabilizes and real player data is at stake; at that point we want explicit version tags and crash-on-unknown-version (per directive: crashing > corruption).
 
 ## Resolved (move entries here when decided, with the decision)
+
+- **Renderer exhaustiveness check** (2026-07-14): M1.3 added the `oriented-rect` drawable for cab
+  and trailer placeholders. `Canvas2DRenderer.draw` now has multiple discriminated-union arms and a
+  `never` default assertion, so future drawable variants fail typechecking until handled.
 
 - **Camera / view: top-down 2D** (2026-05-24): World coords are `(lane offset, distance)`. World scrolls down, truck anchored vertically. Chase-cam pseudo-3D rejected — not on cost alone but because the design doc's headline mechanics (jackknife arc, fishtail swipe, side flamethrowers, rear cargo dropper, tanker drafting) all *require* surround visibility and a legible trailer angle, both of which chase-cam hides. The RoadBlasters tie in the design doc is about combat density + fuel-timer dread, not about camera. **Deferred to the art pass**: whether sprites are drawn flat-top-down or tilted 3/4. That's a pure art decision; the engine is unaffected.
 

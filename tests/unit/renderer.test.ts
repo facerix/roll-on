@@ -37,6 +37,10 @@ interface FakeCtx {
   fillStyle: string;
   imageSmoothingEnabled: boolean;
   fillRect(x: number, y: number, w: number, h: number): void;
+  save(): void;
+  restore(): void;
+  translate(x: number, y: number): void;
+  rotate(radians: number): void;
 }
 
 function makeFakeCtx(): FakeCtx {
@@ -48,6 +52,18 @@ function makeFakeCtx(): FakeCtx {
     imageSmoothingEnabled: true,
     fillRect(x, y, w, h) {
       ops.push({ kind: 'call', method: 'fillRect', args: [x, y, w, h] });
+    },
+    save() {
+      ops.push({ kind: 'call', method: 'save', args: [] });
+    },
+    restore() {
+      ops.push({ kind: 'call', method: 'restore', args: [] });
+    },
+    translate(x, y) {
+      ops.push({ kind: 'call', method: 'translate', args: [x, y] });
+    },
+    rotate(radians) {
+      ops.push({ kind: 'call', method: 'rotate', args: [radians] });
     },
   };
   // Wrap in a proxy so property assignments are logged. We also re-bind
@@ -146,6 +162,52 @@ test('Canvas2DRenderer sets the drawable color before each fillRect', () => {
     }
   }
   assert.equal(drawableIdx, 3, 'should have observed 3 fillRects total');
+});
+
+test('Canvas2DRenderer renders an oriented rect around its declared center', () => {
+  const ctx = makeFakeCtx();
+  const r = new Canvas2DRenderer(ctx as unknown as CanvasRenderingContext2D);
+
+  r.draw({
+    clear: '#000',
+    width: 100,
+    height: 100,
+    drawables: [
+      {
+        kind: 'oriented-rect',
+        centerX: 40,
+        centerY: 50,
+        w: 10,
+        h: 30,
+        rotationRadians: 0.75,
+        color: '#fedc00',
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    calls(ctx.ops, 'save').map(op => (op.kind === 'call' ? op.args : null)),
+    [[]]
+  );
+  assert.deepEqual(
+    calls(ctx.ops, 'translate').map(op => (op.kind === 'call' ? op.args : null)),
+    [[40, 50]]
+  );
+  assert.deepEqual(
+    calls(ctx.ops, 'rotate').map(op => (op.kind === 'call' ? op.args : null)),
+    [[0.75]]
+  );
+  assert.deepEqual(
+    calls(ctx.ops, 'fillRect').map(op => (op.kind === 'call' ? op.args : null)),
+    [
+      [0, 0, 100, 100],
+      [-5, -15, 10, 30],
+    ]
+  );
+  assert.deepEqual(
+    calls(ctx.ops, 'restore').map(op => (op.kind === 'call' ? op.args : null)),
+    [[]]
+  );
 });
 
 test('Canvas2DRenderer disables image smoothing for crisp pixel art', () => {

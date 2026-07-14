@@ -29,13 +29,29 @@ Goal: the page mounts a canvas, a fixed-timestep loop ticks, and we can render a
 
 Goal: the truck *feels* like 80,000 lbs before we draw a road.
 
-- [ ] **Truck state model** (`src/game/truck.ts`): position, velocity, heading, trailer angle, mass, cargo integrity.
-- [ ] **Acceleration curve**: slow ramp-up, high top-speed momentum (§2 of design doc).
-  - *Test*: at full throttle from 0, reaches 50% top speed in ≥ Xs; coasting decay matches expected curve.
-- [ ] **Steering + jackknife model**: trailer trails the cab with lag; aggressive inputs at high speed widen the angle past a threshold → jackknife state.
-  - *Test*: hard steer at top speed past threshold transitions to jackknife; gentle steer doesn't.
-  - *Test*: brushing a "barrier" while jackknifing → catastrophic crash.
-- [ ] **Defensive fishtail**: jackknife angle has a hit-zone that can swipe trailing enemies (stub the enemy as a point for now).
+- [x] **Truck state model** (`src/game/truck.ts`). ✓ Renderer-independent world position, forward
+  speed, cab/trailer headings, yaw rate, mass, cargo integrity, and lifecycle status. Pure
+  deterministic `stepTruck(state, controls, dt, tuning)` seam with strict runtime validation and
+  immutable output. Covered by `tests/unit/truck.test.ts`. See `docs/m1-plan.md` M1.1.
+- [x] **Acceleration curve**. ✓ Manual throttle with a speed-tapered acceleration curve reaches 50%
+  of the 40 m/s top speed in approximately 4.5 seconds. Separate coasting and service-brake
+  deceleration preserve momentum without allowing reverse motion. World position integrates from
+  speed and cab heading. Covered by `tests/unit/truck.test.ts`; playable on the blank-canvas
+  checkpoint through `index.ts`. See `docs/m1-plan.md` M1.2.
+- [x] **Steering + trailer articulation**. ✓ Speed-scaled steering authority with smoothed cab yaw;
+  kinematic trailer heading follows with visible lag and continuous reversal. Separate oriented cab
+  and trailer placeholders expose articulation in the playable build. Covered by
+  `tests/unit/truck.test.ts` and `tests/unit/renderer.test.ts`. See `docs/m1-plan.md` M1.3.
+- [x] **Jackknife model**. ✓ Hard steering above 20 m/s enters jackknife at 12° articulation; recovery
+  requires dropping below 7°. Hysteresis prevents boundary flicker, and a barrier impact while
+  jackknifed produces an inert catastrophic-crash state. Covered by `tests/unit/truck.test.ts`. See
+  `docs/m1-plan.md` M1.4.
+- [x] **Defensive fishtail geometry**. ✓ A jackknifed trailer exposes a renderer-independent
+  world-space capsule from hitch to axle, sized by physical trailer width, for future enemy collision
+  queries. Covered by `tests/unit/truck.test.ts`.
+- [x] **Feel/debug telemetry**. ✓ `?debug` reports speed, normalized top speed, cab heading and yaw,
+  trailer articulation, lifecycle status, and jackknife thresholds through a renderer-independent
+  telemetry snapshot. Covered by `tests/unit/truckTelemetry.test.ts`. See `docs/m1-plan.md` M1.5.
 
 Exit criterion: a developer can play the truck on a blank canvas and a teammate can describe it as "heavy" without prompting.
 

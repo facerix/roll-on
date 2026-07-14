@@ -4,35 +4,93 @@ import { h } from '/src/domUtils.js';
 import { mountGame } from '/src/game/mount.js';
 import type { Scene } from '/src/engine/renderer.js';
 import { installTitleScreenStartHandlers } from '/src/game/titleScreen.js';
+import {
+  createTruckState,
+  DEFAULT_TRUCK_TUNING,
+  stepTruck,
+  type TruckControls,
+} from '/src/game/truck.js';
+import { buildTruckTelemetry, formatTruckTelemetry } from '/src/game/truckTelemetry.js';
 
 function startSmokeTestGame(): void {
-  // Smoke test for M0: a single moving rect driven by arrow keys / WASD.
-  // Proves loop + renderer + input + mount are all talking to each other.
-  // Will be torn out and replaced with the real game in M1+.
+  // M1.3 playable checkpoint: world-space articulated truck motion projected
+  // as separate rotated cab and trailer placeholders on a blank canvas.
   const gameRoot = h('main', { id: 'game-root', style: 'background:#000;' });
   document.body.appendChild(gameRoot);
 
   const width = 320;
   const height = 480;
-  // Truck-shaped placeholder at world origin.
-  const state = { x: width / 2 - 12, y: height / 2 - 24, speed: 180 /* px/s */ };
+  const cabWidth = 20;
+  const cabHeight = 28;
+  const trailerWidth = 18;
+  const trailerHeight = 42;
+  const hitchLength = cabHeight / 2 + trailerHeight / 2 + 3;
+  const pixelsPerMeter = 0.75;
+  const startingScreenY = height - 100;
+  let truck = createTruckState({
+    position: { lateralMeters: 0, distanceMeters: 0 },
+    headingRadians: 0,
+    speedMetersPerSecond: 0,
+    yawRateRadiansPerSecond: 0,
+    trailerHeadingRadians: 0,
+    massKilograms: 36_287,
+    cargoIntegrity: 1,
+    status: 'driving',
+  });
 
   mountGame({
     root: gameRoot,
     width,
     height,
     update: (dt, input) => {
-      const dx = (input.isActive('steerRight') ? 1 : 0) - (input.isActive('steerLeft') ? 1 : 0);
-      const dy = (input.isActive('brake') ? 1 : 0) - (input.isActive('throttle') ? 1 : 0);
-      state.x = Math.max(0, Math.min(width - 24, state.x + dx * state.speed * dt));
-      state.y = Math.max(0, Math.min(height - 48, state.y + dy * state.speed * dt));
+      const controls: TruckControls = {
+        throttle: input.isActive('throttle') ? 1 : 0,
+        brake: input.isActive('brake') ? 1 : 0,
+        steering: (input.isActive('steerRight') ? 1 : 0) - (input.isActive('steerLeft') ? 1 : 0),
+      };
+      truck = stepTruck(truck, controls, dt, DEFAULT_TRUCK_TUNING);
     },
-    buildScene: (): Scene => ({
-      clear: '#0c0c2e',
-      width,
-      height,
-      drawables: [{ kind: 'rect', x: state.x, y: state.y, w: 24, h: 48, color: '#f5c542' }],
-    }),
+    debugLines: () => formatTruckTelemetry(buildTruckTelemetry(truck, DEFAULT_TRUCK_TUNING)),
+    buildScene: (): Scene => {
+      // Projection belongs here, outside simulation. Positive world distance
+      // travels upward on screen; positive heading rotates clockwise/right.
+      const cabCenterX = width / 2 + truck.position.lateralMeters * pixelsPerMeter;
+      const cabCenterY = startingScreenY - truck.position.distanceMeters * pixelsPerMeter;
+      const trailerCenterX = cabCenterX - Math.sin(truck.trailerHeadingRadians) * hitchLength;
+      const trailerCenterY = cabCenterY + Math.cos(truck.trailerHeadingRadians) * hitchLength;
+      const colors =
+        truck.status === 'crashed'
+          ? { cab: '#ff1744', trailer: '#8b0000' }
+          : truck.status === 'jackknifed'
+            ? { cab: '#ff9500', trailer: '#ff3b30' }
+            : { cab: '#f5c542', trailer: '#d29f2b' };
+
+      return {
+        clear: '#0c0c2e',
+        width,
+        height,
+        drawables: [
+          {
+            kind: 'oriented-rect',
+            centerX: trailerCenterX,
+            centerY: trailerCenterY,
+            w: trailerWidth,
+            h: trailerHeight,
+            rotationRadians: truck.trailerHeadingRadians,
+            color: colors.trailer,
+          },
+          {
+            kind: 'oriented-rect',
+            centerX: cabCenterX,
+            centerY: cabCenterY,
+            w: cabWidth,
+            h: cabHeight,
+            rotationRadians: truck.headingRadians,
+            color: colors.cab,
+          },
+        ],
+      };
+    },
   });
 }
 
