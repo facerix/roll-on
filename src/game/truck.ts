@@ -37,11 +37,21 @@ export interface TruckControls {
  */
 export interface TruckTuning {
   readonly maxForwardSpeedMetersPerSecond: number;
+  /** Full-throttle acceleration available at rest; tapers toward top speed. */
+  readonly engineAccelerationMetersPerSecondSquared: number;
+  /** Rolling/aerodynamic slowdown applied as the throttle closes. */
+  readonly coastDecelerationMetersPerSecondSquared: number;
+  /** Additional slowdown at full service-brake input. */
+  readonly brakeDecelerationMetersPerSecondSquared: number;
 }
 
 export const DEFAULT_TRUCK_TUNING: TruckTuning = Object.freeze({
-  // Approximately 89 mph. This is a bound, not yet an acceleration target.
+  // Approximately 89 mph.
   maxForwardSpeedMetersPerSecond: 40,
+  // Produces 50% of top speed in approximately 4.5 seconds at full throttle.
+  engineAccelerationMetersPerSecondSquared: 6.2,
+  coastDecelerationMetersPerSecondSquared: 0.5,
+  brakeDecelerationMetersPerSecondSquared: 8,
 });
 
 const TRUCK_STATUSES = new Set<TruckStatus>(['driving', 'jackknifed', 'crashed']);
@@ -73,9 +83,10 @@ export function createTruckState(initial: TruckState): TruckState {
 /**
  * Advance truck simulation by one fixed step.
  *
- * M1.1 establishes the deterministic, immutable boundary. At rest there is no
- * state transition yet; M1.2 will add longitudinal motion behind this same
- * contract without changing callers.
+ * Longitudinal acceleration is an arcade curve: strongest at rest and tapering
+ * linearly as speed approaches the configured maximum. Coasting and braking
+ * are separate so releasing the throttle preserves substantially more momentum
+ * than applying the service brake.
  */
 export function stepTruck(
   state: TruckState,
@@ -97,7 +108,37 @@ export function stepTruck(
     );
   }
 
-  return createTruckState(state);
+  const speedRatio = state.speedMetersPerSecond / tuning.maxForwardSpeedMetersPerSecond;
+  const engineAcceleration =
+    tuning.engineAccelerationMetersPerSecondSquared *
+    controls.throttle *
+    Math.max(0, 1 - speedRatio);
+  const coastDeceleration =
+    tuning.coastDecelerationMetersPerSecondSquared * (1 - controls.throttle);
+  const brakeDeceleration = tuning.brakeDecelerationMetersPerSecondSquared * controls.brake;
+  const acceleration = engineAcceleration - coastDeceleration - brakeDeceleration;
+  const nextSpeed = clamp(
+    state.speedMetersPerSecond + acceleration * dtSeconds,
+    0,
+    tuning.maxForwardSpeedMetersPerSecond
+  );
+
+  // Trapezoidal integration avoids using either the old or new speed alone
+  // for the whole step. Heading is fixed until M1.3 adds steering.
+  const averageSpeed = (state.speedMetersPerSecond + nextSpeed) / 2;
+  const distanceTravelled = averageSpeed * dtSeconds;
+  const nextPosition: WorldPosition = {
+    lateralMeters:
+      state.position.lateralMeters + Math.sin(state.headingRadians) * distanceTravelled,
+    distanceMeters:
+      state.position.distanceMeters + Math.cos(state.headingRadians) * distanceTravelled,
+  };
+
+  return createTruckState({
+    ...state,
+    position: nextPosition,
+    speedMetersPerSecond: nextSpeed,
+  });
 }
 
 function validateTruckState(state: TruckState): void {
@@ -151,12 +192,31 @@ function validateTuning(tuning: TruckTuning): void {
   }
 
   assertFinite('tuning.maxForwardSpeedMetersPerSecond', tuning.maxForwardSpeedMetersPerSecond);
-  if (tuning.maxForwardSpeedMetersPerSecond <= 0) {
-    throw new RangeError(
-      `tuning.maxForwardSpeedMetersPerSecond must be positive, got ` +
-        `${tuning.maxForwardSpeedMetersPerSecond}`
-    );
-  }
+  assertFinite(
+    'tuning.engineAccelerationMetersPerSecondSquared',
+    tuning.engineAccelerationMetersPerSecondSquared
+  );
+  assertFinite(
+    'tuning.coastDecelerationMetersPerSecondSquared',
+    tuning.coastDecelerationMetersPerSecondSquared
+  );
+  assertFinite(
+    'tuning.brakeDecelerationMetersPerSecondSquared',
+    tuning.brakeDecelerationMetersPerSecondSquared
+  );
+  assertPositive('tuning.maxForwardSpeedMetersPerSecond', tuning.maxForwardSpeedMetersPerSecond);
+  assertPositive(
+    'tuning.engineAccelerationMetersPerSecondSquared',
+    tuning.engineAccelerationMetersPerSecondSquared
+  );
+  assertPositive(
+    'tuning.coastDecelerationMetersPerSecondSquared',
+    tuning.coastDecelerationMetersPerSecondSquared
+  );
+  assertPositive(
+    'tuning.brakeDecelerationMetersPerSecondSquared',
+    tuning.brakeDecelerationMetersPerSecondSquared
+  );
 }
 
 function assertFinite(label: string, value: number): void {
@@ -169,4 +229,14 @@ function assertRange(label: string, value: number, min: number, max: number): vo
   if (value < min || value > max) {
     throw new RangeError(`${label} must be in [${min}, ${max}], got ${value}`);
   }
+}
+
+function assertPositive(label: string, value: number): void {
+  if (value <= 0) {
+    throw new RangeError(`${label} must be positive, got ${value}`);
+  }
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }

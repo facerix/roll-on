@@ -4,35 +4,71 @@ import { h } from '/src/domUtils.js';
 import { mountGame } from '/src/game/mount.js';
 import type { Scene } from '/src/engine/renderer.js';
 import { installTitleScreenStartHandlers } from '/src/game/titleScreen.js';
+import {
+  createTruckState,
+  DEFAULT_TRUCK_TUNING,
+  stepTruck,
+  type TruckControls,
+} from '/src/game/truck.js';
 
 function startSmokeTestGame(): void {
-  // Smoke test for M0: a single moving rect driven by arrow keys / WASD.
-  // Proves loop + renderer + input + mount are all talking to each other.
-  // Will be torn out and replaced with the real game in M1+.
+  // M1.2 playable checkpoint: world-space longitudinal truck motion projected
+  // onto the blank prototype canvas. Steering intentionally lands in M1.3.
   const gameRoot = h('main', { id: 'game-root', style: 'background:#000;' });
   document.body.appendChild(gameRoot);
 
   const width = 320;
   const height = 480;
-  // Truck-shaped placeholder at world origin.
-  const state = { x: width / 2 - 12, y: height / 2 - 24, speed: 180 /* px/s */ };
+  const truckWidth = 24;
+  const truckHeight = 48;
+  const pixelsPerMeter = 0.75;
+  const startingScreenY = height - truckHeight - 24;
+  let truck = createTruckState({
+    position: { lateralMeters: 0, distanceMeters: 0 },
+    headingRadians: 0,
+    speedMetersPerSecond: 0,
+    yawRateRadiansPerSecond: 0,
+    trailerHeadingRadians: 0,
+    massKilograms: 36_287,
+    cargoIntegrity: 1,
+    status: 'driving',
+  });
 
   mountGame({
     root: gameRoot,
     width,
     height,
     update: (dt, input) => {
-      const dx = (input.isActive('steerRight') ? 1 : 0) - (input.isActive('steerLeft') ? 1 : 0);
-      const dy = (input.isActive('brake') ? 1 : 0) - (input.isActive('throttle') ? 1 : 0);
-      state.x = Math.max(0, Math.min(width - 24, state.x + dx * state.speed * dt));
-      state.y = Math.max(0, Math.min(height - 48, state.y + dy * state.speed * dt));
+      const controls: TruckControls = {
+        throttle: input.isActive('throttle') ? 1 : 0,
+        brake: input.isActive('brake') ? 1 : 0,
+        steering: (input.isActive('steerRight') ? 1 : 0) - (input.isActive('steerLeft') ? 1 : 0),
+      };
+      truck = stepTruck(truck, controls, dt, DEFAULT_TRUCK_TUNING);
     },
-    buildScene: (): Scene => ({
-      clear: '#0c0c2e',
-      width,
-      height,
-      drawables: [{ kind: 'rect', x: state.x, y: state.y, w: 24, h: 48, color: '#f5c542' }],
-    }),
+    buildScene: (): Scene => {
+      // Projection belongs here, outside simulation. Cab heading is zero until
+      // M1.3, so forward world distance travels upward on screen.
+      const truckScreenX =
+        width / 2 - truckWidth / 2 + truck.position.lateralMeters * pixelsPerMeter;
+      const truckScreenY = startingScreenY - truck.position.distanceMeters * pixelsPerMeter;
+
+      return {
+        clear: '#0c0c2e',
+        width,
+        height,
+        drawables: [
+          {
+            kind: 'rect',
+            x: truckScreenX,
+            y: truckScreenY,
+            w: truckWidth,
+            h: truckHeight,
+            color: '#f5c542',
+          },
+        ],
+      };
+    },
   });
 }
 

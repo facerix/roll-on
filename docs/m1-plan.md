@@ -104,7 +104,15 @@ The game can construct and step a truck state, but rendering may still use a sim
 
 ## M1.2 — Longitudinal weight
 
+**Status:** Complete (2026-07-14).
+
 Implement throttle acceleration, braking, drag, and coasting before introducing steering.
+
+Implemented as a linearly tapering engine-acceleration curve with a 40 m/s top-speed bound,
+6.2 m/s² low-speed acceleration, 0.5 m/s² coasting deceleration, and 8 m/s² service-brake
+deceleration. World position advances from average speed and cab heading using trapezoidal
+integration. The playable checkpoint now maps keyboard actions into `TruckControls` and projects the
+world-space truck onto the blank canvas in `index.ts`. Covered by `tests/unit/truck.test.ts`.
 
 ### Provisional feel targets
 
@@ -232,8 +240,8 @@ Then perform a browser smoke test at `http://localhost:8018`:
 
 ## Completion checklist
 
-- [ ] Truck state and controls are world-space, renderer-independent data.
-- [ ] Longitudinal motion meets the agreed provisional tuning targets.
+- [x] Truck state and controls are world-space, renderer-independent data.
+- [x] Longitudinal motion meets the agreed provisional tuning targets.
 - [ ] Cab steering and trailer lag are deterministic and tested.
 - [ ] Jackknife entry, recovery, and crash rules are explicit and tested.
 - [ ] The fishtail swipe geometry is available for future collision queries.

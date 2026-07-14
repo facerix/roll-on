@@ -11,6 +11,9 @@ import {
 
 const TUNING: TruckTuning = {
   maxForwardSpeedMetersPerSecond: 40,
+  engineAccelerationMetersPerSecondSquared: 6.2,
+  coastDecelerationMetersPerSecondSquared: 0.5,
+  brakeDecelerationMetersPerSecondSquared: 8,
 };
 
 const NO_CONTROLS: TruckControls = {
@@ -30,6 +33,20 @@ function validState(): TruckState {
     cargoIntegrity: 1,
     status: 'driving',
   });
+}
+
+function stepFor(
+  initial: TruckState,
+  controls: TruckControls,
+  durationSeconds: number,
+  dtSeconds = 1 / 60
+): TruckState {
+  let state = initial;
+  const steps = Math.round(durationSeconds / dtSeconds);
+  for (let i = 0; i < steps; i++) {
+    state = stepTruck(state, controls, dtSeconds, TUNING);
+  }
+  return state;
 }
 
 test('createTruckState creates a validated world-space state from explicit values', () => {
@@ -89,6 +106,93 @@ test('zero controls at rest leave the truck at rest', () => {
   const next = stepTruck(state, NO_CONTROLS, 1 / 60, TUNING);
 
   assert.deepEqual(next, state);
+});
+
+test('full throttle reaches 50% of top speed in approximately 4–5 seconds', () => {
+  let state = validState();
+  const fullThrottle: TruckControls = { ...NO_CONTROLS, throttle: 1 };
+  const halfSpeed = TUNING.maxForwardSpeedMetersPerSecond / 2;
+  const dt = 1 / 60;
+  let elapsed = 0;
+
+  while (state.speedMetersPerSecond < halfSpeed && elapsed <= 6) {
+    state = stepTruck(state, fullThrottle, dt, TUNING);
+    elapsed += dt;
+  }
+
+  assert.ok(elapsed >= 4, `expected at least 4s, reached half speed in ${elapsed}s`);
+  assert.ok(elapsed <= 5, `expected at most 5s, reached half speed in ${elapsed}s`);
+});
+
+test('engine acceleration diminishes as speed approaches top speed', () => {
+  const fullThrottle: TruckControls = { ...NO_CONTROLS, throttle: 1 };
+  const nearRest = validState();
+  const nearTop = {
+    ...validState(),
+    speedMetersPerSecond: TUNING.maxForwardSpeedMetersPerSecond * 0.9,
+  };
+
+  const lowSpeedDelta =
+    stepTruck(nearRest, fullThrottle, 1, TUNING).speedMetersPerSecond -
+    nearRest.speedMetersPerSecond;
+  const highSpeedDelta =
+    stepTruck(nearTop, fullThrottle, 1, TUNING).speedMetersPerSecond - nearTop.speedMetersPerSecond;
+
+  assert.ok(lowSpeedDelta > highSpeedDelta);
+  assert.ok(highSpeedDelta > 0);
+});
+
+test('sustained throttle approaches but never exceeds top speed', () => {
+  const state = stepFor(validState(), { ...NO_CONTROLS, throttle: 1 }, 60);
+
+  assert.ok(state.speedMetersPerSecond > TUNING.maxForwardSpeedMetersPerSecond * 0.99);
+  assert.ok(state.speedMetersPerSecond <= TUNING.maxForwardSpeedMetersPerSecond);
+});
+
+test('coasting loses speed more slowly than braking', () => {
+  const moving = { ...validState(), speedMetersPerSecond: 20 };
+
+  const coasted = stepTruck(moving, NO_CONTROLS, 1, TUNING);
+  const braked = stepTruck(moving, { ...NO_CONTROLS, brake: 1 }, 1, TUNING);
+
+  assert.ok(coasted.speedMetersPerSecond < moving.speedMetersPerSecond);
+  assert.ok(braked.speedMetersPerSecond < coasted.speedMetersPerSecond);
+});
+
+test('braking clamps at rest and never produces reverse motion', () => {
+  const movingSlowly = { ...validState(), speedMetersPerSecond: 1 };
+
+  const stopped = stepTruck(movingSlowly, { ...NO_CONTROLS, brake: 1 }, 1, TUNING);
+
+  assert.equal(stopped.speedMetersPerSecond, 0);
+});
+
+test('forward speed advances world position along cab heading', () => {
+  const movingForward = { ...validState(), speedMetersPerSecond: 10, headingRadians: 0 };
+  const movingSideways = {
+    ...validState(),
+    speedMetersPerSecond: 10,
+    headingRadians: Math.PI / 2,
+  };
+
+  const forward = stepTruck(movingForward, { ...NO_CONTROLS, throttle: 1 }, 0.1, TUNING);
+  const sideways = stepTruck(movingSideways, { ...NO_CONTROLS, throttle: 1 }, 0.1, TUNING);
+
+  assert.equal(forward.position.lateralMeters, movingForward.position.lateralMeters);
+  assert.ok(forward.position.distanceMeters > movingForward.position.distanceMeters);
+  assert.ok(sideways.position.lateralMeters > movingSideways.position.lateralMeters);
+  assert.ok(
+    Math.abs(sideways.position.distanceMeters - movingSideways.position.distanceMeters) < 1e-12
+  );
+});
+
+test('equivalent fixed-step simulations produce identical longitudinal state', () => {
+  const controls: TruckControls = { throttle: 0.65, brake: 0, steering: 0 };
+
+  const a = stepFor(validState(), controls, 8);
+  const b = stepFor(validState(), controls, 8);
+
+  assert.deepEqual(a, b);
 });
 
 test('createTruckState rejects non-finite state values', () => {
@@ -159,11 +263,38 @@ test('stepTruck rejects invalid tuning', () => {
     () =>
       stepTruck(state, NO_CONTROLS, 1 / 60, {
         maxForwardSpeedMetersPerSecond: Number.NaN,
+        engineAccelerationMetersPerSecondSquared: 6.2,
+        coastDecelerationMetersPerSecondSquared: 0.5,
+        brakeDecelerationMetersPerSecondSquared: 8,
       }),
     TypeError
   );
   assert.throws(
-    () => stepTruck(state, NO_CONTROLS, 1 / 60, { maxForwardSpeedMetersPerSecond: 0 }),
+    () => stepTruck(state, NO_CONTROLS, 1 / 60, { ...TUNING, maxForwardSpeedMetersPerSecond: 0 }),
+    RangeError
+  );
+  assert.throws(
+    () =>
+      stepTruck(state, NO_CONTROLS, 1 / 60, {
+        ...TUNING,
+        engineAccelerationMetersPerSecondSquared: -1,
+      }),
+    RangeError
+  );
+  assert.throws(
+    () =>
+      stepTruck(state, NO_CONTROLS, 1 / 60, {
+        ...TUNING,
+        coastDecelerationMetersPerSecondSquared: Number.POSITIVE_INFINITY,
+      }),
+    TypeError
+  );
+  assert.throws(
+    () =>
+      stepTruck(state, NO_CONTROLS, 1 / 60, {
+        ...TUNING,
+        brakeDecelerationMetersPerSecondSquared: 0,
+      }),
     RangeError
   );
 });

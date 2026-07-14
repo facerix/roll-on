@@ -33,8 +33,11 @@ Goal: the truck *feels* like 80,000 lbs before we draw a road.
   speed, cab/trailer headings, yaw rate, mass, cargo integrity, and lifecycle status. Pure
   deterministic `stepTruck(state, controls, dt, tuning)` seam with strict runtime validation and
   immutable output. Covered by `tests/unit/truck.test.ts`. See `docs/m1-plan.md` M1.1.
-- [ ] **Acceleration curve**: slow ramp-up, high top-speed momentum (§2 of design doc).
-  - *Test*: at full throttle from 0, reaches 50% top speed in ≥ Xs; coasting decay matches expected curve.
+- [x] **Acceleration curve**. ✓ Manual throttle with a speed-tapered acceleration curve reaches 50%
+  of the 40 m/s top speed in approximately 4.5 seconds. Separate coasting and service-brake
+  deceleration preserve momentum without allowing reverse motion. World position integrates from
+  speed and cab heading. Covered by `tests/unit/truck.test.ts`; playable on the blank-canvas
+  checkpoint through `index.ts`. See `docs/m1-plan.md` M1.2.
 - [ ] **Steering + jackknife model**: trailer trails the cab with lag; aggressive inputs at high speed widen the angle past a threshold → jackknife state.
   - *Test*: hard steer at top speed past threshold transitions to jackknife; gentle steer doesn't.
   - *Test*: brushing a "barrier" while jackknifing → catastrophic crash.
