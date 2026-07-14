@@ -29,7 +29,10 @@ Goal: the page mounts a canvas, a fixed-timestep loop ticks, and we can render a
 
 Goal: the truck *feels* like 80,000 lbs before we draw a road.
 
-- [ ] **Truck state model** (`src/game/truck.ts`): position, velocity, heading, trailer angle, mass, cargo integrity.
+- [x] **Truck state model** (`src/game/truck.ts`). ✓ Renderer-independent world position, forward
+  speed, cab/trailer headings, yaw rate, mass, cargo integrity, and lifecycle status. Pure
+  deterministic `stepTruck(state, controls, dt, tuning)` seam with strict runtime validation and
+  immutable output. Covered by `tests/unit/truck.test.ts`. See `docs/m1-plan.md` M1.1.
 - [ ] **Acceleration curve**: slow ramp-up, high top-speed momentum (§2 of design doc).
   - *Test*: at full throttle from 0, reaches 50% top speed in ≥ Xs; coasting decay matches expected curve.
 - [ ] **Steering + jackknife model**: trailer trails the cab with lag; aggressive inputs at high speed widen the angle past a threshold → jackknife state.
