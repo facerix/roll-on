@@ -9,7 +9,9 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
 ## Open design questions
 
 - **Difficulty curve shape**: linear ramp vs. wave pattern (lulls between intensity spikes)? Decide once Milestone 4 is playable enough to feel.
-- **Run length target**: how long is a "good" Stage 1 run? 60s? 3 min? Affects fuel drain tuning and enemy density. Revisit during Milestone 3.
+- **Run length target**: M3 uses a prototype target of about 135 seconds at efficient cruise before
+  an empty tank. The final "good" Stage 1 run length is still open because enemy density, finish
+  distance, and scoring pressure arrive in later milestones. Revisit during Milestone 5.
 - **Permadeath vs. continues**: arcade tradition is continues with score reset penalty. Design doc is silent. Decide before Milestone 5.
 - **Score formula precise weights**: §6 of the design doc gives the formula but no coefficients. Tune after Milestone 4.
 - **Mobile / touch input model**: PWA implies mobile. A vertical-scrolling driver could work with tilt or with on-screen lane buttons, but neither is obviously right. Decide before public testing.
