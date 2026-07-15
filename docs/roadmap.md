@@ -61,6 +61,8 @@ Exit criterion: a developer can play the truck on a blank canvas and a teammate 
 
 View is top-down 2D (decision recorded in `kaizen.md`). World coords are `(x = lane offset, y = distance)`. World scrolls in +y; the truck is anchored at a fixed screen-y. Sprites do not scale with distance.
 
+See `docs/m2-plan.md` for the sub-milestone implementation plan.
+
 - [ ] **Road model**: lanes as world coordinates, lane markers, shoulder. World scrolls; truck is camera-anchored vertically.
 - [ ] **Parallax background layers** (one or two flat-color layers for now — neon sunset later).
 - [ ] **World bounds + barriers**: hitting a barrier hurts integrity (and triggers crash if jackknifed).
