@@ -246,7 +246,7 @@ that parallax does not mutate road/simulation state.
 
 ## M2.5 — World bounds, barriers, and cargo damage
 
-**Status:** Planned.
+**Status:** Complete.
 
 Implement road-edge collision detection and wire consequences into the playable loop. A barrier hit
 while jackknifed should use the existing catastrophic crash rule; an ordinary side hit should degrade
@@ -270,9 +270,18 @@ cargo integrity and keep the truck controllable unless integrity reaches a later
 Steering beyond the road edge gives immediate visual and debug feedback. Safe barrier scrapes hurt
 cargo integrity; a jackknifed barrier hit produces the catastrophic M1 crash state.
 
+### Implementation note
+
+M2.5 adds `src/game/roadCollision.ts` for renderer-independent cab/trailer footprint AABBs,
+left/right barrier detection, and explicit barrier-contact cooldown state. The playable loop now
+builds world-space truck footprints after each truck step, applies barrier consequences through
+`resolveTruckImpact`, reduces cargo integrity by a tuned 8% per cooldown for non-jackknifed scrapes,
+and flashes the barriers while debug telemetry reports cargo, last barrier side, penetration, and
+cooldown.
+
 ## M2.6 — Feel, telemetry, and closeout
 
-**Status:** Planned.
+**Status:** Complete.
 
 Tune the road scale, anchor position, lane width, barrier forgiveness, marker cadence, and parallax
 speed together. Add temporary debug telemetry only where it helps tune the road/camera system.
@@ -293,6 +302,13 @@ Useful `?debug` lines:
 4. Enter a high-speed jackknife and hit a barrier to confirm catastrophic crash behavior.
 5. Verify the truck remains readable at the camera anchor during acceleration, braking, and steering.
 6. Record deferred discoveries in `docs/kaizen.md` instead of silently widening M2.
+
+### Closeout note
+
+M2.6 is accepted from Rylee's playtest pass. The road scale, camera anchor, lane readability,
+parallax cues, scrape damage, jackknifed barrier crash behavior, and `?debug` telemetry are good
+enough to close M2. Sprite-backed visual assets remain deliberately deferred to a later art pass;
+M2 closes on the production scene-composition path plus readable primitive visuals.
 
 ## Verification
 
@@ -324,16 +340,16 @@ Then perform a browser smoke test at `http://localhost:8018`:
 - [x] Camera projection keeps the truck anchored and tested in isolation.
 - [x] The M1 smoke renderer has been replaced by the first real 2D game renderer path.
 - [x] Lane markers, shoulders, and barriers render from road/camera data.
-- [ ] Visual assets are either user-provided or generated, and are routed through the intended game
-      asset path.
+- [x] Visual asset production is deferred intentionally; M2 uses the intended scene-composition path
+      with readable primitive visuals.
 - [x] Parallax background layers provide placeholder motion cues.
-- [ ] Barrier collision detection uses world-space truck footprints.
-- [ ] Barrier consequences preserve the M1 jackknife-crash rule.
-- [ ] Cargo-integrity damage from safe scrapes is explicit and tested.
-- [ ] Debug telemetry supports road/camera tuning without contaminating simulation.
-- [ ] Automated verification passes.
-- [ ] A browser smoke test passes without console errors.
-- [ ] A playtester can describe the scene as a road, not a blank playfield.
+- [x] Barrier collision detection uses world-space truck footprints.
+- [x] Barrier consequences preserve the M1 jackknife-crash rule.
+- [x] Cargo-integrity damage from safe scrapes is explicit and tested.
+- [x] Debug telemetry supports road/camera tuning without contaminating simulation.
+- [x] Automated verification passes.
+- [x] A browser smoke test passes without console errors.
+- [x] A playtester can describe the scene as a road, not a blank playfield.
 
 ## Decision carried into implementation
 

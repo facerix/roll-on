@@ -7,6 +7,7 @@ import { installTitleScreenStartHandlers } from '/src/game/titleScreen.js';
 import {
   createTruckState,
   DEFAULT_TRUCK_TUNING,
+  resolveTruckImpact,
   stepTruck,
   type TruckControls,
 } from '/src/game/truck.js';
@@ -18,7 +19,19 @@ import {
 } from '/src/game/roadCamera.js';
 import { createRoad, DEFAULT_ROAD_TUNING, type Road } from '/src/game/road.js';
 import { buildGameHudSnapshot, type GameHudSnapshot } from '/src/game/gameHud.js';
-import { buildRoadScene, type RoadSceneTruckDimensions } from '/src/game/roadScene.js';
+import {
+  buildRoadScene,
+  DEFAULT_ROAD_SCENE_TUNING,
+  type RoadSceneTruckDimensions,
+} from '/src/game/roadScene.js';
+import {
+  buildTruckFootprint,
+  DEFAULT_ROAD_COLLISION_TUNING,
+  detectRoadBarrierImpact,
+  resolveRoadBarrierContact,
+  type BarrierContactState,
+  type RoadBarrierImpact,
+} from '/src/game/roadCollision.js';
 import { buildTruckTelemetry, formatTruckTelemetry } from '/src/game/truckTelemetry.js';
 
 interface GameHud {
@@ -118,6 +131,9 @@ function startRoadGame(): void {
     cargoIntegrity: 1,
     status: 'driving',
   });
+  let barrierContactState: BarrierContactState = { cooldownRemainingSeconds: 0 };
+  let lastBarrierImpact: RoadBarrierImpact | null = null;
+  let barrierFlashSeconds = 0;
   const hud = createGameHud();
   hud.update(buildGameHudSnapshot(truck, DEFAULT_TRUCK_TUNING));
 
@@ -132,6 +148,24 @@ function startRoadGame(): void {
         steering: (input.isActive('steerRight') ? 1 : 0) - (input.isActive('steerLeft') ? 1 : 0),
       };
       truck = stepTruck(truck, controls, dt, DEFAULT_TRUCK_TUNING);
+      const footprint = buildTruckFootprint(truck, truckDimensions);
+      const barrierImpact = detectRoadBarrierImpact(road, footprint);
+      const barrierResult = resolveRoadBarrierContact({
+        truck,
+        impact: barrierImpact,
+        contactState: barrierContactState,
+        dtSeconds: dt,
+        tuning: DEFAULT_ROAD_COLLISION_TUNING,
+        resolveImpact: resolveTruckImpact,
+      });
+      truck = barrierResult.truck;
+      barrierContactState = barrierResult.contactState;
+      if (barrierImpact) {
+        lastBarrierImpact = barrierImpact;
+        barrierFlashSeconds = 0.18;
+      } else {
+        barrierFlashSeconds = Math.max(0, barrierFlashSeconds - dt);
+      }
       hud.update(buildGameHudSnapshot(truck, DEFAULT_TRUCK_TUNING));
     },
     debugLines: () => {
@@ -145,11 +179,27 @@ function startRoadGame(): void {
         `visible: ${visibleRange.startDistanceMeters.toFixed(
           1
         )}..${visibleRange.endDistanceMeters.toFixed(1)} m`,
+        `cargo: ${(truck.cargoIntegrity * 100).toFixed(0)}%`,
+        `last barrier: ${
+          lastBarrierImpact
+            ? `${lastBarrierImpact.side} ${lastBarrierImpact.penetrationMeters.toFixed(2)} m`
+            : 'none'
+        } cooldown ${barrierContactState.cooldownRemainingSeconds.toFixed(2)} s`,
       ];
     },
     buildScene: (): Scene => {
       const camera = buildRoadCamera(truck.position, viewport, cameraTuning);
-      return buildRoadScene({ road, camera, truck, truckDimensions });
+      return buildRoadScene({
+        road,
+        camera,
+        truck,
+        truckDimensions,
+        tuning: {
+          ...DEFAULT_ROAD_SCENE_TUNING,
+          barrierColor:
+            barrierFlashSeconds > 0 ? '#ff5f1f' : DEFAULT_ROAD_SCENE_TUNING.barrierColor,
+        },
+      });
     },
   });
   gameRoot.appendChild(hud.root);
