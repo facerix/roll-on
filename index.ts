@@ -4,13 +4,7 @@ import { h } from '/src/domUtils.js';
 import { mountGame } from '/src/game/mount.js';
 import type { Scene } from '/src/engine/renderer.js';
 import { installTitleScreenStartHandlers } from '/src/game/titleScreen.js';
-import {
-  createTruckState,
-  DEFAULT_TRUCK_TUNING,
-  resolveTruckImpact,
-  stepTruck,
-  type TruckControls,
-} from '/src/game/truck.js';
+import { createTruckState, DEFAULT_TRUCK_TUNING, type TruckControls } from '/src/game/truck.js';
 import {
   buildRoadCamera,
   getVisibleWorldDistanceRange,
@@ -19,19 +13,14 @@ import {
 } from '/src/game/roadCamera.js';
 import { createRoad, DEFAULT_ROAD_TUNING, type Road } from '/src/game/road.js';
 import { buildGameHudSnapshot, type GameHudSnapshot } from '/src/game/gameHud.js';
+import { createFuelState, DEFAULT_FUEL_TUNING, isFuelInFumes } from '/src/game/fuel.js';
+import { stepDriving, ZERO_FUEL_BURN, type DrivingState } from '/src/game/drivingUpdate.js';
 import {
   buildRoadScene,
   DEFAULT_ROAD_SCENE_TUNING,
   type RoadSceneTruckDimensions,
 } from '/src/game/roadScene.js';
-import {
-  buildTruckFootprint,
-  DEFAULT_ROAD_COLLISION_TUNING,
-  detectRoadBarrierImpact,
-  resolveRoadBarrierContact,
-  type BarrierContactState,
-  type RoadBarrierImpact,
-} from '/src/game/roadCollision.js';
+import { type RoadBarrierImpact } from '/src/game/roadCollision.js';
 import { buildTruckTelemetry, formatTruckTelemetry } from '/src/game/truckTelemetry.js';
 
 interface GameHud {
@@ -45,6 +34,9 @@ function createGameHud(): GameHud {
   const speedMetric = h('span', { className: 'roll-on-hud-subvalue', textContent: '0.0 m/s' });
   const topSpeed = h('span', { className: 'roll-on-hud-value', textContent: '0%' });
   const cargo = h('span', { className: 'roll-on-hud-value', textContent: '100%' });
+  const fuel = h('span', { className: 'roll-on-hud-value', textContent: '100%' });
+  const fuelFill = h('span', { className: 'roll-on-hud-fuel-fill' });
+  const fuelGauge = h('span', { className: 'roll-on-hud-fuel-gauge' }, [fuelFill]);
   const distance = h('span', { className: 'roll-on-hud-value', textContent: '0 m' });
   const status = h('span', { className: 'roll-on-hud-status', textContent: 'DRIVING' });
 
@@ -63,6 +55,10 @@ function createGameHud(): GameHud {
         h('dt', { textContent: 'Cargo' }),
         h('dd', {}, [cargo]),
       ]),
+      h('div', { className: 'roll-on-hud-readout roll-on-hud-fuel' }, [
+        h('dt', { textContent: 'Fuel' }),
+        h('dd', {}, [fuel, fuelGauge]),
+      ]),
       h('div', { className: 'roll-on-hud-readout' }, [
         h('dt', { textContent: 'Run' }),
         h('dd', {}, [distance]),
@@ -78,9 +74,12 @@ function createGameHud(): GameHud {
       speedMetric.textContent = snapshot.speedMetersPerSecondText;
       topSpeed.textContent = snapshot.topSpeedPercentText;
       cargo.textContent = snapshot.cargoIntegrityText;
+      fuel.textContent = snapshot.fuelPercentText;
+      fuelFill.style.transform = `scaleX(${snapshot.fuelLevel})`;
+      fuelGauge.dataset.fumes = String(snapshot.isFuelInFumes);
       distance.textContent = snapshot.distanceText;
-      status.textContent = snapshot.statusText;
-      status.dataset.status = snapshot.statusText.toLowerCase();
+      status.textContent = snapshot.isFuelInFumes ? snapshot.fuelStatusText : snapshot.statusText;
+      status.dataset.status = snapshot.isFuelInFumes ? 'fumes' : snapshot.statusText.toLowerCase();
     },
   };
 }
@@ -121,21 +120,25 @@ function startRoadGame(): void {
     trailerLengthMeters: DEFAULT_TRUCK_TUNING.trailerWheelbaseMeters,
     hitchGapMeters: 0.7,
   };
-  let truck = createTruckState({
-    position: { lateralMeters: 0, distanceMeters: 0 },
-    headingRadians: 0,
-    speedMetersPerSecond: 0,
-    yawRateRadiansPerSecond: 0,
-    trailerHeadingRadians: 0,
-    massKilograms: 36_287,
-    cargoIntegrity: 1,
-    status: 'driving',
-  });
-  let barrierContactState: BarrierContactState = { cooldownRemainingSeconds: 0 };
+  let drivingState: DrivingState = {
+    truck: createTruckState({
+      position: { lateralMeters: 0, distanceMeters: 0 },
+      headingRadians: 0,
+      speedMetersPerSecond: 0,
+      yawRateRadiansPerSecond: 0,
+      trailerHeadingRadians: 0,
+      massKilograms: 36_287,
+      cargoIntegrity: 1,
+      status: 'driving',
+    }),
+    fuel: createFuelState(),
+    barrierContactState: { cooldownRemainingSeconds: 0 },
+    lastFuelBurn: ZERO_FUEL_BURN,
+  };
   let lastBarrierImpact: RoadBarrierImpact | null = null;
   let barrierFlashSeconds = 0;
   const hud = createGameHud();
-  hud.update(buildGameHudSnapshot(truck, DEFAULT_TRUCK_TUNING));
+  hud.update(buildGameHudSnapshot(drivingState.truck, DEFAULT_TRUCK_TUNING, drivingState.fuel));
 
   mountGame({
     root: gameRoot,
@@ -147,52 +150,59 @@ function startRoadGame(): void {
         brake: input.isActive('brake') ? 1 : 0,
         steering: (input.isActive('steerRight') ? 1 : 0) - (input.isActive('steerLeft') ? 1 : 0),
       };
-      truck = stepTruck(truck, controls, dt, DEFAULT_TRUCK_TUNING);
-      const footprint = buildTruckFootprint(truck, truckDimensions);
-      const barrierImpact = detectRoadBarrierImpact(road, footprint);
-      const barrierResult = resolveRoadBarrierContact({
-        truck,
-        impact: barrierImpact,
-        contactState: barrierContactState,
+      const result = stepDriving({
+        state: drivingState,
+        controls,
         dtSeconds: dt,
-        tuning: DEFAULT_ROAD_COLLISION_TUNING,
-        resolveImpact: resolveTruckImpact,
+        road,
+        truckDimensions,
       });
-      truck = barrierResult.truck;
-      barrierContactState = barrierResult.contactState;
-      if (barrierImpact) {
-        lastBarrierImpact = barrierImpact;
+      drivingState = result.state;
+      if (result.barrierImpact) {
+        lastBarrierImpact = result.barrierImpact;
         barrierFlashSeconds = 0.18;
       } else {
         barrierFlashSeconds = Math.max(0, barrierFlashSeconds - dt);
       }
-      hud.update(buildGameHudSnapshot(truck, DEFAULT_TRUCK_TUNING));
+      hud.update(buildGameHudSnapshot(drivingState.truck, DEFAULT_TRUCK_TUNING, drivingState.fuel));
     },
     debugLines: () => {
-      const camera = buildRoadCamera(truck.position, viewport, cameraTuning);
+      const camera = buildRoadCamera(drivingState.truck.position, viewport, cameraTuning);
       const visibleRange = getVisibleWorldDistanceRange(camera);
       return [
-        ...formatTruckTelemetry(buildTruckTelemetry(truck, DEFAULT_TRUCK_TUNING)),
+        ...formatTruckTelemetry(buildTruckTelemetry(drivingState.truck, DEFAULT_TRUCK_TUNING)),
         `camera: anchor ${camera.anchorX.toFixed(0)},${camera.anchorY.toFixed(
           0
         )} @ ${camera.pixelsPerMeter.toFixed(1)} px/m`,
         `visible: ${visibleRange.startDistanceMeters.toFixed(
           1
         )}..${visibleRange.endDistanceMeters.toFixed(1)} m`,
-        `cargo: ${(truck.cargoIntegrity * 100).toFixed(0)}%`,
+        `cargo: ${(drivingState.truck.cargoIntegrity * 100).toFixed(0)}%`,
+        `fuel: ${(drivingState.fuel.level * 100).toFixed(0)}% ${
+          isFuelInFumes(drivingState.fuel) ? 'FUMES' : 'normal'
+        } burn ${drivingState.lastFuelBurn.drainRatePerSecond.toFixed(4)}/s`,
+        `fuel burn: base ${drivingState.lastFuelBurn.baselineDrain.toFixed(
+          4
+        )} fast ${drivingState.lastFuelBurn.highSpeedDrain.toFixed(
+          4
+        )} gulp ${drivingState.lastFuelBurn.launchGulpDrain.toFixed(4)}`,
+        `fuel cap: ${(
+          DEFAULT_TRUCK_TUNING.maxForwardSpeedMetersPerSecond *
+          DEFAULT_FUEL_TUNING.fumesTopSpeedMultiplier
+        ).toFixed(1)} m/s`,
         `last barrier: ${
           lastBarrierImpact
             ? `${lastBarrierImpact.side} ${lastBarrierImpact.penetrationMeters.toFixed(2)} m`
             : 'none'
-        } cooldown ${barrierContactState.cooldownRemainingSeconds.toFixed(2)} s`,
+        } cooldown ${drivingState.barrierContactState.cooldownRemainingSeconds.toFixed(2)} s`,
       ];
     },
     buildScene: (): Scene => {
-      const camera = buildRoadCamera(truck.position, viewport, cameraTuning);
+      const camera = buildRoadCamera(drivingState.truck.position, viewport, cameraTuning);
       return buildRoadScene({
         road,
         camera,
-        truck,
+        truck: drivingState.truck,
         truckDimensions,
         tuning: {
           ...DEFAULT_ROAD_SCENE_TUNING,

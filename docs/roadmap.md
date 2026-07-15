@@ -76,12 +76,12 @@ Exit criterion: driving Interstate 80 feels like a road, not a void.
 
 See `docs/m3-plan.md` for the sub-milestone implementation plan.
 
-- [ ] **Fuel model** (`src/game/fuel.ts`): pure function of `(speed, accelerating, dt) → fuelDelta`.
+- [x] **Fuel model** (`src/game/fuel.ts`): pure function of `(speed, accelerating, dt) → fuelDelta`.
   - Baseline drain at cruise; exponential at high speed; "fuel gulp" penalty on hard acceleration from low speed.
   - *Test*: cruising for T seconds drains by expected baseline; flooring it drains faster than cruise; stop→go inflicts gulp.
-- [ ] **Fumes state** at ≤5%: caps top speed, triggers HUD flicker hook + (later) audio warning.
+- [x] **Fumes state** at ≤5%: caps top speed, triggers HUD flicker hook + (later) audio warning.
   - *Test*: state transitions at exactly 5.0% and reverts on refuel above threshold.
-- [ ] **Fuel HUD** (placeholder bar; styled later).
+- [x] **Fuel HUD** (placeholder bar; styled later).
 
 Exit criterion: fuel pressure is the dominant tension during a run.
 

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildGameHudSnapshot } from '../../src/game/gameHud.ts';
+import { createFuelState } from '../../src/game/fuel.ts';
 import { createTruckState, DEFAULT_TRUCK_TUNING } from '../../src/game/truck.ts';
 
 test('game HUD snapshot formats persistent driving values', () => {
@@ -16,14 +17,21 @@ test('game HUD snapshot formats persistent driving values', () => {
     status: 'driving',
   });
 
-  assert.deepEqual(buildGameHudSnapshot(truck, DEFAULT_TRUCK_TUNING), {
-    speedMphText: '70',
-    speedMetersPerSecondText: '31.3 m/s',
-    topSpeedPercentText: '78%',
-    cargoIntegrityText: '88%',
-    distanceText: '402 m',
-    statusText: 'DRIVING',
-  });
+  assert.deepEqual(
+    buildGameHudSnapshot(truck, DEFAULT_TRUCK_TUNING, createFuelState({ level: 0.42 })),
+    {
+      speedMphText: '70',
+      speedMetersPerSecondText: '31.3 m/s',
+      topSpeedPercentText: '78%',
+      cargoIntegrityText: '88%',
+      fuelPercentText: '42%',
+      fuelLevel: 0.42,
+      isFuelInFumes: false,
+      fuelStatusText: 'FUEL',
+      distanceText: '402 m',
+      statusText: 'DRIVING',
+    }
+  );
 });
 
 test('game HUD snapshot clamps display percentages without mutating state', () => {
@@ -38,11 +46,18 @@ test('game HUD snapshot clamps display percentages without mutating state', () =
     status: 'crashed',
   });
 
-  const snapshot = buildGameHudSnapshot(truck, DEFAULT_TRUCK_TUNING);
+  const snapshot = buildGameHudSnapshot(
+    truck,
+    DEFAULT_TRUCK_TUNING,
+    createFuelState({ level: 0.05 })
+  );
 
   assert.equal(snapshot.speedMphText, '0');
   assert.equal(snapshot.topSpeedPercentText, '0%');
   assert.equal(snapshot.cargoIntegrityText, '0%');
+  assert.equal(snapshot.fuelPercentText, '5%');
+  assert.equal(snapshot.isFuelInFumes, true);
+  assert.equal(snapshot.fuelStatusText, 'FUMES');
   assert.equal(snapshot.statusText, 'CRASHED');
   assert.equal(truck.cargoIntegrity, 0);
 });

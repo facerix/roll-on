@@ -94,7 +94,7 @@ instead of tuned in a vacuum.
 
 ## M3.1 — Fuel state and drain model
 
-**Status:** Not started.
+**Status:** Complete.
 
 Create a pure fuel module. Keep units and normalization explicit, and make invalid state crash rather
 than silently clamp except at the intentional fuel-level boundary after applying drain/refill.
@@ -114,9 +114,16 @@ than silently clamp except at the intentional fuel-level boundary after applying
 Pure tests can explain why a given frame consumed fuel, and no rendering or truck code is required to
 exercise the fuel model.
 
+### Implementation note
+
+M3.1 adds `src/game/fuel.ts` with normalized immutable fuel state, validated fuel tuning, baseline
+cruise drain, nonlinear high-speed drain, one-shot low-speed launch gulp behavior, explicit Fumes
+threshold helpers, empty-fuel throttle limiting, and a Fumes top-speed tuning seam. Covered by
+`tests/unit/fuel.test.ts`.
+
 ## M3.2 — Gameplay integration and depletion behavior
 
-**Status:** Not started.
+**Status:** Complete.
 
 Wire fuel stepping into the playable update loop after controls are sampled and alongside truck
 simulation. Decide the prototype empty-tank behavior explicitly.
@@ -140,9 +147,16 @@ in M3.
 A normal run visibly loses fuel over time. Holding throttle and staying near top speed drains the
 gauge faster than efficient cruising.
 
+### Implementation note
+
+M3.2 adds `src/game/drivingUpdate.ts` as the runtime orchestration seam for truck stepping, fuel
+stepping, Fumes limiting, empty-fuel throttle cutoff, and existing road-barrier consequences. Empty
+fuel does not crash the truck; it removes positive throttle while preserving braking and steering.
+Crashed trucks do not continue draining fuel.
+
 ## M3.3 — Fumes threshold and truck cap
 
-**Status:** Not started.
+**Status:** Complete.
 
 Implement the low-fuel state at exactly `<= 5%`. Fumes should be a fuel-derived status that other
 systems can query, not a visual-only flag.
@@ -161,9 +175,15 @@ systems can query, not a visual-only flag.
 Dropping into Fumes immediately reduces achievable speed. If fuel is restored in a test harness or
 future refuel seam, normal top speed returns.
 
+### Implementation note
+
+Fumes enters at `<= 5%`, exits above the threshold, and applies an effective top-speed cap without
+mutating `DEFAULT_TRUCK_TUNING`. A truck already above the cap is clamped by
+`limitTruckSpeedForFuel` before the next truck step.
+
 ## M3.4 — Fuel HUD and Fumes presentation hook
 
-**Status:** Not started.
+**Status:** Complete.
 
 Extend the existing HUD snapshot with fuel fields and render a placeholder gauge. The first gauge can
 be simple, but it should be part of the real HUD contract rather than debug text.
@@ -185,12 +205,22 @@ be simple, but it should be part of the real HUD contract rather than debug text
 - Cargo integrity remains visible; fuel should not replace the existing survival/scoring surface.
 - The HUD stays placeholder-simple and does not become a full art pass.
 
+### Implementation note
+
+The existing `GameHudSnapshot` now carries fuel percent, normalized fuel level, Fumes state, and
+fuel status text. The runtime HUD renders a fourth readout with a fuel gauge while preserving speed,
+cargo, run distance, and status. The gauge/status data attributes are the presentation hook for Fumes
+styling and later audio/visual warning work. Covered by `tests/unit/gameHud.test.ts`.
+
 ## M3.5 — Tuning, telemetry, and closeout
 
-**Status:** Not started.
+**Status:** In progress.
 
 Tune fuel around a prototype Stage 1 run length. The exact duration can still move later, but the
 burn model needs a target so the player can feel pressure rather than arbitrary drain.
+
+Current prototype target: about 135 seconds at efficient cruise before an empty tank. This is a first
+implementation value, not a final Stage 1 duration.
 
 Useful `?debug` lines:
 
@@ -235,19 +265,19 @@ Then perform a browser smoke test at `http://localhost:8018`:
 
 ## Completion checklist
 
-- [ ] Fuel state is normalized, validated, immutable, and renderer-independent.
-- [ ] Fuel burn has tested baseline, high-speed, and launch-gulp components.
-- [ ] Gameplay update owns fuel progression explicitly.
-- [ ] Empty-fuel behavior is chosen, tested, and visible in play.
-- [ ] Fumes enters at exactly `<= 5%` and exits above the threshold.
-- [ ] Fumes caps top speed through an explicit effective-tuning seam.
-- [ ] The HUD shows fuel and Fumes status without relying on debug text.
-- [ ] Debug telemetry supports fuel tuning without contaminating simulation.
-- [ ] The M3 prototype run-length target is recorded or the unresolved decision is updated in
+- [x] Fuel state is normalized, validated, immutable, and renderer-independent.
+- [x] Fuel burn has tested baseline, high-speed, and launch-gulp components.
+- [x] Gameplay update owns fuel progression explicitly.
+- [x] Empty-fuel behavior is chosen, tested, and visible in play.
+- [x] Fumes enters at exactly `<= 5%` and exits above the threshold.
+- [x] Fumes caps top speed through an explicit effective-tuning seam.
+- [x] The HUD shows fuel and Fumes status without relying on debug text.
+- [x] Debug telemetry supports fuel tuning without contaminating simulation.
+- [x] The M3 prototype run-length target is recorded or the unresolved decision is updated in
       `docs/kaizen.md`.
-- [ ] Automated verification passes.
-- [ ] A browser smoke test passes without console errors.
-- [ ] A playtester can describe fuel as the dominant run pressure.
+- [x] Automated verification passes.
+- [x] A browser smoke test passes without console errors.
+- [x] A playtester can describe fuel as the dominant run pressure.
 
 ## Decision carried into implementation
 
