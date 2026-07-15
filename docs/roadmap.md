@@ -74,6 +74,8 @@ Exit criterion: driving Interstate 80 feels like a road, not a void.
 
 ## Milestone 3 — Fuel system (the timer)
 
+See `docs/m3-plan.md` for the sub-milestone implementation plan.
+
 - [ ] **Fuel model** (`src/game/fuel.ts`): pure function of `(speed, accelerating, dt) → fuelDelta`.
   - Baseline drain at cruise; exponential at high speed; "fuel gulp" penalty on hard acceleration from low speed.
   - *Test*: cruising for T seconds drains by expected baseline; flooring it drains faster than cruise; stop→go inflicts gulp.
