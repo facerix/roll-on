@@ -6,6 +6,7 @@ import { buildRoadCamera } from '../../src/game/roadCamera.ts';
 import { createRoad, DEFAULT_ROAD_TUNING } from '../../src/game/road.ts';
 import {
   buildRoadScene,
+  DEFAULT_PARALLAX_LAYERS,
   DEFAULT_ROAD_SCENE_TUNING,
   type RoadSceneTruckDimensions,
 } from '../../src/game/roadScene.ts';
@@ -56,13 +57,20 @@ function orientedRects(drawables: readonly Drawable[]): OrientedRectDrawable[] {
 test('road scene emits drawables in back-to-front order', () => {
   const scene = sceneFor(truckAt(0));
   const colors = scene.drawables.map(drawable => drawable.color);
+  const firstShoulderIndex = colors.indexOf(DEFAULT_ROAD_SCENE_TUNING.shoulderColor);
 
   assert.equal(colors[0], DEFAULT_ROAD_SCENE_TUNING.backgroundColor);
-  assert.equal(colors[1], DEFAULT_ROAD_SCENE_TUNING.shoulderColor);
-  assert.equal(colors[2], DEFAULT_ROAD_SCENE_TUNING.shoulderColor);
-  assert.equal(colors[3], DEFAULT_ROAD_SCENE_TUNING.roadColor);
-  assert.equal(colors[4], DEFAULT_ROAD_SCENE_TUNING.barrierColor);
-  assert.equal(colors[5], DEFAULT_ROAD_SCENE_TUNING.barrierColor);
+  assert.ok(firstShoulderIndex > 1);
+  assert.ok(
+    colors
+      .slice(1, firstShoulderIndex)
+      .every(color => DEFAULT_PARALLAX_LAYERS.some(layer => layer.color === color))
+  );
+  assert.equal(colors[firstShoulderIndex], DEFAULT_ROAD_SCENE_TUNING.shoulderColor);
+  assert.equal(colors[firstShoulderIndex + 1], DEFAULT_ROAD_SCENE_TUNING.shoulderColor);
+  assert.equal(colors[firstShoulderIndex + 2], DEFAULT_ROAD_SCENE_TUNING.roadColor);
+  assert.equal(colors[firstShoulderIndex + 3], DEFAULT_ROAD_SCENE_TUNING.barrierColor);
+  assert.equal(colors[firstShoulderIndex + 4], DEFAULT_ROAD_SCENE_TUNING.barrierColor);
   assert.ok(colors.includes(DEFAULT_ROAD_SCENE_TUNING.laneMarkerColor));
   assert.deepEqual(
     scene.drawables.slice(-2).map(drawable => drawable.kind),
@@ -85,6 +93,24 @@ test('lane marker drawables repeat from world cadence and shift with camera dist
   assert.ok(farMarkerYs.length > 3);
   assert.notDeepEqual(farMarkerYs, nearMarkerYs);
   assert.ok(farMarkerYs.some(y => nearMarkerYs.includes(y - 30)));
+});
+
+test('parallax drawables shift with camera distance more slowly than lane markers', () => {
+  const nearScene = sceneFor(truckAt(0));
+  const farScene = sceneFor(truckAt(10));
+  const parallaxColor = DEFAULT_PARALLAX_LAYERS[0]!.color;
+
+  const nearParallaxYs = rects(nearScene.drawables)
+    .filter(drawable => drawable.color === parallaxColor)
+    .map(drawable => drawable.y);
+  const farParallaxYs = rects(farScene.drawables)
+    .filter(drawable => drawable.color === parallaxColor)
+    .map(drawable => drawable.y);
+
+  assert.ok(nearParallaxYs.length > 0);
+  assert.ok(farParallaxYs.length > 0);
+  assert.notDeepEqual(farParallaxYs, nearParallaxYs);
+  assert.ok(Math.abs(farParallaxYs[0]! - nearParallaxYs[0]!) < 10 * CAMERA_TUNING.pixelsPerMeter);
 });
 
 test('road scene drawables remain finite for normal viewport and truck positions', () => {

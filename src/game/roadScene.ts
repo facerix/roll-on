@@ -18,6 +18,32 @@ export interface RoadSceneTuning {
   readonly barrierColor: string;
   readonly laneMarkerColor: string;
   readonly laneMarkerWidthMeters: number;
+  readonly parallaxLayers: readonly ParallaxLayerTuning[];
+}
+
+export interface ParallaxLayerTuning {
+  readonly color: string;
+  /** 0 is static sky, values below 1 move slower than the foreground road. */
+  readonly speedRatio: number;
+  readonly cadenceMeters: number;
+  readonly bandLengthMeters: number;
+  readonly bandWidthMeters: number;
+  readonly lateralGapMeters: number;
+}
+
+export interface ParallaxBand {
+  readonly color: string;
+  readonly speedRatio: number;
+  readonly leftLateralMeters: number;
+  readonly rightLateralMeters: number;
+  readonly startDistanceMeters: number;
+  readonly endDistanceMeters: number;
+}
+
+export interface BuildParallaxBandsOptions {
+  readonly camera: RoadCamera;
+  readonly road: Road;
+  readonly layers: readonly ParallaxLayerTuning[];
 }
 
 export interface BuildRoadSceneOptions {
@@ -28,6 +54,25 @@ export interface BuildRoadSceneOptions {
   readonly tuning?: RoadSceneTuning;
 }
 
+export const DEFAULT_PARALLAX_LAYERS: readonly ParallaxLayerTuning[] = Object.freeze([
+  Object.freeze({
+    color: '#26333a',
+    speedRatio: 0.12,
+    cadenceMeters: 34,
+    bandLengthMeters: 14,
+    bandWidthMeters: 4.4,
+    lateralGapMeters: 3.8,
+  }),
+  Object.freeze({
+    color: '#33434a',
+    speedRatio: 0.32,
+    cadenceMeters: 18,
+    bandLengthMeters: 5,
+    bandWidthMeters: 2.2,
+    lateralGapMeters: 1.2,
+  }),
+]);
+
 export const DEFAULT_ROAD_SCENE_TUNING: RoadSceneTuning = Object.freeze({
   backgroundColor: '#192327',
   shoulderColor: '#5b5145',
@@ -35,7 +80,65 @@ export const DEFAULT_ROAD_SCENE_TUNING: RoadSceneTuning = Object.freeze({
   barrierColor: '#d8d2c4',
   laneMarkerColor: '#f6d96d',
   laneMarkerWidthMeters: 0.18,
+  parallaxLayers: DEFAULT_PARALLAX_LAYERS,
 });
+
+export function buildParallaxOffsetMeters(
+  cameraDistanceMeters: number,
+  layer: ParallaxLayerTuning
+): number {
+  assertFinite('cameraDistanceMeters', cameraDistanceMeters);
+  validateParallaxLayer(layer);
+
+  return positiveModulo(cameraDistanceMeters * layer.speedRatio, layer.cadenceMeters);
+}
+
+export function buildParallaxBands(options: BuildParallaxBandsOptions): readonly ParallaxBand[] {
+  const bands: ParallaxBand[] = [];
+  for (const layer of options.layers) {
+    validateParallaxLayer(layer);
+    const focusDistanceMeters = options.camera.focus.distanceMeters * layer.speedRatio;
+    const windowStart =
+      focusDistanceMeters -
+      (options.camera.viewportHeight - options.camera.anchorY) / options.camera.pixelsPerMeter;
+    const windowEnd = focusDistanceMeters + options.camera.anchorY / options.camera.pixelsPerMeter;
+    const firstCadenceIndex = Math.floor(windowStart / layer.cadenceMeters);
+
+    for (
+      let bandStart = firstCadenceIndex * layer.cadenceMeters;
+      bandStart <= windowEnd;
+      bandStart += layer.cadenceMeters
+    ) {
+      const bandEnd = bandStart + layer.bandLengthMeters;
+      const clippedStart = Math.max(bandStart, windowStart);
+      const clippedEnd = Math.min(bandEnd, windowEnd);
+      if (clippedEnd <= clippedStart) continue;
+
+      bands.push(
+        {
+          color: layer.color,
+          speedRatio: layer.speedRatio,
+          leftLateralMeters:
+            options.road.leftShoulderEdgeMeters - layer.lateralGapMeters - layer.bandWidthMeters,
+          rightLateralMeters: options.road.leftShoulderEdgeMeters - layer.lateralGapMeters,
+          startDistanceMeters: clippedStart,
+          endDistanceMeters: clippedEnd,
+        },
+        {
+          color: layer.color,
+          speedRatio: layer.speedRatio,
+          leftLateralMeters: options.road.rightShoulderEdgeMeters + layer.lateralGapMeters,
+          rightLateralMeters:
+            options.road.rightShoulderEdgeMeters + layer.lateralGapMeters + layer.bandWidthMeters,
+          startDistanceMeters: clippedStart,
+          endDistanceMeters: clippedEnd,
+        }
+      );
+    }
+  }
+
+  return bands;
+}
 
 export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
   const tuning = options.tuning ?? DEFAULT_ROAD_SCENE_TUNING;
@@ -51,6 +154,17 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
       h: options.camera.viewportHeight,
       color: tuning.backgroundColor,
     },
+  ];
+
+  for (const band of buildParallaxBands({
+    camera: options.camera,
+    road: options.road,
+    layers: tuning.parallaxLayers,
+  })) {
+    drawables.push(parallaxBand(options.camera, band));
+  }
+
+  drawables.push(
     horizontalBand(
       options.camera,
       options.road.leftShoulderEdgeMeters,
@@ -70,8 +184,8 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
       tuning.roadColor
     ),
     barrier(options.camera, options.road.leftBarrierLateralMeters, tuning.barrierColor),
-    barrier(options.camera, options.road.rightBarrierLateralMeters, tuning.barrierColor),
-  ];
+    barrier(options.camera, options.road.rightBarrierLateralMeters, tuning.barrierColor)
+  );
 
   for (const marker of visibleLaneMarkerSpans(options.road, options.camera)) {
     const top = projectWorldPoint(options.camera, {
@@ -171,6 +285,31 @@ function horizontalBand(
   };
 }
 
+function parallaxBand(camera: RoadCamera, band: ParallaxBand): Drawable {
+  const left = projectWorldPoint(camera, {
+    lateralMeters: band.leftLateralMeters,
+    distanceMeters: camera.focus.distanceMeters,
+  });
+  const right = projectWorldPoint(camera, {
+    lateralMeters: band.rightLateralMeters,
+    distanceMeters: camera.focus.distanceMeters,
+  });
+  const focusDistanceMeters = camera.focus.distanceMeters * band.speedRatio;
+  const topY =
+    camera.anchorY - (band.endDistanceMeters - focusDistanceMeters) * camera.pixelsPerMeter;
+  const bottomY =
+    camera.anchorY - (band.startDistanceMeters - focusDistanceMeters) * camera.pixelsPerMeter;
+
+  return {
+    kind: 'rect',
+    x: left.x,
+    y: topY,
+    w: right.x - left.x,
+    h: bottomY - topY,
+    color: band.color,
+  };
+}
+
 function barrier(camera: RoadCamera, lateralMeters: number, color: string): Drawable {
   const center = projectWorldPoint(camera, {
     lateralMeters,
@@ -256,4 +395,33 @@ function assertFinite(label: string, value: number): void {
   if (!Number.isFinite(value)) {
     throw new TypeError(`${label} must be finite, got ${value}`);
   }
+}
+
+function validateParallaxLayer(layer: ParallaxLayerTuning): void {
+  if (typeof layer !== 'object' || layer === null) {
+    throw new TypeError('ParallaxLayerTuning must be an object');
+  }
+  assertFinite('speedRatio', layer.speedRatio);
+  assertFinite('cadenceMeters', layer.cadenceMeters);
+  assertFinite('bandLengthMeters', layer.bandLengthMeters);
+  assertFinite('bandWidthMeters', layer.bandWidthMeters);
+  assertFinite('lateralGapMeters', layer.lateralGapMeters);
+
+  if (layer.speedRatio < 0 || layer.speedRatio >= 1) {
+    throw new RangeError(`speedRatio must be in [0, 1), got ${layer.speedRatio}`);
+  }
+  assertPositive('cadenceMeters', layer.cadenceMeters);
+  assertPositive('bandLengthMeters', layer.bandLengthMeters);
+  assertPositive('bandWidthMeters', layer.bandWidthMeters);
+  assertNonNegative('lateralGapMeters', layer.lateralGapMeters);
+  if (layer.bandLengthMeters >= layer.cadenceMeters) {
+    throw new RangeError(
+      `bandLengthMeters must be less than cadenceMeters, got ${layer.bandLengthMeters} >= ${layer.cadenceMeters}`
+    );
+  }
+}
+
+function positiveModulo(value: number, divisor: number): number {
+  const result = value % divisor;
+  return result < 0 ? result + divisor : result;
 }

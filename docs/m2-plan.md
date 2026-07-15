@@ -219,7 +219,7 @@ introduced instead of silently pretending the primitive truck is final art.
 
 ## M2.4 — Parallax background
 
-**Status:** Planned.
+**Status:** Complete.
 
 Add one or two parallax layers outside the road body. These are first-pass motion cues, not the
 neon-sunset art pass, but they should use the same rendering/asset approach selected for M2.3 when
@@ -236,6 +236,13 @@ practical.
 
 At highway speed, peripheral motion makes travel perceptible without distracting from lane control
 or truck articulation.
+
+### Implementation note
+
+M2.4 adds deterministic peripheral parallax bands to `buildRoadScene` using the same renderer
+primitive path as M2.3. Layer speeds are validated in `[0, 1)` so background cues cannot reverse or
+outrun the foreground road, and pure tests cover offset math, scene determinism, and the boundary
+that parallax does not mutate road/simulation state.
 
 ## M2.5 — World bounds, barriers, and cargo damage
 
@@ -319,7 +326,7 @@ Then perform a browser smoke test at `http://localhost:8018`:
 - [x] Lane markers, shoulders, and barriers render from road/camera data.
 - [ ] Visual assets are either user-provided or generated, and are routed through the intended game
       asset path.
-- [ ] Parallax background layers provide placeholder motion cues.
+- [x] Parallax background layers provide placeholder motion cues.
 - [ ] Barrier collision detection uses world-space truck footprints.
 - [ ] Barrier consequences preserve the M1 jackknife-crash rule.
 - [ ] Cargo-integrity damage from safe scrapes is explicit and tested.
