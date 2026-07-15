@@ -10,23 +10,28 @@ import {
   stepTruck,
   type TruckControls,
 } from '/src/game/truck.js';
+import {
+  buildRoadCamera,
+  DEFAULT_ROAD_CAMERA_TUNING,
+  getVisibleWorldDistanceRange,
+  projectWorldPoint,
+} from '/src/game/roadCamera.js';
 import { buildTruckTelemetry, formatTruckTelemetry } from '/src/game/truckTelemetry.js';
 
 function startSmokeTestGame(): void {
-  // M1.3 playable checkpoint: world-space articulated truck motion projected
-  // as separate rotated cab and trailer placeholders on a blank canvas.
+  // M2.2 playable checkpoint: world-space articulated truck motion projected
+  // through the road camera so the truck stays vertically anchored.
   const gameRoot = h('main', { id: 'game-root', style: 'background:#000;' });
   document.body.appendChild(gameRoot);
 
   const width = 320;
   const height = 480;
-  const cabWidth = 20;
-  const cabHeight = 28;
-  const trailerWidth = 18;
-  const trailerHeight = 42;
-  const hitchLength = cabHeight / 2 + trailerHeight / 2 + 3;
-  const pixelsPerMeter = 0.75;
-  const startingScreenY = height - 100;
+  const viewport = { width, height };
+  const cabWidthMeters = 2.6;
+  const cabLengthMeters = 4;
+  const trailerWidthMeters = DEFAULT_TRUCK_TUNING.trailerWidthMeters;
+  const trailerLengthMeters = DEFAULT_TRUCK_TUNING.trailerWheelbaseMeters;
+  const hitchLengthMeters = cabLengthMeters / 2 + trailerLengthMeters / 2 + 0.7;
   let truck = createTruckState({
     position: { lateralMeters: 0, distanceMeters: 0 },
     headingRadians: 0,
@@ -50,14 +55,28 @@ function startSmokeTestGame(): void {
       };
       truck = stepTruck(truck, controls, dt, DEFAULT_TRUCK_TUNING);
     },
-    debugLines: () => formatTruckTelemetry(buildTruckTelemetry(truck, DEFAULT_TRUCK_TUNING)),
+    debugLines: () => {
+      const camera = buildRoadCamera(truck.position, viewport, DEFAULT_ROAD_CAMERA_TUNING);
+      const visibleRange = getVisibleWorldDistanceRange(camera);
+      return [
+        ...formatTruckTelemetry(buildTruckTelemetry(truck, DEFAULT_TRUCK_TUNING)),
+        `camera: anchor ${camera.anchorX.toFixed(0)},${camera.anchorY.toFixed(
+          0
+        )} @ ${camera.pixelsPerMeter.toFixed(1)} px/m`,
+        `visible: ${visibleRange.startDistanceMeters.toFixed(
+          1
+        )}..${visibleRange.endDistanceMeters.toFixed(1)} m`,
+      ];
+    },
     buildScene: (): Scene => {
-      // Projection belongs here, outside simulation. Positive world distance
-      // travels upward on screen; positive heading rotates clockwise/right.
-      const cabCenterX = width / 2 + truck.position.lateralMeters * pixelsPerMeter;
-      const cabCenterY = startingScreenY - truck.position.distanceMeters * pixelsPerMeter;
-      const trailerCenterX = cabCenterX - Math.sin(truck.trailerHeadingRadians) * hitchLength;
-      const trailerCenterY = cabCenterY + Math.cos(truck.trailerHeadingRadians) * hitchLength;
+      const camera = buildRoadCamera(truck.position, viewport, DEFAULT_ROAD_CAMERA_TUNING);
+      const cabCenter = projectWorldPoint(camera, truck.position);
+      const trailerCenter = projectWorldPoint(camera, {
+        lateralMeters:
+          truck.position.lateralMeters - Math.sin(truck.trailerHeadingRadians) * hitchLengthMeters,
+        distanceMeters:
+          truck.position.distanceMeters - Math.cos(truck.trailerHeadingRadians) * hitchLengthMeters,
+      });
       const colors =
         truck.status === 'crashed'
           ? { cab: '#ff1744', trailer: '#8b0000' }
@@ -72,19 +91,19 @@ function startSmokeTestGame(): void {
         drawables: [
           {
             kind: 'oriented-rect',
-            centerX: trailerCenterX,
-            centerY: trailerCenterY,
-            w: trailerWidth,
-            h: trailerHeight,
+            centerX: trailerCenter.x,
+            centerY: trailerCenter.y,
+            w: trailerWidthMeters * camera.pixelsPerMeter,
+            h: trailerLengthMeters * camera.pixelsPerMeter,
             rotationRadians: truck.trailerHeadingRadians,
             color: colors.trailer,
           },
           {
             kind: 'oriented-rect',
-            centerX: cabCenterX,
-            centerY: cabCenterY,
-            w: cabWidth,
-            h: cabHeight,
+            centerX: cabCenter.x,
+            centerY: cabCenter.y,
+            w: cabWidthMeters * camera.pixelsPerMeter,
+            h: cabLengthMeters * camera.pixelsPerMeter,
             rotationRadians: truck.headingRadians,
             color: colors.cab,
           },

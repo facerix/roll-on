@@ -149,7 +149,7 @@ given world-distance window.
 
 ## M2.2 — Camera anchoring and projection
 
-**Status:** Planned.
+**Status:** Complete.
 
 Introduce the camera/projection seam that turns world positions into CSS-pixel scene coordinates.
 The truck should no longer move indefinitely off the top of the canvas; instead, the camera follows
@@ -307,7 +307,7 @@ Then perform a browser smoke test at `http://localhost:8018`:
 ## Completion checklist
 
 - [x] Road geometry is world-space, validated, and independent of rendering.
-- [ ] Camera projection keeps the truck anchored and tested in isolation.
+- [x] Camera projection keeps the truck anchored and tested in isolation.
 - [ ] The M1 smoke renderer has been replaced by the first real 2D game renderer path.
 - [ ] Lane markers, shoulders, and barriers render from road/camera data.
 - [ ] Visual assets are either user-provided or generated, and are routed through the intended game
