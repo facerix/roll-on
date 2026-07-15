@@ -103,6 +103,226 @@ main {
   background-color: #141438;
 }
 
+body.is-playing {
+  background: #050608;
+}
+
+body.is-playing #main-foot {
+  display: none;
+}
+
+.roll-on-playfield {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+  padding: 0;
+  overflow: hidden;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(232, 138, 42, 0.16),
+      transparent 18%,
+      transparent 82%,
+      rgba(246, 217, 109, 0.12)
+    ),
+    #050608;
+}
+
+.roll-on-playfield .roll-on-game-container {
+  position: absolute !important;
+  inset: 0;
+  display: block !important;
+  width: 100%;
+  height: 100%;
+}
+
+.roll-on-playfield .roll-on-canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  background: #050608;
+}
+
+.roll-on-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(84px, 0.8fr) minmax(96px, 1fr) minmax(160px, 1.35fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 12px
+    max(12px, env(safe-area-inset-left));
+  pointer-events: none;
+  color: #f7ecd7;
+  font-family: 'BigSquareDots', 'Courier New', Courier, monospace;
+  text-shadow: 0 2px 0 #050608;
+}
+
+.roll-on-hud::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 96px;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(5, 6, 8, 0.86), rgba(5, 6, 8, 0));
+}
+
+.roll-on-hud-brand,
+.roll-on-hud-speed,
+.roll-on-hud-readouts,
+.roll-on-hud-status {
+  min-height: 44px;
+  border: 1px solid rgba(246, 217, 109, 0.52);
+  background: rgba(7, 10, 12, 0.72);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 0 20px rgba(232, 138, 42, 0.12);
+}
+
+.roll-on-hud-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  color: #e88a2a;
+  font-size: 1rem;
+}
+
+.roll-on-hud-speed {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.roll-on-hud-speed-value {
+  min-width: 2ch;
+  color: #f6d96d;
+  font-size: clamp(2.2rem, 7vh, 4.4rem);
+  line-height: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.roll-on-hud-speed-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1;
+}
+
+.roll-on-hud-speed-unit {
+  color: #e88a2a;
+  font-size: 0.95rem;
+}
+
+.roll-on-hud-subvalue {
+  color: #c6d8d2;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.74rem;
+}
+
+.roll-on-hud-readouts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.roll-on-hud-readout {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  min-height: 44px;
+  padding: 5px 8px;
+  border-left: 1px solid rgba(246, 217, 109, 0.28);
+}
+
+.roll-on-hud-readout:first-child {
+  border-left: none;
+}
+
+.roll-on-hud-readout dt,
+.roll-on-hud-readout dd {
+  margin: 0;
+}
+
+.roll-on-hud-readout dt {
+  color: #9fb3ad;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+}
+
+.roll-on-hud-value {
+  color: #f7ecd7;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.roll-on-hud-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  padding: 8px 10px;
+  color: #97f0aa;
+  font-size: 0.82rem;
+}
+
+.roll-on-hud-status[data-status='jackknifed'] {
+  color: #f6d96d;
+}
+
+.roll-on-hud-status[data-status='crashed'] {
+  color: #ff6b6b;
+}
+
+@media (max-width: 640px) {
+  .roll-on-hud {
+    grid-template-columns: minmax(88px, auto) 1fr;
+    gap: 8px;
+  }
+
+  .roll-on-hud-brand {
+    display: none;
+  }
+
+  .roll-on-hud-speed {
+    grid-row: span 2;
+  }
+
+  .roll-on-hud-readouts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-column: 2;
+  }
+
+  .roll-on-hud-status {
+    grid-column: 2;
+    min-width: 0;
+    min-height: 34px;
+  }
+
+  .roll-on-hud-readout {
+    min-height: 34px;
+    padding: 4px 5px;
+  }
+
+  .roll-on-hud-readout dt {
+    font-size: 0.56rem;
+  }
+
+  .roll-on-hud-value,
+  .roll-on-hud-status {
+    font-size: 0.72rem;
+  }
+}
+
 .btn,
 button {
   display: flex;

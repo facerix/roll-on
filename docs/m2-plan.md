@@ -171,7 +171,7 @@ remain visible near the anchor while speed advances the world underneath them.
 
 ## M2.3 — Real 2D renderer foundation
 
-**Status:** Planned.
+**Status:** Complete.
 
 Replace the M1 smoke-test presentation with the first production-intended 2D game renderer path.
 Road rendering is the proving case, but the goal is broader: establish how the game composes
@@ -209,6 +209,13 @@ If a new drawable kind is needed, update renderer exhaustiveness tests with the 
 
 Driving at speed should feel like moving along Interstate 80 rather than across a void or a physics
 debug canvas. The player should be able to tell which lane they occupy without debug telemetry.
+
+### Implementation note
+
+M2.3 establishes the production scene-composition path with renderer primitives: `buildRoadScene`
+composes background, shoulders, asphalt, barriers, lane markers, trailer, and cab from road/camera
+world data. The broader M2 asset-path checklist item remains open until sprite-backed visuals are
+introduced instead of silently pretending the primitive truck is final art.
 
 ## M2.4 — Parallax background
 
@@ -308,8 +315,8 @@ Then perform a browser smoke test at `http://localhost:8018`:
 
 - [x] Road geometry is world-space, validated, and independent of rendering.
 - [x] Camera projection keeps the truck anchored and tested in isolation.
-- [ ] The M1 smoke renderer has been replaced by the first real 2D game renderer path.
-- [ ] Lane markers, shoulders, and barriers render from road/camera data.
+- [x] The M1 smoke renderer has been replaced by the first real 2D game renderer path.
+- [x] Lane markers, shoulders, and barriers render from road/camera data.
 - [ ] Visual assets are either user-provided or generated, and are routed through the intended game
       asset path.
 - [ ] Parallax background layers provide placeholder motion cues.
