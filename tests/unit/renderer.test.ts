@@ -41,6 +41,7 @@ interface FakeCtx {
   restore(): void;
   translate(x: number, y: number): void;
   rotate(radians: number): void;
+  drawImage(image: CanvasImageSource, dx: number, dy: number, dw: number, dh: number): void;
 }
 
 function makeFakeCtx(): FakeCtx {
@@ -64,6 +65,9 @@ function makeFakeCtx(): FakeCtx {
     },
     rotate(radians) {
       ops.push({ kind: 'call', method: 'rotate', args: [radians] });
+    },
+    drawImage(image, dx, dy, dw, dh) {
+      ops.push({ kind: 'call', method: 'drawImage', args: [image, dx, dy, dw, dh] });
     },
   };
   // Wrap in a proxy so property assignments are logged. We also re-bind
@@ -207,6 +211,120 @@ test('Canvas2DRenderer renders an oriented rect around its declared center', () 
   assert.deepEqual(
     calls(ctx.ops, 'restore').map(op => (op.kind === 'call' ? op.args : null)),
     [[]]
+  );
+});
+
+test('Canvas2DRenderer loads each sprite source once and draws loaded sprites around their centers', () => {
+  const ctx = makeFakeCtx();
+  const image = {
+    complete: true,
+    naturalWidth: 29,
+    naturalHeight: 75,
+    src: '',
+    addEventListener() {},
+  } as unknown as HTMLImageElement;
+  let imageCreations = 0;
+  const r = new Canvas2DRenderer(ctx as unknown as CanvasRenderingContext2D, {
+    createImage: () => {
+      imageCreations += 1;
+      return image;
+    },
+  });
+  const sprite = {
+    kind: 'oriented-sprite' as const,
+    centerX: 40,
+    centerY: 50,
+    w: 18,
+    h: 45,
+    rotationRadians: 0.75,
+    src: '/images/vehicles/commuter-blue.png',
+  };
+
+  r.draw({ clear: '#000', width: 100, height: 100, drawables: [sprite, sprite] });
+
+  assert.equal(imageCreations, 1);
+  assert.equal(image.src, sprite.src);
+  assert.deepEqual(
+    calls(ctx.ops, 'drawImage').map(op => (op.kind === 'call' ? op.args.slice(1) : null)),
+    [
+      [-9, -22.5, 18, 45],
+      [-9, -22.5, 18, 45],
+    ]
+  );
+  assert.deepEqual(
+    calls(ctx.ops, 'translate').map(op => (op.kind === 'call' ? op.args : null)),
+    [
+      [40, 50],
+      [40, 50],
+    ]
+  );
+});
+
+test('Canvas2DRenderer waits for a sprite to load instead of drawing incomplete pixels', () => {
+  const ctx = makeFakeCtx();
+  const image = {
+    complete: false,
+    naturalWidth: 0,
+    naturalHeight: 0,
+    src: '',
+    addEventListener() {},
+  } as unknown as HTMLImageElement;
+  const r = new Canvas2DRenderer(ctx as unknown as CanvasRenderingContext2D, {
+    createImage: () => image,
+  });
+
+  r.draw({
+    clear: '#000',
+    width: 100,
+    height: 100,
+    drawables: [
+      {
+        kind: 'oriented-sprite',
+        centerX: 40,
+        centerY: 50,
+        w: 18,
+        h: 45,
+        rotationRadians: 0,
+        src: '/images/vehicles/commuter-blue.png',
+      },
+    ],
+  });
+
+  assert.equal(calls(ctx.ops, 'drawImage').length, 0);
+});
+
+test('Canvas2DRenderer fails loudly when a sprite cannot load', () => {
+  const ctx = makeFakeCtx();
+  const image = {
+    complete: true,
+    naturalWidth: 0,
+    naturalHeight: 0,
+    src: '',
+    addEventListener() {},
+  } as unknown as HTMLImageElement;
+  const r = new Canvas2DRenderer(ctx as unknown as CanvasRenderingContext2D, {
+    createImage: () => image,
+  });
+
+  assert.throws(
+    () =>
+      r.draw({
+        clear: '#000',
+        width: 100,
+        height: 100,
+        drawables: [
+          {
+            kind: 'oriented-sprite',
+            centerX: 40,
+            centerY: 50,
+            w: 18,
+            h: 45,
+            rotationRadians: 0,
+            src: '/images/vehicles/missing.png',
+          },
+        ],
+      }),
+    /Failed to load sprite: \/images\/vehicles\/missing\.png/
   );
 });
 

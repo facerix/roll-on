@@ -39,6 +39,13 @@ const CacheConfig = {
       '/icons/icon512_rounded.png',
       '/icons/icon-192x192.png',
       '/images/title.jpg',
+      '/images/vehicles/commuter-blue.png',
+      '/images/vehicles/commuter-green.png',
+      '/images/vehicles/commuter-red.png',
+      '/images/vehicles/commuter-yellow.png',
+      '/images/vehicles/patrol.png',
+      '/images/vehicles/truck-cab-yellow.png',
+      '/images/vehicles/truck-trailer-white.png',
       '/fonts/bigsquaredots/stylesheet.css',
       '/fonts/bigsquaredots/BigSquareDots.woff2',
     ];

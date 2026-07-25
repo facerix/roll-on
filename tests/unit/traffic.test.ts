@@ -60,6 +60,18 @@ test('commuter cars move forward and stay centered in their lane', () => {
   assert.equal(result.state.vehicles[0]!.lateralMeters, ROAD.laneCenterOffsetsMeters[2]);
 });
 
+test('traffic accepts the signed hitch offset used by truck collision geometry', () => {
+  assert.doesNotThrow(() =>
+    stepTraffic({
+      state: createTrafficState({ seed: 7, spawnCountdownSeconds: 99 }),
+      truck: truck(),
+      road: ROAD,
+      truckDimensions: { ...TRUCK_DIMENSIONS, hitchGapMeters: -1.1 },
+      dtSeconds: 1 / 60,
+    })
+  );
+});
+
 test('a bumped commuter settles back toward its lane center and straight heading', () => {
   const laneCenter = ROAD.laneCenterOffsetsMeters[2]!;
   const commuter = {

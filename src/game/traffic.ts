@@ -1167,7 +1167,27 @@ function validateStepOptions(options: StepTrafficOptions): void {
     'truckDimensions.trailerLengthMeters',
     options.truckDimensions.trailerLengthMeters
   );
-  assertNonNegative('truckDimensions.hitchGapMeters', options.truckDimensions.hitchGapMeters);
+  validateHitchOffset(
+    'truckDimensions.hitchGapMeters',
+    options.truckDimensions.hitchGapMeters,
+    options.truckDimensions.cabLengthMeters,
+    options.truckDimensions.trailerLengthMeters
+  );
+}
+
+function validateHitchOffset(
+  label: string,
+  hitchGapMeters: number,
+  cabLengthMeters: number,
+  trailerLengthMeters: number
+): void {
+  assertFinite(label, hitchGapMeters);
+  const centerDistanceMeters = cabLengthMeters / 2 + trailerLengthMeters / 2 + hitchGapMeters;
+  if (centerDistanceMeters <= 0) {
+    throw new RangeError(
+      `${label} must keep the trailer center behind the cab center, got ${hitchGapMeters}`
+    );
+  }
 }
 
 function validateTuning(tuning: TrafficTuning): void {

@@ -65,6 +65,28 @@ test('truck footprint fully inside road bounds reports no barrier collision', ()
   assert.equal(detectRoadBarrierImpact(ROAD, footprint), null);
 });
 
+test('truck footprint accepts a signed hitch offset and keeps collision geometry overlapped', () => {
+  const hitchOverlapMeters = 1.1;
+  const dimensions = { ...DIMENSIONS, hitchGapMeters: -hitchOverlapMeters };
+  const [cab, trailer] = buildTruckFootprint(truck(), dimensions);
+
+  assert.ok(
+    Math.abs(cab.minDistanceMeters - trailer.maxDistanceMeters + hitchOverlapMeters) <
+      Number.EPSILON * 100
+  );
+});
+
+test('truck footprint rejects a hitch offset that moves the trailer center past the cab center', () => {
+  assert.throws(
+    () =>
+      buildTruckFootprint(truck(), {
+        ...DIMENSIONS,
+        hitchGapMeters: -(DIMENSIONS.cabLengthMeters + DIMENSIONS.trailerLengthMeters) / 2,
+      }),
+    RangeError
+  );
+});
+
 test('footprint crossing the left or right barrier reports the correct side', () => {
   const left = buildTruckFootprint(
     truck({ position: { lateralMeters: -10.4, distanceMeters: 100 } }),

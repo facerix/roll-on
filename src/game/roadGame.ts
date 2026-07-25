@@ -42,10 +42,10 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
   const cameraTuning = buildRoadCameraTuning(road, options.viewport);
   const truckDimensions: RoadSceneTruckDimensions = {
     cabWidthMeters: 2.6,
-    cabLengthMeters: 4,
+    cabLengthMeters: 5.2,
     trailerWidthMeters: DEFAULT_TRUCK_TUNING.trailerWidthMeters,
     trailerLengthMeters: DEFAULT_TRUCK_TUNING.trailerWheelbaseMeters,
-    hitchGapMeters: 0.7,
+    hitchGapMeters: -1.1,
   };
   let drivingState: DrivingState = createInitialDrivingState();
   let trafficState: TrafficState = createTrafficState();

@@ -4,11 +4,23 @@ import type { RoadCamera, ScreenPoint } from '/src/game/roadCamera.js';
 import type { TruckState } from '/src/game/truck.js';
 import type { TrafficVehicle } from '/src/game/traffic.js';
 
+export const COMMUTER_SPRITES = Object.freeze([
+  '/images/vehicles/commuter-blue.png',
+  '/images/vehicles/commuter-green.png',
+  '/images/vehicles/commuter-red.png',
+  '/images/vehicles/commuter-yellow.png',
+] as const);
+
+export const PATROL_SPRITE = '/images/vehicles/patrol.png';
+export const TRUCK_CAB_SPRITE = '/images/vehicles/truck-cab-yellow.png';
+export const TRUCK_TRAILER_SPRITE = '/images/vehicles/truck-trailer-white.png';
+
 export interface RoadSceneTruckDimensions {
   readonly cabWidthMeters: number;
   readonly cabLengthMeters: number;
   readonly trailerWidthMeters: number;
   readonly trailerLengthMeters: number;
+  /** Signed edge offset: positive leaves a gap; negative overlaps cab and trailer. */
   readonly hitchGapMeters: number;
 }
 
@@ -236,14 +248,8 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
       distanceMeters: vehicle.distanceMeters,
     });
     const isPatrol = vehicle.kind === 'patrol';
-    const color =
-      vehicle.status === 'disabled'
-        ? tuning.disabledTrafficColor
-        : isPatrol
-          ? tuning.patrolColor
-          : tuning.commuterColor;
     drawables.push({
-      kind: 'oriented-rect',
+      kind: 'oriented-sprite',
       centerX: center.x,
       centerY: center.y,
       w:
@@ -253,7 +259,7 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
         (isPatrol ? tuning.patrolLengthMeters : tuning.commuterLengthMeters) *
         options.camera.pixelsPerMeter,
       rotationRadians: vehicle.headingRadians,
-      color,
+      src: isPatrol ? PATROL_SPRITE : commuterSpriteForId(vehicle.id),
     });
   }
 
@@ -265,6 +271,13 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
     height: options.camera.viewportHeight,
     drawables,
   };
+}
+
+export function commuterSpriteForId(id: number): (typeof COMMUTER_SPRITES)[number] {
+  if (!Number.isSafeInteger(id) || id < 0) {
+    throw new RangeError(`traffic vehicle id must be a non-negative safe integer, got ${id}`);
+  }
+  return COMMUTER_SPRITES[id % COMMUTER_SPRITES.length]!;
 }
 
 function visibleLaneMarkerSpans(road: Road, camera: RoadCamera): readonly LaneMarkerSpan[] {
@@ -391,31 +404,24 @@ function buildTruckDrawables(
     distanceMeters:
       truck.position.distanceMeters - Math.cos(truck.trailerHeadingRadians) * hitchLengthMeters,
   });
-  const colors =
-    truck.status === 'crashed'
-      ? { cab: '#ff1744', trailer: '#8b0000' }
-      : truck.status === 'jackknifed'
-        ? { cab: '#ff9500', trailer: '#ff3b30' }
-        : { cab: '#f5c542', trailer: '#d29f2b' };
-
   return [
     {
-      kind: 'oriented-rect',
-      centerX: trailerCenter.x,
-      centerY: trailerCenter.y,
-      w: dimensions.trailerWidthMeters * camera.pixelsPerMeter,
-      h: dimensions.trailerLengthMeters * camera.pixelsPerMeter,
-      rotationRadians: truck.trailerHeadingRadians,
-      color: colors.trailer,
-    },
-    {
-      kind: 'oriented-rect',
+      kind: 'oriented-sprite',
       centerX: cabCenter.x,
       centerY: cabCenter.y,
       w: dimensions.cabWidthMeters * camera.pixelsPerMeter,
       h: dimensions.cabLengthMeters * camera.pixelsPerMeter,
       rotationRadians: truck.headingRadians,
-      color: colors.cab,
+      src: TRUCK_CAB_SPRITE,
+    },
+    {
+      kind: 'oriented-sprite',
+      centerX: trailerCenter.x,
+      centerY: trailerCenter.y,
+      w: dimensions.trailerWidthMeters * camera.pixelsPerMeter,
+      h: dimensions.trailerLengthMeters * camera.pixelsPerMeter,
+      rotationRadians: truck.trailerHeadingRadians,
+      src: TRUCK_TRAILER_SPRITE,
     },
   ];
 }
@@ -428,7 +434,27 @@ function validateTruckDimensions(dimensions: RoadSceneTruckDimensions): void {
   assertPositive('cabLengthMeters', dimensions.cabLengthMeters);
   assertPositive('trailerWidthMeters', dimensions.trailerWidthMeters);
   assertPositive('trailerLengthMeters', dimensions.trailerLengthMeters);
-  assertNonNegative('hitchGapMeters', dimensions.hitchGapMeters);
+  validateHitchOffset(
+    'hitchGapMeters',
+    dimensions.hitchGapMeters,
+    dimensions.cabLengthMeters,
+    dimensions.trailerLengthMeters
+  );
+}
+
+function validateHitchOffset(
+  label: string,
+  hitchGapMeters: number,
+  cabLengthMeters: number,
+  trailerLengthMeters: number
+): void {
+  assertFinite(label, hitchGapMeters);
+  const centerDistanceMeters = cabLengthMeters / 2 + trailerLengthMeters / 2 + hitchGapMeters;
+  if (centerDistanceMeters <= 0) {
+    throw new RangeError(
+      `${label} must keep the trailer center behind the cab center, got ${hitchGapMeters}`
+    );
+  }
 }
 
 function assertPositive(label: string, value: number): void {
