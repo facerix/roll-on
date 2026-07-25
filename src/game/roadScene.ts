@@ -2,6 +2,7 @@ import type { Drawable, Scene } from '/src/engine/renderer.js';
 import type { LaneMarkerSpan, Road } from '/src/game/road.js';
 import type { RoadCamera, ScreenPoint } from '/src/game/roadCamera.js';
 import type { TruckState } from '/src/game/truck.js';
+import type { TrafficVehicle } from '/src/game/traffic.js';
 
 export interface RoadSceneTruckDimensions {
   readonly cabWidthMeters: number;
@@ -19,6 +20,13 @@ export interface RoadSceneTuning {
   readonly laneMarkerColor: string;
   readonly laneMarkerWidthMeters: number;
   readonly parallaxLayers: readonly ParallaxLayerTuning[];
+  readonly commuterColor: string;
+  readonly patrolColor: string;
+  readonly disabledTrafficColor: string;
+  readonly commuterWidthMeters: number;
+  readonly commuterLengthMeters: number;
+  readonly patrolWidthMeters: number;
+  readonly patrolLengthMeters: number;
 }
 
 export interface ParallaxLayerTuning {
@@ -50,6 +58,7 @@ export interface BuildRoadSceneOptions {
   readonly road: Road;
   readonly camera: RoadCamera;
   readonly truck: TruckState;
+  readonly traffic?: readonly TrafficVehicle[];
   readonly truckDimensions: RoadSceneTruckDimensions;
   readonly tuning?: RoadSceneTuning;
 }
@@ -81,6 +90,13 @@ export const DEFAULT_ROAD_SCENE_TUNING: RoadSceneTuning = Object.freeze({
   laneMarkerColor: '#f6d96d',
   laneMarkerWidthMeters: 0.18,
   parallaxLayers: DEFAULT_PARALLAX_LAYERS,
+  commuterColor: '#4fd1c5',
+  patrolColor: '#e9f4ff',
+  disabledTrafficColor: '#ff5f1f',
+  commuterWidthMeters: 1.9,
+  commuterLengthMeters: 4.5,
+  patrolWidthMeters: 2,
+  patrolLengthMeters: 4.8,
 });
 
 export function buildParallaxOffsetMeters(
@@ -144,6 +160,10 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
   const tuning = options.tuning ?? DEFAULT_ROAD_SCENE_TUNING;
   validateTruckDimensions(options.truckDimensions);
   assertPositive('laneMarkerWidthMeters', tuning.laneMarkerWidthMeters);
+  assertPositive('commuterWidthMeters', tuning.commuterWidthMeters);
+  assertPositive('commuterLengthMeters', tuning.commuterLengthMeters);
+  assertPositive('patrolWidthMeters', tuning.patrolWidthMeters);
+  assertPositive('patrolLengthMeters', tuning.patrolLengthMeters);
 
   const drawables: Drawable[] = [
     {
@@ -204,6 +224,36 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
       w: width,
       h: bottom.y - top.y,
       color: tuning.laneMarkerColor,
+    });
+  }
+
+  for (const vehicle of options.traffic ?? []) {
+    if (vehicle.kind !== 'commuter' && vehicle.kind !== 'patrol') {
+      throw new TypeError(`Unknown traffic vehicle kind: ${String(vehicle.kind)}`);
+    }
+    const center = projectWorldPoint(options.camera, {
+      lateralMeters: vehicle.lateralMeters,
+      distanceMeters: vehicle.distanceMeters,
+    });
+    const isPatrol = vehicle.kind === 'patrol';
+    const color =
+      vehicle.status === 'disabled'
+        ? tuning.disabledTrafficColor
+        : isPatrol
+          ? tuning.patrolColor
+          : tuning.commuterColor;
+    drawables.push({
+      kind: 'oriented-rect',
+      centerX: center.x,
+      centerY: center.y,
+      w:
+        (isPatrol ? tuning.patrolWidthMeters : tuning.commuterWidthMeters) *
+        options.camera.pixelsPerMeter,
+      h:
+        (isPatrol ? tuning.patrolLengthMeters : tuning.commuterLengthMeters) *
+        options.camera.pixelsPerMeter,
+      rotationRadians: vehicle.headingRadians,
+      color,
     });
   }
 

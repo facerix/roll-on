@@ -16,11 +16,17 @@ import {
   type RoadSceneTruckDimensions,
 } from '/src/game/roadScene.js';
 import { buildRoadCameraTuning } from '/src/game/roadViewport.js';
+import { calculateScore } from '/src/game/score.js';
+import { createTrafficState, stepTraffic, type TrafficState } from '/src/game/traffic.js';
 import { createTruckState, DEFAULT_TRUCK_TUNING, type TruckControls } from '/src/game/truck.js';
 import { buildTruckTelemetry, formatTruckTelemetry } from '/src/game/truckTelemetry.js';
 
 const BARRIER_FLASH_DURATION_SECONDS = 0.18;
 const BARRIER_FLASH_COLOR = '#ff5f1f';
+const TRAFFIC_EVENT_DURATION_SECONDS = 0.9;
+const INTEGRITY_SCORE_MULTIPLIER = 2_000;
+const POINTS_PER_TAKEDOWN = 250;
+const BASE_POINTS_PER_METER = 10;
 
 export interface RoadGame {
   dispose(): void;
@@ -42,10 +48,13 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
     hitchGapMeters: 0.7,
   };
   let drivingState: DrivingState = createInitialDrivingState();
+  let trafficState: TrafficState = createTrafficState();
   let lastBarrierImpact: RoadBarrierImpact | null = null;
   let barrierFlashSeconds = 0;
+  let trafficEventSeconds = 0;
+  let trafficEventText = '';
   const hud = createGameHudView();
-  hud.update(buildGameHudSnapshot(drivingState.truck, DEFAULT_TRUCK_TUNING, drivingState.fuel));
+  updateHud();
 
   const mountedGame = mountGame({
     root: options.root,
@@ -65,13 +74,31 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         truckDimensions,
       });
       drivingState = result.state;
+      const trafficResult = stepTraffic({
+        state: trafficState,
+        truck: drivingState.truck,
+        road,
+        truckDimensions,
+        dtSeconds: dt,
+      });
+      trafficState = trafficResult.state;
+      drivingState = { ...drivingState, truck: trafficResult.truck };
+      const trafficEvent = trafficResult.events.at(-1);
+      if (trafficEvent) {
+        trafficEventSeconds = TRAFFIC_EVENT_DURATION_SECONDS;
+        trafficEventText =
+          trafficEvent.kind === 'road-rage' ? `ROAD RAGE +${POINTS_PER_TAKEDOWN}` : 'PATROL RAM';
+      } else {
+        trafficEventSeconds = Math.max(0, trafficEventSeconds - dt);
+        if (trafficEventSeconds === 0) trafficEventText = '';
+      }
       if (result.barrierImpact) {
         lastBarrierImpact = result.barrierImpact;
         barrierFlashSeconds = BARRIER_FLASH_DURATION_SECONDS;
       } else {
         barrierFlashSeconds = Math.max(0, barrierFlashSeconds - dt);
       }
-      hud.update(buildGameHudSnapshot(drivingState.truck, DEFAULT_TRUCK_TUNING, drivingState.fuel));
+      updateHud();
     },
     debugLines: () => {
       const camera = buildRoadCamera(drivingState.truck.position, options.viewport, cameraTuning);
@@ -102,6 +129,8 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
             ? `${lastBarrierImpact.side} ${lastBarrierImpact.penetrationMeters.toFixed(2)} m`
             : 'none'
         } cooldown ${drivingState.barrierContactState.cooldownRemainingSeconds.toFixed(2)} s`,
+        `traffic: ${trafficState.vehicles.length} active, ${trafficState.takedowns} takedowns`,
+        `score: ${buildCurrentScore()}`,
       ];
     },
     buildScene: () => {
@@ -110,6 +139,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         road,
         camera,
         truck: drivingState.truck,
+        traffic: trafficState.vehicles,
         truckDimensions,
         tuning: {
           ...DEFAULT_ROAD_SCENE_TUNING,
@@ -127,6 +157,27 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       hud.root.remove();
     },
   };
+
+  function buildCurrentScore(): number {
+    return calculateScore({
+      baseDeliveredCargo:
+        Math.max(0, Math.floor(drivingState.truck.position.distanceMeters)) * BASE_POINTS_PER_METER,
+      cargoIntegrity: drivingState.truck.cargoIntegrity,
+      integrityMultiplier: INTEGRITY_SCORE_MULTIPLIER,
+      takedownCount: trafficState.takedowns,
+      pointsPerTakedown: POINTS_PER_TAKEDOWN,
+    });
+  }
+
+  function updateHud(): void {
+    hud.update(
+      buildGameHudSnapshot(drivingState.truck, DEFAULT_TRUCK_TUNING, drivingState.fuel, undefined, {
+        score: buildCurrentScore(),
+        takedowns: trafficState.takedowns,
+        eventText: trafficEventText,
+      })
+    );
+  }
 }
 
 function createInitialDrivingState(): DrivingState {

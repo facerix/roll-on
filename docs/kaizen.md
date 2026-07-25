@@ -13,7 +13,9 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
   an empty tank. The final "good" Stage 1 run length is still open because enemy density, finish
   distance, and scoring pressure arrive in later milestones. Revisit during Milestone 5.
 - **Permadeath vs. continues**: arcade tradition is continues with score reset penalty. Design doc is silent. Decide before Milestone 5.
-- **Score formula precise weights**: §6 of the design doc gives the formula but no coefficients. Tune after Milestone 4.
+- **Score formula precise weights**: §6 of the design doc gives the formula but no coefficients. M4
+  uses prototype weights (10 points/meter, 2,000 integrity multiplier, 250/takedown); tune during
+  the M5 finish-tally playtest.
 - **Mobile / touch input model**: PWA implies mobile. A vertical-scrolling driver could work with tilt or with on-screen lane buttons, but neither is obviously right. Decide before public testing.
 
 ## Deferred technical work
@@ -31,6 +33,11 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
 - **Lint rule banning `Math.random()` in game code**: pending. Game code must pull from `Rng` (passed in by construction) for determinism. One stray `Math.random()` silently breaks replay. Add as an oxlint rule or a grep-based test when convenient.
 - **devicePixelRatio handling**: `Canvas2DRenderer` assumes its context is already sized correctly for DPR. The mount module (M0 item 4) owns canvas sizing. When we wire it up, decide between "internal resolution = CSS px × DPR" (crisp on retina, more pixels to fill) and "internal resolution = fixed virtual pixels with CSS upscale" (true retro vibe, possibly mandatory once we want the CRT look).
 - **Canvas context-loss recovery**: `imageSmoothingEnabled` is set once at construction. Browsers can reset context state on `webglcontextlost`/-equivalents; for Canvas 2D this is rare but possible. Revisit if we see smoothing creep back on.
+- **Development service-worker module skew**: the M4 browser pass caught one startup where the
+  stale-while-refresh strategy served a cached `gameHud.ts` build beside a fresh `gameHudView.ts`
+  build. A reload used the refreshed cache and clean runs were stable, but dev should never execute
+  a mixed module graph. Revisit before M5 by making refreshable development resources network-first
+  (with cache fallback) or versioning each watch build as one atomic cache generation.
 
 ## Risks to monitor
 

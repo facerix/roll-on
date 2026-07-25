@@ -11,6 +11,7 @@ import {
   type RoadSceneTruckDimensions,
 } from '../../src/game/roadScene.ts';
 import { createTruckState, type TruckState } from '../../src/game/truck.ts';
+import { createTrafficVehicle } from '../../src/game/traffic.ts';
 
 const ROAD = createRoad(DEFAULT_ROAD_TUNING);
 const VIEWPORT = { width: 320, height: 480 };
@@ -141,4 +142,100 @@ test('truck cab projects to the camera anchor and draws over road', () => {
   assert.equal(cab.centerY, CAMERA_TUNING.anchorY);
   assert.equal(cab.w, TRUCK_DIMENSIONS.cabWidthMeters * CAMERA_TUNING.pixelsPerMeter);
   assert.equal(cab.h, TRUCK_DIMENSIONS.cabLengthMeters * CAMERA_TUNING.pixelsPerMeter);
+});
+
+test('traffic vehicles project in world space below the player truck', () => {
+  const truck = truckAt(42);
+  const camera = buildRoadCamera(truck.position, VIEWPORT, CAMERA_TUNING);
+  const commuter = createTrafficVehicle({
+    id: 1,
+    kind: 'commuter',
+    laneIndex: 2,
+    distanceMeters: 52,
+    speedMetersPerSecond: 15,
+  });
+  const patrol = createTrafficVehicle({
+    id: 2,
+    kind: 'patrol',
+    laneIndex: 0,
+    distanceMeters: 32,
+    speedMetersPerSecond: 28,
+  });
+  const scene = buildRoadScene({
+    road: ROAD,
+    camera,
+    truck,
+    traffic: [commuter, patrol],
+    truckDimensions: TRUCK_DIMENSIONS,
+  });
+  const vehicles = orientedRects(scene.drawables).filter(
+    drawable =>
+      drawable.color === DEFAULT_ROAD_SCENE_TUNING.commuterColor ||
+      drawable.color === DEFAULT_ROAD_SCENE_TUNING.patrolColor
+  );
+
+  assert.equal(vehicles.length, 2);
+  assert.equal(vehicles[0]!.centerY, CAMERA_TUNING.anchorY - 10 * CAMERA_TUNING.pixelsPerMeter);
+  assert.equal(vehicles[1]!.centerY, CAMERA_TUNING.anchorY + 10 * CAMERA_TUNING.pixelsPerMeter);
+  assert.deepEqual(
+    scene.drawables.slice(-2).map(drawable => drawable.color),
+    ['#d29f2b', '#f5c542']
+  );
+});
+
+test('road scene rejects unknown traffic kinds instead of drawing a commuter fallback', () => {
+  const truck = truckAt(0);
+  const camera = buildRoadCamera(truck.position, VIEWPORT, CAMERA_TUNING);
+  const invalid = {
+    ...createTrafficVehicle({
+      id: 1,
+      kind: 'commuter',
+      laneIndex: 1,
+      distanceMeters: 10,
+      speedMetersPerSecond: 10,
+    }),
+    kind: 'motorcycle',
+  };
+
+  assert.throws(
+    () =>
+      buildRoadScene({
+        road: ROAD,
+        camera,
+        truck,
+        traffic: [invalid as unknown as ReturnType<typeof createTrafficVehicle>],
+        truckDimensions: TRUCK_DIMENSIONS,
+      }),
+    TypeError
+  );
+});
+
+test('disabled traffic renders as a visibly rotated wreck', () => {
+  const truck = truckAt(0);
+  const camera = buildRoadCamera(truck.position, VIEWPORT, CAMERA_TUNING);
+  const wreck = {
+    ...createTrafficVehicle({
+      id: 3,
+      kind: 'commuter',
+      laneIndex: 2,
+      distanceMeters: 8,
+      speedMetersPerSecond: 0,
+    }),
+    headingRadians: 0.45,
+    status: 'disabled' as const,
+    disabledSecondsRemaining: 0.5,
+  };
+  const scene = buildRoadScene({
+    road: ROAD,
+    camera,
+    truck,
+    traffic: [wreck],
+    truckDimensions: TRUCK_DIMENSIONS,
+  });
+  const wreckDrawable = orientedRects(scene.drawables).find(
+    drawable => drawable.color === DEFAULT_ROAD_SCENE_TUNING.disabledTrafficColor
+  );
+
+  assert.ok(wreckDrawable);
+  assert.equal(wreckDrawable.rotationRadians, 0.45);
 });

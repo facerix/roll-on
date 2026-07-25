@@ -227,10 +227,31 @@ body.is-playing #main-foot {
 
 .roll-on-hud-readouts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0;
   margin: 0;
   padding: 0;
+}
+
+.roll-on-hud-event {
+  position: absolute;
+  top: 112px;
+  left: 50%;
+  padding: 6px 10px;
+  transform: translateX(-50%) scale(0.9);
+  border: 1px solid #ff6b6b;
+  background: rgba(5, 6, 8, 0.82);
+  color: #f6d96d;
+  font-size: clamp(0.85rem, 2vw, 1.35rem);
+  opacity: 0;
+  transition:
+    opacity 80ms linear,
+    transform 80ms steps(2, end);
+}
+
+.roll-on-hud-event[data-visible='true'] {
+  transform: translateX(-50%) scale(1);
+  opacity: 1;
 }
 
 .roll-on-hud-readout {
@@ -343,7 +364,7 @@ body.is-playing #main-foot {
   }
 
   .roll-on-hud-readouts {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-column: 2;
   }
 
