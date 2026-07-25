@@ -21,6 +21,8 @@
  * there's only one game on the page.
  */
 
+import '/components/TouchPad.js';
+import type { TouchPadActionEvent } from '/components/TouchPad.js';
 import { h } from '/src/domUtils.js';
 import { FixedStepLoop } from '/src/engine/loop.js';
 import { Canvas2DRenderer } from '/src/engine/renderer.js';
@@ -42,6 +44,12 @@ export interface MountOptions {
   buildScene: (alpha: number) => Scene;
   /** Show the FPS HUD. Default: true iff URL has `?debug`. */
   debug?: boolean;
+  /**
+   * Overlay the on-screen touch controls. Default: true. The pad decides for
+   * itself whether to actually show (coarse pointer, or `?touch`); this flag
+   * only controls whether it exists at all.
+   */
+  touchControls?: boolean;
   /** Additional debug lines supplied by gameplay; read only when the HUD is visible. */
   debugLines?: () => readonly string[];
 }
@@ -142,13 +150,27 @@ export function mountGame(opts: MountOptions): MountedGame {
       })
     : null;
 
+  // Touch controls: a self-contained overlay component that emits abstract
+  // actions. We translate them into virtual holds on the same InputAdapter
+  // the keyboard feeds, so gameplay never learns touch exists.
+  const touchPad = (opts.touchControls ?? true) ? h('touch-pad') : null;
+  const onPadDown = (event: Event): void =>
+    input.setVirtual((event as TouchPadActionEvent).detail.action, true);
+  const onPadUp = (event: Event): void =>
+    input.setVirtual((event as TouchPadActionEvent).detail.action, false);
+  if (touchPad) {
+    touchPad.addEventListener('action-down', onPadDown);
+    touchPad.addEventListener('action-up', onPadUp);
+  }
+
+  const overlays = [canvas, debugEl, touchPad].filter(el => el !== null);
   const container = h(
     'div',
     {
       className: 'roll-on-game-container',
       style: 'position:relative;display:inline-block;',
     },
-    debugEl ? [canvas, debugEl] : [canvas]
+    overlays
   );
   opts.root.appendChild(container);
 
@@ -195,6 +217,8 @@ export function mountGame(opts: MountOptions): MountedGame {
       disposed = true;
       loop.stop();
       if (rafForFps !== null) cancelAnimationFrame(rafForFps);
+      touchPad?.removeEventListener('action-down', onPadDown);
+      touchPad?.removeEventListener('action-up', onPadUp);
       input.detach();
       dprMedia.removeEventListener('change', onDprChange);
       container.remove();

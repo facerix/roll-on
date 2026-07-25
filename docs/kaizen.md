@@ -16,7 +16,14 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
 - **Score formula precise weights**: §6 of the design doc gives the formula but no coefficients. M4
   uses prototype weights (10 points/meter, 2,000 integrity multiplier, 250/takedown); tune during
   the M5 finish-tally playtest.
-- **Mobile / touch input model**: PWA implies mobile. A vertical-scrolling driver could work with tilt or with on-screen lane buttons, but neither is obviously right. Decide before public testing.
+- **Touch control ergonomics**: the pad layout (steer arrows at left/right centre, brake+gas centred
+  along the bottom, horn in the bottom-left corner) is a first pass that has NOT been played on a
+  real device yet. Open: whether steering wants held arrows at all versus a drag-anywhere lane
+  slider, and whether the horn's corner placement survives contact with actual thumbs. Revisit after
+  the first phone playtest.
+- **Horn mechanics**: the `horn` action is bound (Space, plus a touch button) but does nothing.
+  Stubbed deliberately so the input surface is complete; decide what it does — scatter traffic?
+  bait patrol? — during Milestone 5.
 
 ## Deferred technical work
 
