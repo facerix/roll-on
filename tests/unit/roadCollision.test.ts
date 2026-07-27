@@ -33,7 +33,7 @@ const COLLISION_TUNING: RoadCollisionTuning = {
 
 function truck(overrides: Partial<TruckState> = {}): TruckState {
   return createTruckState({
-    position: { lateralMeters: 0, distanceMeters: 100 },
+    position: { xMeters: 0, yMeters: 100 },
     headingRadians: 0,
     speedMetersPerSecond: 20,
     yawRateRadiansPerSecond: 0,
@@ -54,8 +54,8 @@ function impact(side: RoadBarrierImpact['side'] = 'right'): RoadBarrierImpact {
     kind: 'barrier',
     side,
     penetrationMeters: 0.5,
-    minDistanceMeters: 90,
-    maxDistanceMeters: 110,
+    minYMeters: 90,
+    maxYMeters: 110,
   };
 }
 
@@ -71,8 +71,7 @@ test('truck footprint accepts a signed hitch offset and keeps collision geometry
   const [cab, trailer] = buildTruckFootprint(truck(), dimensions);
 
   assert.ok(
-    Math.abs(cab.minDistanceMeters - trailer.maxDistanceMeters + hitchOverlapMeters) <
-      Number.EPSILON * 100
+    Math.abs(cab.minYMeters - trailer.maxYMeters + hitchOverlapMeters) < Number.EPSILON * 100
   );
 });
 
@@ -89,11 +88,11 @@ test('truck footprint rejects a hitch offset that moves the trailer center past 
 
 test('footprint crossing the left or right barrier reports the correct side', () => {
   const left = buildTruckFootprint(
-    truck({ position: { lateralMeters: -10.4, distanceMeters: 100 } }),
+    truck({ position: { xMeters: -10.4, yMeters: 100 } }),
     DIMENSIONS
   );
   const right = buildTruckFootprint(
-    truck({ position: { lateralMeters: 10.4, distanceMeters: 100 } }),
+    truck({ position: { xMeters: 10.4, yMeters: 100 } }),
     DIMENSIONS
   );
 
@@ -103,7 +102,7 @@ test('footprint crossing the left or right barrier reports the correct side', ()
 
 test('barrier collision checks use world meters, not camera fields', () => {
   const footprint = buildTruckFootprint(
-    truck({ position: { lateralMeters: 10.4, distanceMeters: 100 } }),
+    truck({ position: { xMeters: 10.4, yMeters: 100 } }),
     DIMENSIONS
   );
   const fieldNames = Object.keys(footprint[0]!).join(' ');
@@ -114,12 +113,12 @@ test('barrier collision checks use world meters, not camera fields', () => {
 
 test('barrier collision detection works for cab and trailer footprint inputs', () => {
   const cabCrossing = buildTruckFootprint(
-    truck({ position: { lateralMeters: ROAD.rightBarrierLateralMeters, distanceMeters: 100 } }),
+    truck({ position: { xMeters: ROAD.rightBarrierLateralMeters, yMeters: 100 } }),
     DIMENSIONS
   );
   const trailerCrossing = buildTruckFootprint(
     truck({
-      position: { lateralMeters: ROAD.rightBarrierLateralMeters - 5.5, distanceMeters: 100 },
+      position: { xMeters: ROAD.rightBarrierLateralMeters - 5.5, yMeters: 100 },
       trailerHeadingRadians: Math.PI / 2,
     }),
     DIMENSIONS

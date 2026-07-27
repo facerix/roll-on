@@ -1,51 +1,30 @@
 import type { Road } from '/src/game/road.js';
+import {
+  detectRigidBodyContact,
+  resolveRigidBodyContact,
+  validateRigidBodyResponseTuning,
+  type RigidBody,
+  type RigidBodyContact,
+  type RigidBodyResponseTuning,
+} from '/src/game/rigidBody.js';
 import type { TruckFootprintDimensions } from '/src/game/roadCollision.js';
 import type { TruckState } from '/src/game/truck.js';
+import {
+  dotVelocityWithVector,
+  headingToUnitVector,
+  velocityAlongHeading,
+} from '/src/game/worldGeometry.js';
 
 export type TrafficVehicleKind = 'commuter' | 'patrol';
 export type TrafficVehicleStatus = 'driving' | 'disengaging' | 'disabled';
 
-export interface PhysicsVector {
-  readonly lateralMeters: number;
-  readonly distanceMeters: number;
-}
-
-export interface PhysicsVelocity {
-  readonly lateralMetersPerSecond: number;
-  readonly distanceMetersPerSecond: number;
-}
-
-export interface RigidBody {
-  readonly id: string;
-  readonly position: PhysicsVector;
-  readonly velocity: PhysicsVelocity;
-  readonly headingRadians: number;
-  readonly angularVelocityRadiansPerSecond: number;
-  readonly widthMeters: number;
-  readonly lengthMeters: number;
-  readonly massKilograms: number;
-}
-
-export interface RigidBodyContact {
-  readonly normal: PhysicsVector;
-  readonly penetrationMeters: number;
-  readonly point: PhysicsVector;
-}
-
-export interface RigidBodyResponseTuning {
-  readonly restitution: number;
-  readonly friction: number;
-  readonly positionalCorrection: number;
-  readonly penetrationSlopMeters: number;
-}
-
-export interface RigidBodyResponse {
-  readonly bodyA: RigidBody;
-  readonly bodyB: RigidBody;
-  readonly normalImpulse: number;
-  readonly impactSpeedMetersPerSecond: number;
-}
-
+/**
+ * Traffic state is still road-relative in this slice: `lateralMeters` is an
+ * offset across the road and `distanceMeters` is progress along it. On the
+ * straight prototype route those happen to equal world `x` and `y`, which is
+ * why the adapters below can convert with a plain copy. M5.7 replaces that
+ * coincidence with an explicit route frame.
+ */
 export interface TrafficVehicle {
   readonly id: number;
   readonly kind: TrafficVehicleKind;
@@ -283,7 +262,9 @@ export function stepTraffic(options: StepTrafficOptions): StepTrafficResult {
   }
 
   const inRange = moved.filter(vehicle => {
-    const relativeDistance = vehicle.distanceMeters - options.truck.position.distanceMeters;
+    // Straight-route coincidence: the truck's world y is also its route
+    // distance today. M5.7 replaces these reads with a projected route position.
+    const relativeDistance = vehicle.distanceMeters - options.truck.position.yMeters;
     const isActive =
       vehicle.status === 'driving' ||
       (vehicle.status === 'disengaging' && vehicle.patrolDisengageSecondsRemaining > 0) ||
@@ -368,11 +349,11 @@ function stepVehicle(
     const isDisengaging = vehicle.status === 'disengaging';
     const targetLaneIndex = nearestLaneIndex(
       road,
-      isDisengaging ? vehicle.lateralMeters : truck.position.lateralMeters
+      isDisengaging ? vehicle.lateralMeters : truck.position.xMeters
     );
     const targetLateral = road.laneCenterOffsetsMeters[targetLaneIndex]!;
     const trailerRearDistanceMeters =
-      truck.position.distanceMeters -
+      truck.position.yMeters -
       (truckDimensions.cabLengthMeters / 2 +
         truckDimensions.trailerLengthMeters +
         truckDimensions.hitchGapMeters);
@@ -506,7 +487,7 @@ function spawnVehicle(
   const ahead =
     tuning.spawnAheadMinMeters +
     rng.next() * (tuning.spawnAheadMaxMeters - tuning.spawnAheadMinMeters);
-  const distanceMeters = truck.position.distanceMeters + (kind === 'patrol' ? -30 : ahead);
+  const distanceMeters = truck.position.yMeters + (kind === 'patrol' ? -30 : ahead);
   const availableLaneIndices = Array.from(
     { length: road.laneCount },
     (_, laneIndex) => laneIndex
@@ -651,10 +632,8 @@ function buildTruckRigidBodies(
   const hitchLengthMeters =
     dimensions.cabLengthMeters / 2 + dimensions.trailerLengthMeters / 2 + dimensions.hitchGapMeters;
   const trailerCenter = {
-    lateralMeters:
-      truck.position.lateralMeters - Math.sin(truck.trailerHeadingRadians) * hitchLengthMeters,
-    distanceMeters:
-      truck.position.distanceMeters - Math.cos(truck.trailerHeadingRadians) * hitchLengthMeters,
+    xMeters: truck.position.xMeters - Math.sin(truck.trailerHeadingRadians) * hitchLengthMeters,
+    yMeters: truck.position.yMeters - Math.cos(truck.trailerHeadingRadians) * hitchLengthMeters,
   };
   const cabVelocity = velocityAlongHeading(truck.headingRadians, truck.speedMetersPerSecond);
   const trailerVelocity = velocityAlongHeading(
@@ -693,12 +672,12 @@ function buildVehicleRigidBody(vehicle: TrafficVehicle, tuning: TrafficTuning): 
   return {
     id: `traffic-${vehicle.id}`,
     position: {
-      lateralMeters: vehicle.lateralMeters,
-      distanceMeters: vehicle.distanceMeters,
+      xMeters: vehicle.lateralMeters,
+      yMeters: vehicle.distanceMeters,
     },
     velocity: {
-      lateralMetersPerSecond: vehicle.lateralCollisionVelocityMetersPerSecond,
-      distanceMetersPerSecond:
+      xMetersPerSecond: vehicle.lateralCollisionVelocityMetersPerSecond,
+      yMetersPerSecond:
         vehicle.speedMetersPerSecond + vehicle.distanceCollisionVelocityMetersPerSecond,
     },
     headingRadians: vehicle.headingRadians,
@@ -712,13 +691,13 @@ function buildVehicleRigidBody(vehicle: TrafficVehicle, tuning: TrafficTuning): 
 function applyResolvedVehicleBody(vehicle: TrafficVehicle, body: RigidBody): TrafficVehicle {
   return {
     ...vehicle,
-    lateralMeters: body.position.lateralMeters,
-    distanceMeters: body.position.distanceMeters,
+    lateralMeters: body.position.xMeters,
+    distanceMeters: body.position.yMeters,
     headingRadians: body.headingRadians,
     angularVelocityRadiansPerSecond: body.angularVelocityRadiansPerSecond,
-    lateralCollisionVelocityMetersPerSecond: body.velocity.lateralMetersPerSecond,
+    lateralCollisionVelocityMetersPerSecond: body.velocity.xMetersPerSecond,
     distanceCollisionVelocityMetersPerSecond:
-      body.velocity.distanceMetersPerSecond - vehicle.speedMetersPerSecond,
+      body.velocity.yMetersPerSecond - vehicle.speedMetersPerSecond,
   };
 }
 
@@ -728,16 +707,16 @@ function applyResolvedTruckBody(
   resolvedBody: RigidBody
 ): TruckState {
   const positionDelta = {
-    lateralMeters: resolvedBody.position.lateralMeters - originalBody.position.lateralMeters,
-    distanceMeters: resolvedBody.position.distanceMeters - originalBody.position.distanceMeters,
+    xMeters: resolvedBody.position.xMeters - originalBody.position.xMeters,
+    yMeters: resolvedBody.position.yMeters - originalBody.position.yMeters,
   };
-  const forward = velocityAlongHeading(truck.headingRadians, 1);
-  const resolvedForwardSpeed = Math.max(0, dotVelocity(resolvedBody.velocity, forward));
+  const forward = headingToUnitVector(truck.headingRadians);
+  const resolvedForwardSpeed = Math.max(0, dotVelocityWithVector(resolvedBody.velocity, forward));
   return {
     ...truck,
     position: {
-      lateralMeters: truck.position.lateralMeters + positionDelta.lateralMeters,
-      distanceMeters: truck.position.distanceMeters + positionDelta.distanceMeters,
+      xMeters: truck.position.xMeters + positionDelta.xMeters,
+      yMeters: truck.position.yMeters + positionDelta.yMeters,
     },
     speedMetersPerSecond: resolvedForwardSpeed,
     yawRateRadiansPerSecond: clamp(resolvedBody.angularVelocityRadiansPerSecond, -0.6, 0.6),
@@ -841,282 +820,6 @@ function coolContactCooldowns(
     if (remaining > 0) cooled[key] = remaining;
   }
   return cooled;
-}
-
-export function detectRigidBodyContact(
-  bodyA: RigidBody,
-  bodyB: RigidBody
-): RigidBodyContact | null {
-  validateRigidBody(bodyA);
-  validateRigidBody(bodyB);
-  const axes = [...bodyAxes(bodyA), ...bodyAxes(bodyB)];
-  const centerDelta = subtractVectors(bodyB.position, bodyA.position);
-  let minimumOverlap = Number.POSITIVE_INFINITY;
-  let minimumAxis: PhysicsVector | null = null;
-
-  for (const axis of axes) {
-    const projectionA = projectBody(bodyA, axis);
-    const projectionB = projectBody(bodyB, axis);
-    const overlap =
-      Math.min(projectionA.max, projectionB.max) - Math.max(projectionA.min, projectionB.min);
-    if (overlap <= 1e-10) return null;
-    if (overlap < minimumOverlap) {
-      minimumOverlap = overlap;
-      minimumAxis = dotVector(centerDelta, axis) < 0 ? scaleVector(axis, -1) : axis;
-    }
-  }
-
-  if (!minimumAxis) return null;
-  const supportA = supportPoint(bodyA, minimumAxis);
-  const supportB = supportPoint(bodyB, scaleVector(minimumAxis, -1));
-  return {
-    normal: minimumAxis,
-    penetrationMeters: minimumOverlap,
-    point: scaleVector(addVectors(supportA, supportB), 0.5),
-  };
-}
-
-export function resolveRigidBodyContact(
-  bodyA: RigidBody,
-  bodyB: RigidBody,
-  contact: RigidBodyContact,
-  tuning: RigidBodyResponseTuning
-): RigidBodyResponse {
-  validateRigidBody(bodyA);
-  validateRigidBody(bodyB);
-  validateRigidBodyContact(contact);
-  validateRigidBodyResponseTuning(tuning);
-  const inverseMassA = 1 / bodyA.massKilograms;
-  const inverseMassB = 1 / bodyB.massKilograms;
-  const inverseMassSum = inverseMassA + inverseMassB;
-  const separationMeters =
-    Math.max(0, contact.penetrationMeters - tuning.penetrationSlopMeters) *
-      tuning.positionalCorrection +
-    1e-9;
-  const correction = scaleVector(contact.normal, separationMeters / inverseMassSum);
-  let resolvedA: RigidBody = {
-    ...bodyA,
-    position: subtractVectors(bodyA.position, scaleVector(correction, inverseMassA)),
-    velocity: { ...bodyA.velocity },
-  };
-  let resolvedB: RigidBody = {
-    ...bodyB,
-    position: addVectors(bodyB.position, scaleVector(correction, inverseMassB)),
-    velocity: { ...bodyB.velocity },
-  };
-
-  const armA = subtractVectors(contact.point, bodyA.position);
-  const armB = subtractVectors(contact.point, bodyB.position);
-  const contactVelocityA = addVelocities(
-    resolvedA.velocity,
-    angularVelocityAtPoint(resolvedA.angularVelocityRadiansPerSecond, armA)
-  );
-  const contactVelocityB = addVelocities(
-    resolvedB.velocity,
-    angularVelocityAtPoint(resolvedB.angularVelocityRadiansPerSecond, armB)
-  );
-  const relativeVelocity = subtractVelocities(contactVelocityB, contactVelocityA);
-  const velocityAlongNormal = dotVelocity(relativeVelocity, contact.normal);
-  const impactSpeedMetersPerSecond = Math.max(0, -velocityAlongNormal);
-  let normalImpulse = 0;
-
-  if (velocityAlongNormal < 0) {
-    const inverseInertiaA = 1 / rectangleInertia(bodyA);
-    const inverseInertiaB = 1 / rectangleInertia(bodyB);
-    const armNormalA = clockwiseCross(armA, contact.normal);
-    const armNormalB = clockwiseCross(armB, contact.normal);
-    const normalDenominator =
-      inverseMassSum +
-      armNormalA * armNormalA * inverseInertiaA +
-      armNormalB * armNormalB * inverseInertiaB;
-    normalImpulse = (-(1 + tuning.restitution) * velocityAlongNormal) / normalDenominator;
-    const impulse = scaleVector(contact.normal, normalImpulse);
-    resolvedA = applyImpulse(resolvedA, scaleVector(impulse, -1), armA);
-    resolvedB = applyImpulse(resolvedB, impulse, armB);
-
-    const postNormalRelativeVelocity = subtractVelocities(
-      addVelocities(
-        resolvedB.velocity,
-        angularVelocityAtPoint(resolvedB.angularVelocityRadiansPerSecond, armB)
-      ),
-      addVelocities(
-        resolvedA.velocity,
-        angularVelocityAtPoint(resolvedA.angularVelocityRadiansPerSecond, armA)
-      )
-    );
-    const normalVelocity = dotVelocity(postNormalRelativeVelocity, contact.normal);
-    const tangentUnnormalized: PhysicsVelocity = {
-      lateralMetersPerSecond:
-        postNormalRelativeVelocity.lateralMetersPerSecond -
-        contact.normal.lateralMeters * normalVelocity,
-      distanceMetersPerSecond:
-        postNormalRelativeVelocity.distanceMetersPerSecond -
-        contact.normal.distanceMeters * normalVelocity,
-    };
-    const tangentLength = Math.hypot(
-      tangentUnnormalized.lateralMetersPerSecond,
-      tangentUnnormalized.distanceMetersPerSecond
-    );
-    if (tangentLength > 1e-10) {
-      const tangent: PhysicsVector = {
-        lateralMeters: tangentUnnormalized.lateralMetersPerSecond / tangentLength,
-        distanceMeters: tangentUnnormalized.distanceMetersPerSecond / tangentLength,
-      };
-      const armTangentA = clockwiseCross(armA, tangent);
-      const armTangentB = clockwiseCross(armB, tangent);
-      const tangentDenominator =
-        inverseMassSum +
-        armTangentA * armTangentA * inverseInertiaA +
-        armTangentB * armTangentB * inverseInertiaB;
-      const rawFrictionImpulse =
-        -dotVelocity(postNormalRelativeVelocity, tangent) / tangentDenominator;
-      const frictionImpulse = clamp(
-        rawFrictionImpulse,
-        -normalImpulse * tuning.friction,
-        normalImpulse * tuning.friction
-      );
-      const tangentImpulse = scaleVector(tangent, frictionImpulse);
-      resolvedA = applyImpulse(resolvedA, scaleVector(tangentImpulse, -1), armA);
-      resolvedB = applyImpulse(resolvedB, tangentImpulse, armB);
-    }
-  }
-
-  return {
-    bodyA: resolvedA,
-    bodyB: resolvedB,
-    normalImpulse,
-    impactSpeedMetersPerSecond,
-  };
-}
-
-function applyImpulse(
-  body: RigidBody,
-  impulse: PhysicsVector,
-  contactArm: PhysicsVector
-): RigidBody {
-  const inverseMass = 1 / body.massKilograms;
-  const inverseInertia = 1 / rectangleInertia(body);
-  return {
-    ...body,
-    velocity: {
-      lateralMetersPerSecond:
-        body.velocity.lateralMetersPerSecond + impulse.lateralMeters * inverseMass,
-      distanceMetersPerSecond:
-        body.velocity.distanceMetersPerSecond + impulse.distanceMeters * inverseMass,
-    },
-    angularVelocityRadiansPerSecond:
-      body.angularVelocityRadiansPerSecond + clockwiseCross(contactArm, impulse) * inverseInertia,
-  };
-}
-
-function rectangleInertia(body: RigidBody): number {
-  return (
-    (body.massKilograms *
-      (body.widthMeters * body.widthMeters + body.lengthMeters * body.lengthMeters)) /
-    12
-  );
-}
-
-function bodyAxes(body: RigidBody): readonly [PhysicsVector, PhysicsVector] {
-  const sin = Math.sin(body.headingRadians);
-  const cos = Math.cos(body.headingRadians);
-  return [
-    { lateralMeters: cos, distanceMeters: -sin },
-    { lateralMeters: sin, distanceMeters: cos },
-  ];
-}
-
-function projectBody(
-  body: RigidBody,
-  axis: PhysicsVector
-): { readonly min: number; readonly max: number } {
-  const [widthAxis, lengthAxis] = bodyAxes(body);
-  const center = dotVector(body.position, axis);
-  const radius =
-    Math.abs(dotVector(widthAxis, axis)) * (body.widthMeters / 2) +
-    Math.abs(dotVector(lengthAxis, axis)) * (body.lengthMeters / 2);
-  return { min: center - radius, max: center + radius };
-}
-
-function supportPoint(body: RigidBody, direction: PhysicsVector): PhysicsVector {
-  const [widthAxis, lengthAxis] = bodyAxes(body);
-  return addVectors(
-    body.position,
-    addVectors(
-      scaleVector(widthAxis, Math.sign(dotVector(widthAxis, direction)) * (body.widthMeters / 2)),
-      scaleVector(lengthAxis, Math.sign(dotVector(lengthAxis, direction)) * (body.lengthMeters / 2))
-    )
-  );
-}
-
-function velocityAlongHeading(
-  headingRadians: number,
-  speedMetersPerSecond: number
-): PhysicsVelocity {
-  return {
-    lateralMetersPerSecond: Math.sin(headingRadians) * speedMetersPerSecond,
-    distanceMetersPerSecond: Math.cos(headingRadians) * speedMetersPerSecond,
-  };
-}
-
-function angularVelocityAtPoint(
-  angularVelocityRadiansPerSecond: number,
-  arm: PhysicsVector
-): PhysicsVelocity {
-  return {
-    lateralMetersPerSecond: angularVelocityRadiansPerSecond * arm.distanceMeters,
-    distanceMetersPerSecond: -angularVelocityRadiansPerSecond * arm.lateralMeters,
-  };
-}
-
-function addVectors(a: PhysicsVector, b: PhysicsVector): PhysicsVector {
-  return {
-    lateralMeters: a.lateralMeters + b.lateralMeters,
-    distanceMeters: a.distanceMeters + b.distanceMeters,
-  };
-}
-
-function subtractVectors(a: PhysicsVector, b: PhysicsVector): PhysicsVector {
-  return {
-    lateralMeters: a.lateralMeters - b.lateralMeters,
-    distanceMeters: a.distanceMeters - b.distanceMeters,
-  };
-}
-
-function scaleVector(vector: PhysicsVector, scale: number): PhysicsVector {
-  return {
-    lateralMeters: vector.lateralMeters * scale,
-    distanceMeters: vector.distanceMeters * scale,
-  };
-}
-
-function addVelocities(a: PhysicsVelocity, b: PhysicsVelocity): PhysicsVelocity {
-  return {
-    lateralMetersPerSecond: a.lateralMetersPerSecond + b.lateralMetersPerSecond,
-    distanceMetersPerSecond: a.distanceMetersPerSecond + b.distanceMetersPerSecond,
-  };
-}
-
-function subtractVelocities(a: PhysicsVelocity, b: PhysicsVelocity): PhysicsVelocity {
-  return {
-    lateralMetersPerSecond: a.lateralMetersPerSecond - b.lateralMetersPerSecond,
-    distanceMetersPerSecond: a.distanceMetersPerSecond - b.distanceMetersPerSecond,
-  };
-}
-
-function dotVector(a: PhysicsVector, b: PhysicsVector): number {
-  return a.lateralMeters * b.lateralMeters + a.distanceMeters * b.distanceMeters;
-}
-
-function dotVelocity(velocity: PhysicsVelocity, vector: PhysicsVector | PhysicsVelocity): number {
-  const lateral = 'lateralMeters' in vector ? vector.lateralMeters : vector.lateralMetersPerSecond;
-  const distance =
-    'distanceMeters' in vector ? vector.distanceMeters : vector.distanceMetersPerSecond;
-  return velocity.lateralMetersPerSecond * lateral + velocity.distanceMetersPerSecond * distance;
-}
-
-function clockwiseCross(a: PhysicsVector, b: PhysicsVector): number {
-  return a.distanceMeters * b.lateralMeters - a.lateralMeters * b.distanceMeters;
 }
 
 function nearestLaneIndex(road: Road, lateralMeters: number): number {
@@ -1287,49 +990,6 @@ function validateVehicle(vehicle: TrafficVehicle): void {
     'vehicle.patrolDisengageSecondsRemaining',
     vehicle.patrolDisengageSecondsRemaining
   );
-}
-
-function validateRigidBody(body: RigidBody): void {
-  if (typeof body !== 'object' || body === null) {
-    throw new TypeError('RigidBody must be an object');
-  }
-  if (typeof body.id !== 'string' || body.id.length === 0) {
-    throw new TypeError('RigidBody.id must be a non-empty string');
-  }
-  assertFinite('body.position.lateralMeters', body.position.lateralMeters);
-  assertFinite('body.position.distanceMeters', body.position.distanceMeters);
-  assertFinite('body.velocity.lateralMetersPerSecond', body.velocity.lateralMetersPerSecond);
-  assertFinite('body.velocity.distanceMetersPerSecond', body.velocity.distanceMetersPerSecond);
-  assertFinite('body.headingRadians', body.headingRadians);
-  assertFinite('body.angularVelocityRadiansPerSecond', body.angularVelocityRadiansPerSecond);
-  assertPositive('body.widthMeters', body.widthMeters);
-  assertPositive('body.lengthMeters', body.lengthMeters);
-  assertPositive('body.massKilograms', body.massKilograms);
-}
-
-function validateRigidBodyContact(contact: RigidBodyContact): void {
-  if (typeof contact !== 'object' || contact === null) {
-    throw new TypeError('RigidBodyContact must be an object');
-  }
-  assertFinite('contact.normal.lateralMeters', contact.normal.lateralMeters);
-  assertFinite('contact.normal.distanceMeters', contact.normal.distanceMeters);
-  const normalLength = Math.hypot(contact.normal.lateralMeters, contact.normal.distanceMeters);
-  if (Math.abs(normalLength - 1) > 1e-9) {
-    throw new RangeError(`contact normal must be normalized, got ${normalLength}`);
-  }
-  assertPositive('contact.penetrationMeters', contact.penetrationMeters);
-  assertFinite('contact.point.lateralMeters', contact.point.lateralMeters);
-  assertFinite('contact.point.distanceMeters', contact.point.distanceMeters);
-}
-
-function validateRigidBodyResponseTuning(tuning: RigidBodyResponseTuning): void {
-  if (typeof tuning !== 'object' || tuning === null) {
-    throw new TypeError('RigidBodyResponseTuning must be an object');
-  }
-  assertRange('restitution', tuning.restitution, 0, 1);
-  assertRange('friction', tuning.friction, 0, 1);
-  assertRange('positionalCorrection', tuning.positionalCorrection, 0, 1);
-  assertNonNegative('penetrationSlopMeters', tuning.penetrationSlopMeters);
 }
 
 function assertTrafficKind(kind: TrafficVehicleKind): void {

@@ -1,5 +1,6 @@
 import type { Road } from '/src/game/road.js';
 import type { TruckImpact, TruckState } from '/src/game/truck.js';
+import { validatePoint, type WorldPoint } from '/src/game/worldGeometry.js';
 
 export type BarrierSide = 'left' | 'right';
 
@@ -12,19 +13,21 @@ export interface TruckFootprintDimensions {
   readonly hitchGapMeters: number;
 }
 
+/** Axis-aligned bounds in the Cartesian world plane. */
 export interface WorldAabb {
-  readonly minLateralMeters: number;
-  readonly maxLateralMeters: number;
-  readonly minDistanceMeters: number;
-  readonly maxDistanceMeters: number;
+  readonly minXMeters: number;
+  readonly maxXMeters: number;
+  readonly minYMeters: number;
+  readonly maxYMeters: number;
 }
 
 export interface RoadBarrierImpact {
   readonly kind: 'barrier';
   readonly side: BarrierSide;
   readonly penetrationMeters: number;
-  readonly minDistanceMeters: number;
-  readonly maxDistanceMeters: number;
+  /** World-space extent of the contacting body along the road. */
+  readonly minYMeters: number;
+  readonly maxYMeters: number;
 }
 
 export interface RoadCollisionTuning {
@@ -66,10 +69,8 @@ export function buildTruckFootprint(
   const hitchLengthMeters =
     dimensions.cabLengthMeters / 2 + dimensions.trailerLengthMeters / 2 + dimensions.hitchGapMeters;
   const trailerCenter = {
-    lateralMeters:
-      truck.position.lateralMeters - Math.sin(truck.trailerHeadingRadians) * hitchLengthMeters,
-    distanceMeters:
-      truck.position.distanceMeters - Math.cos(truck.trailerHeadingRadians) * hitchLengthMeters,
+    xMeters: truck.position.xMeters - Math.sin(truck.trailerHeadingRadians) * hitchLengthMeters,
+    yMeters: truck.position.yMeters - Math.cos(truck.trailerHeadingRadians) * hitchLengthMeters,
   };
 
   return [
@@ -98,16 +99,19 @@ export function detectRoadBarrierImpact(
   let strongest: RoadBarrierImpact | null = null;
   for (const box of boxes) {
     validateAabb(box);
-    const leftPenetration = road.leftBarrierLateralMeters - box.minLateralMeters;
-    const rightPenetration = box.maxLateralMeters - road.rightBarrierLateralMeters;
+    // Zero-curvature shortcut: on the straight prototype route the road's
+    // lateral barrier offsets coincide with world x. M5.6 replaces this with
+    // sampled world-space barrier geometry.
+    const leftPenetration = road.leftBarrierLateralMeters - box.minXMeters;
+    const rightPenetration = box.maxXMeters - road.rightBarrierLateralMeters;
 
     if (leftPenetration > 0) {
       strongest = strongerImpact(strongest, {
         kind: 'barrier',
         side: 'left',
         penetrationMeters: leftPenetration,
-        minDistanceMeters: box.minDistanceMeters,
-        maxDistanceMeters: box.maxDistanceMeters,
+        minYMeters: box.minYMeters,
+        maxYMeters: box.maxYMeters,
       });
     }
     if (rightPenetration > 0) {
@@ -115,8 +119,8 @@ export function detectRoadBarrierImpact(
         kind: 'barrier',
         side: 'right',
         penetrationMeters: rightPenetration,
-        minDistanceMeters: box.minDistanceMeters,
-        maxDistanceMeters: box.maxDistanceMeters,
+        minYMeters: box.minYMeters,
+        maxYMeters: box.maxYMeters,
       });
     }
   }
@@ -169,7 +173,7 @@ export function resolveRoadBarrierContact(
 }
 
 function orientedRectAabb(
-  center: TruckState['position'],
+  center: WorldPoint,
   headingRadians: number,
   widthMeters: number,
   lengthMeters: number
@@ -179,20 +183,20 @@ function orientedRectAabb(
   const halfWidth = widthMeters / 2;
   const halfLength = lengthMeters / 2;
   const corners = [
-    { lateral: -halfWidth, distance: -halfLength },
-    { lateral: halfWidth, distance: -halfLength },
-    { lateral: halfWidth, distance: halfLength },
-    { lateral: -halfWidth, distance: halfLength },
+    { across: -halfWidth, along: -halfLength },
+    { across: halfWidth, along: -halfLength },
+    { across: halfWidth, along: halfLength },
+    { across: -halfWidth, along: halfLength },
   ].map(corner => ({
-    lateralMeters: center.lateralMeters + corner.lateral * cos + corner.distance * sin,
-    distanceMeters: center.distanceMeters - corner.lateral * sin + corner.distance * cos,
+    xMeters: center.xMeters + corner.across * cos + corner.along * sin,
+    yMeters: center.yMeters - corner.across * sin + corner.along * cos,
   }));
 
   return {
-    minLateralMeters: Math.min(...corners.map(corner => corner.lateralMeters)),
-    maxLateralMeters: Math.max(...corners.map(corner => corner.lateralMeters)),
-    minDistanceMeters: Math.min(...corners.map(corner => corner.distanceMeters)),
-    maxDistanceMeters: Math.max(...corners.map(corner => corner.distanceMeters)),
+    minXMeters: Math.min(...corners.map(corner => corner.xMeters)),
+    maxXMeters: Math.max(...corners.map(corner => corner.xMeters)),
+    minYMeters: Math.min(...corners.map(corner => corner.yMeters)),
+    maxYMeters: Math.max(...corners.map(corner => corner.yMeters)),
   };
 }
 
@@ -210,11 +214,7 @@ function validateTruck(truck: TruckState): void {
   if (typeof truck !== 'object' || truck === null) {
     throw new TypeError('TruckState must be an object');
   }
-  if (typeof truck.position !== 'object' || truck.position === null) {
-    throw new TypeError('TruckState.position must be an object');
-  }
-  assertFinite('truck.position.lateralMeters', truck.position.lateralMeters);
-  assertFinite('truck.position.distanceMeters', truck.position.distanceMeters);
+  validatePoint('truck.position', truck.position);
   assertFinite('truck.headingRadians', truck.headingRadians);
   assertFinite('truck.trailerHeadingRadians', truck.trailerHeadingRadians);
   assertFinite('truck.cargoIntegrity', truck.cargoIntegrity);
@@ -268,18 +268,18 @@ function validateAabb(box: WorldAabb): void {
   if (typeof box !== 'object' || box === null) {
     throw new TypeError('WorldAabb must be an object');
   }
-  assertFinite('minLateralMeters', box.minLateralMeters);
-  assertFinite('maxLateralMeters', box.maxLateralMeters);
-  assertFinite('minDistanceMeters', box.minDistanceMeters);
-  assertFinite('maxDistanceMeters', box.maxDistanceMeters);
-  if (box.minLateralMeters > box.maxLateralMeters) {
+  assertFinite('minXMeters', box.minXMeters);
+  assertFinite('maxXMeters', box.maxXMeters);
+  assertFinite('minYMeters', box.minYMeters);
+  assertFinite('maxYMeters', box.maxYMeters);
+  if (box.minXMeters > box.maxXMeters) {
     throw new RangeError(
-      `minLateralMeters must be <= maxLateralMeters, got ${box.minLateralMeters} > ${box.maxLateralMeters}`
+      `minXMeters must be <= maxXMeters, got ${box.minXMeters} > ${box.maxXMeters}`
     );
   }
-  if (box.minDistanceMeters > box.maxDistanceMeters) {
+  if (box.minYMeters > box.maxYMeters) {
     throw new RangeError(
-      `minDistanceMeters must be <= maxDistanceMeters, got ${box.minDistanceMeters} > ${box.maxDistanceMeters}`
+      `minYMeters must be <= maxYMeters, got ${box.minYMeters} > ${box.maxYMeters}`
     );
   }
 }

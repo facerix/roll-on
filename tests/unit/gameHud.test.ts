@@ -7,7 +7,7 @@ import { createTruckState, DEFAULT_TRUCK_TUNING } from '../../src/game/truck.ts'
 
 test('game HUD snapshot formats persistent driving values', () => {
   const truck = createTruckState({
-    position: { lateralMeters: 1.2, distanceMeters: 402.33 },
+    position: { xMeters: 1.2, yMeters: 402.33 },
     headingRadians: 0,
     speedMetersPerSecond: 31.2928,
     yawRateRadiansPerSecond: 0,
@@ -43,7 +43,7 @@ test('game HUD snapshot formats persistent driving values', () => {
 
 test('game HUD snapshot clamps display percentages without mutating state', () => {
   const truck = createTruckState({
-    position: { lateralMeters: 0, distanceMeters: 0 },
+    position: { xMeters: 0, yMeters: 0 },
     headingRadians: 0,
     speedMetersPerSecond: 0,
     yawRateRadiansPerSecond: 0,

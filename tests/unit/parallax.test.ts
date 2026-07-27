@@ -15,7 +15,7 @@ const CAMERA_TUNING = { pixelsPerMeter: 10, anchorX: 160, anchorY: 360 };
 const VIEWPORT = { width: 320, height: 480 };
 
 function cameraAt(distanceMeters: number) {
-  return buildRoadCamera({ lateralMeters: 0, distanceMeters }, VIEWPORT, CAMERA_TUNING);
+  return buildRoadCamera({ xMeters: 0, yMeters: distanceMeters }, VIEWPORT, CAMERA_TUNING);
 }
 
 function layer(overrides: Partial<ParallaxLayerTuning> = {}): ParallaxLayerTuning {

@@ -2,6 +2,7 @@ import type { Drawable, Scene } from '/src/engine/renderer.js';
 import type { LaneMarkerSpan, Road } from '/src/game/road.js';
 import type { RoadCamera, ScreenPoint } from '/src/game/roadCamera.js';
 import type { TruckState } from '/src/game/truck.js';
+import type { WorldPoint } from '/src/game/worldGeometry.js';
 import type { TrafficVehicle } from '/src/game/traffic.js';
 
 export const COMMUTER_SPRITES = Object.freeze([
@@ -125,7 +126,7 @@ export function buildParallaxBands(options: BuildParallaxBandsOptions): readonly
   const bands: ParallaxBand[] = [];
   for (const layer of options.layers) {
     validateParallaxLayer(layer);
-    const focusDistanceMeters = options.camera.focus.distanceMeters * layer.speedRatio;
+    const focusDistanceMeters = options.camera.focus.yMeters * layer.speedRatio;
     const windowStart =
       focusDistanceMeters -
       (options.camera.viewportHeight - options.camera.anchorY) / options.camera.pixelsPerMeter;
@@ -221,12 +222,12 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
 
   for (const marker of visibleLaneMarkerSpans(options.road, options.camera)) {
     const top = projectWorldPoint(options.camera, {
-      lateralMeters: marker.lateralMeters,
-      distanceMeters: marker.endDistanceMeters,
+      xMeters: marker.lateralMeters,
+      yMeters: marker.endDistanceMeters,
     });
     const bottom = projectWorldPoint(options.camera, {
-      lateralMeters: marker.lateralMeters,
-      distanceMeters: marker.startDistanceMeters,
+      xMeters: marker.lateralMeters,
+      yMeters: marker.startDistanceMeters,
     });
     const width = tuning.laneMarkerWidthMeters * options.camera.pixelsPerMeter;
     drawables.push({
@@ -244,8 +245,8 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
       throw new TypeError(`Unknown traffic vehicle kind: ${String(vehicle.kind)}`);
     }
     const center = projectWorldPoint(options.camera, {
-      lateralMeters: vehicle.lateralMeters,
-      distanceMeters: vehicle.distanceMeters,
+      xMeters: vehicle.lateralMeters,
+      yMeters: vehicle.distanceMeters,
     });
     const isPatrol = vehicle.kind === 'patrol';
     drawables.push({
@@ -283,9 +284,8 @@ export function commuterSpriteForId(id: number): (typeof COMMUTER_SPRITES)[numbe
 function visibleLaneMarkerSpans(road: Road, camera: RoadCamera): readonly LaneMarkerSpan[] {
   const window = {
     startDistanceMeters:
-      camera.focus.distanceMeters -
-      (camera.viewportHeight - camera.anchorY) / camera.pixelsPerMeter,
-    endDistanceMeters: camera.focus.distanceMeters + camera.anchorY / camera.pixelsPerMeter,
+      camera.focus.yMeters - (camera.viewportHeight - camera.anchorY) / camera.pixelsPerMeter,
+    endDistanceMeters: camera.focus.yMeters + camera.anchorY / camera.pixelsPerMeter,
   };
   const spans: LaneMarkerSpan[] = [];
   const firstCadenceIndex = Math.floor(window.startDistanceMeters / road.markerCadenceMeters);
@@ -312,14 +312,15 @@ function visibleLaneMarkerSpans(road: Road, camera: RoadCamera): readonly LaneMa
   return spans;
 }
 
-function projectWorldPoint(camera: RoadCamera, position: TruckState['position']): ScreenPoint {
+/**
+ * Zero-curvature projection shortcut: road cross-section offsets are passed in
+ * as world x and route distance as world y. True on the straight prototype
+ * route only; M5.5 replaces this with sampled road geometry.
+ */
+function projectWorldPoint(camera: RoadCamera, position: WorldPoint): ScreenPoint {
   return {
-    x:
-      camera.anchorX +
-      (position.lateralMeters - camera.focus.lateralMeters) * camera.pixelsPerMeter,
-    y:
-      camera.anchorY -
-      (position.distanceMeters - camera.focus.distanceMeters) * camera.pixelsPerMeter,
+    x: camera.anchorX + (position.xMeters - camera.focus.xMeters) * camera.pixelsPerMeter,
+    y: camera.anchorY - (position.yMeters - camera.focus.yMeters) * camera.pixelsPerMeter,
   };
 }
 
@@ -330,12 +331,12 @@ function horizontalBand(
   color: string
 ): Drawable {
   const left = projectWorldPoint(camera, {
-    lateralMeters: leftLateralMeters,
-    distanceMeters: camera.focus.distanceMeters,
+    xMeters: leftLateralMeters,
+    yMeters: camera.focus.yMeters,
   });
   const right = projectWorldPoint(camera, {
-    lateralMeters: rightLateralMeters,
-    distanceMeters: camera.focus.distanceMeters,
+    xMeters: rightLateralMeters,
+    yMeters: camera.focus.yMeters,
   });
 
   return {
@@ -350,14 +351,14 @@ function horizontalBand(
 
 function parallaxBand(camera: RoadCamera, band: ParallaxBand): Drawable {
   const left = projectWorldPoint(camera, {
-    lateralMeters: band.leftLateralMeters,
-    distanceMeters: camera.focus.distanceMeters,
+    xMeters: band.leftLateralMeters,
+    yMeters: camera.focus.yMeters,
   });
   const right = projectWorldPoint(camera, {
-    lateralMeters: band.rightLateralMeters,
-    distanceMeters: camera.focus.distanceMeters,
+    xMeters: band.rightLateralMeters,
+    yMeters: camera.focus.yMeters,
   });
-  const focusDistanceMeters = camera.focus.distanceMeters * band.speedRatio;
+  const focusDistanceMeters = camera.focus.yMeters * band.speedRatio;
   const topY =
     camera.anchorY - (band.endDistanceMeters - focusDistanceMeters) * camera.pixelsPerMeter;
   const bottomY =
@@ -375,8 +376,8 @@ function parallaxBand(camera: RoadCamera, band: ParallaxBand): Drawable {
 
 function barrier(camera: RoadCamera, lateralMeters: number, color: string): Drawable {
   const center = projectWorldPoint(camera, {
-    lateralMeters,
-    distanceMeters: camera.focus.distanceMeters,
+    xMeters: lateralMeters,
+    yMeters: camera.focus.yMeters,
   });
   const width = Math.max(2, camera.pixelsPerMeter * 0.18);
 
@@ -399,10 +400,8 @@ function buildTruckDrawables(
   const hitchLengthMeters =
     dimensions.cabLengthMeters / 2 + dimensions.trailerLengthMeters / 2 + dimensions.hitchGapMeters;
   const trailerCenter = projectWorldPoint(camera, {
-    lateralMeters:
-      truck.position.lateralMeters - Math.sin(truck.trailerHeadingRadians) * hitchLengthMeters,
-    distanceMeters:
-      truck.position.distanceMeters - Math.cos(truck.trailerHeadingRadians) * hitchLengthMeters,
+    xMeters: truck.position.xMeters - Math.sin(truck.trailerHeadingRadians) * hitchLengthMeters,
+    yMeters: truck.position.yMeters - Math.cos(truck.trailerHeadingRadians) * hitchLengthMeters,
   });
   return [
     {

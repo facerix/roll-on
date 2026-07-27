@@ -30,7 +30,7 @@ const TRUCK_DIMENSIONS: RoadSceneTruckDimensions = {
 
 function truckAt(distanceMeters: number): TruckState {
   return createTruckState({
-    position: { lateralMeters: 0, distanceMeters },
+    position: { xMeters: 0, yMeters: distanceMeters },
     headingRadians: 0,
     speedMetersPerSecond: 0,
     yawRateRadiansPerSecond: 0,
@@ -122,7 +122,7 @@ test('road scene drawables remain finite for normal viewport and truck positions
   const scene = sceneFor(
     createTruckState({
       ...truckAt(128),
-      position: { lateralMeters: 3.4, distanceMeters: 128 },
+      position: { xMeters: 3.4, yMeters: 128 },
       headingRadians: 0.1,
       trailerHeadingRadians: -0.08,
     })

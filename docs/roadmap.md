@@ -128,7 +128,43 @@ rectangular inertia, damped collision velocities, and no general-purpose physics
 
 ---
 
-## Milestone 5 — Stage 1 end-to-end
+## Milestone 5 — Winding-road foundation
+
+Goal: curves become an engine property, owned once by route geometry and consumed identically by
+rendering, collision, traffic AI, and progress.
+
+Renumbering decision (2026-07-26): this milestone was inserted ahead of the original "Stage 1
+end-to-end" entry, which moved to Milestone 6. Route geometry is prerequisite work for Stage 1 and
+for the later pseudo-perspective renderer, so it has to land first. Nothing from the Stage 1 entry
+was discarded or absorbed.
+
+See `docs/m5-plan.md` for the slice-by-slice implementation plan.
+
+- [x] **Explicit Cartesian world space** (`src/game/worldGeometry.ts`, `src/game/rigidBody.ts`). ✓
+  World points, vectors, and velocities are `x`/`y` meters with a documented axis convention
+  (`+x` right, `+y` forward, heading from `+y` toward `+x`). The truck model and the SAT/impulse
+  solver were migrated off the ambiguous `{ lateralMeters, distanceMeters }` pair and the solver
+  moved out of `traffic.ts` into a road-agnostic module. Guarded by
+  `tests/unit/coordinateSpaces.test.ts`; behavior is unchanged on the straight road. See
+  `docs/m5-plan.md` M5.1.
+- [ ] **Piecewise route geometry**: validated straight/arc segments, tangent-continuous chaining,
+  deterministic sampling. See M5.2.
+- [ ] **Route/world conversion and bounded projection**. See M5.3.
+- [ ] **Road cross-section laid over the route**: lanes, shoulders, markers, barriers. See M5.4.
+- [ ] **Sampled winding-road mesh in the top-down renderer**. See M5.5.
+- [ ] **Curved barrier collision + truck route tracking**. See M5.6.
+- [ ] **Route-aware traffic with Cartesian rigid-body reconciliation**. See M5.7.
+- [ ] **Camera follow, debug geometry, and feel**. See M5.8.
+- [ ] **Integration, compatibility, and closeout**. See M5.9.
+
+Exit criterion: a 60-second seeded run on a default winding route is playable and deterministic,
+with route, rendered road edge, and collision boundary in agreement through both bend directions.
+
+---
+
+## Milestone 6 — Stage 1 end-to-end
+
+*Was Milestone 5 before the winding-road foundation was inserted ahead of it (2026-07-26).*
 
 - [ ] **Stage timeline**: enemy spawn schedule, difficulty ramp, finish-line trigger after N world-units.
 - [ ] **Finish-line sequence**: simple "stage complete" overlay, score tally (no fancy cinematic yet).

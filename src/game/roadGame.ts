@@ -161,7 +161,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
   function buildCurrentScore(): number {
     return calculateScore({
       baseDeliveredCargo:
-        Math.max(0, Math.floor(drivingState.truck.position.distanceMeters)) * BASE_POINTS_PER_METER,
+        Math.max(0, Math.floor(drivingState.truck.position.yMeters)) * BASE_POINTS_PER_METER,
       cargoIntegrity: drivingState.truck.cargoIntegrity,
       integrityMultiplier: INTEGRITY_SCORE_MULTIPLIER,
       takedownCount: trafficState.takedowns,
@@ -183,7 +183,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
 function createInitialDrivingState(): DrivingState {
   return {
     truck: createTruckState({
-      position: { lateralMeters: 0, distanceMeters: 0 },
+      position: { xMeters: 0, yMeters: 0 },
       headingRadians: 0,
       speedMetersPerSecond: 0,
       yawRateRadiansPerSecond: 0,

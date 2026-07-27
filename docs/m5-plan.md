@@ -180,7 +180,20 @@ truth indefinitely.
 
 ## M5.1 — Make Cartesian world space explicit
 
-**Status:** Not started.
+**Status:** Complete (2026-07-26).
+
+Landed as `src/game/worldGeometry.ts` (world point/vector/velocity types, heading conventions, and
+validated arithmetic) plus `src/game/rigidBody.ts`, which extracts the SAT contact generator and
+impulse solver out of `traffic.ts` so the generic solver can be proven road-agnostic. Truck state,
+trailer swipe geometry, footprint AABBs, barrier impacts, and camera projection all speak `x`/`y`
+meters. `TrafficVehicle` keeps its route-relative fields; `buildVehicleRigidBody` /
+`applyResolvedVehicleBody` are the explicit, temporary adapters between the two spaces and are
+marked for deletion in M5.7. Straight-road behavior is byte-identical — every pre-existing
+assertion passes unchanged.
+
+Also required: a Node module-resolution hook for tests (`tests/browserSpecifierHooks.mjs`). The
+project's browser-absolute `/src/…` specifiers had never been resolved at test runtime because
+every cross-module import in tested code was `import type`. Recorded in `docs/kaizen.md`.
 
 Introduce shared world geometry types and migrate the existing truck and rigid-body solver from
 ambiguous lateral/distance field names to Cartesian `x`/`y` names. This is a semantic clarification,

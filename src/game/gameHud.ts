@@ -34,7 +34,7 @@ export function buildGameHudSnapshot(
   runStats: GameHudRunStats = { score: 0, takedowns: 0, eventText: '' }
 ): GameHudSnapshot {
   assertFinite('speedMetersPerSecond', truck.speedMetersPerSecond);
-  assertFinite('distanceMeters', truck.position.distanceMeters);
+  assertFinite('position.yMeters', truck.position.yMeters);
   assertFinite('cargoIntegrity', truck.cargoIntegrity);
   assertFinite('fuel.level', fuel.level);
   assertPositive('maxForwardSpeedMetersPerSecond', tuning.maxForwardSpeedMetersPerSecond);
@@ -59,7 +59,7 @@ export function buildGameHudSnapshot(
     fuelLevel,
     isFuelInFumes: fumes,
     fuelStatusText: fumes ? 'FUMES' : 'FUEL',
-    distanceText: `${Math.max(0, Math.round(truck.position.distanceMeters))} m`,
+    distanceText: `${Math.max(0, Math.round(truck.position.yMeters))} m`,
     statusText: truck.status.toUpperCase(),
     scoreText: runStats.score.toLocaleString('en-US'),
     takedownsText: String(runStats.takedowns),
