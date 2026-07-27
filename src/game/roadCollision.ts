@@ -8,6 +8,7 @@ export interface TruckFootprintDimensions {
   readonly cabLengthMeters: number;
   readonly trailerWidthMeters: number;
   readonly trailerLengthMeters: number;
+  /** Signed edge offset: positive leaves a gap; negative overlaps cab and trailer. */
   readonly hitchGapMeters: number;
 }
 
@@ -227,7 +228,27 @@ function validateDimensions(dimensions: TruckFootprintDimensions): void {
   assertPositive('cabLengthMeters', dimensions.cabLengthMeters);
   assertPositive('trailerWidthMeters', dimensions.trailerWidthMeters);
   assertPositive('trailerLengthMeters', dimensions.trailerLengthMeters);
-  assertNonNegative('hitchGapMeters', dimensions.hitchGapMeters);
+  validateHitchOffset(
+    'hitchGapMeters',
+    dimensions.hitchGapMeters,
+    dimensions.cabLengthMeters,
+    dimensions.trailerLengthMeters
+  );
+}
+
+function validateHitchOffset(
+  label: string,
+  hitchGapMeters: number,
+  cabLengthMeters: number,
+  trailerLengthMeters: number
+): void {
+  assertFinite(label, hitchGapMeters);
+  const centerDistanceMeters = cabLengthMeters / 2 + trailerLengthMeters / 2 + hitchGapMeters;
+  if (centerDistanceMeters <= 0) {
+    throw new RangeError(
+      `${label} must keep the trailer center behind the cab center, got ${hitchGapMeters}`
+    );
+  }
 }
 
 function validateRoad(road: Road): void {

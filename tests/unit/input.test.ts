@@ -186,3 +186,124 @@ test('preventDefault is NOT called on unbound key events', () => {
   target.emit('keydown', ev);
   assert.equal(ev._prevented, false);
 });
+
+/**
+ * Virtual source (the on-screen touch pad).
+ *
+ * `setVirtual` is a second input source feeding the same actions. Gameplay
+ * must not be able to tell the two apart, and holding an action on both at
+ * once must still read as ONE logical press.
+ */
+
+test('setVirtual drives isActive and latches press/release edges', () => {
+  const { input } = build();
+  assert.equal(input.isActive('throttle'), false);
+
+  input.setVirtual('throttle', true);
+  assert.equal(input.isActive('throttle'), true);
+  assert.equal(input.wasPressed('throttle'), true);
+
+  input.beginFrame();
+  input.setVirtual('throttle', false);
+  assert.equal(input.isActive('throttle'), false);
+  assert.equal(input.wasReleased('throttle'), true);
+});
+
+test('a redundant setVirtual does not re-latch a press', () => {
+  const { input } = build();
+  input.setVirtual('brake', true);
+  input.beginFrame();
+
+  input.setVirtual('brake', true);
+  assert.equal(input.wasPressed('brake'), false, 'still one physical press');
+  assert.equal(input.isActive('brake'), true);
+});
+
+test('keyboard and touch holding the same action is one logical press', () => {
+  // Finger on the gas pedal, then also ArrowUp. Gameplay should see a single
+  // press — a horn-style one-shot must not fire twice.
+  const { target, input } = build();
+  input.setVirtual('throttle', true);
+  input.beginFrame();
+
+  target.emit('keydown', keyEvent('ArrowUp'));
+  assert.equal(input.wasPressed('throttle'), false, 'already active via touch');
+  assert.equal(input.isActive('throttle'), true);
+});
+
+test('releasing one source while the other still holds does not release the action', () => {
+  // Lifting the finger while ArrowUp is still down must NOT cut the throttle.
+  const { target, input } = build();
+  input.setVirtual('throttle', true);
+  target.emit('keydown', keyEvent('ArrowUp'));
+  input.beginFrame();
+
+  input.setVirtual('throttle', false);
+  assert.equal(input.isActive('throttle'), true, 'keyboard still holds it');
+  assert.equal(input.wasReleased('throttle'), false);
+
+  target.emit('keyup', keyEvent('ArrowUp'));
+  assert.equal(input.isActive('throttle'), false);
+  assert.equal(input.wasReleased('throttle'), true, 'last source releasing is the up-edge');
+});
+
+test('a key release does not cancel a virtual hold', () => {
+  // Symmetric to the above: the finger is still on the pedal.
+  const { target, input } = build();
+  target.emit('keydown', keyEvent('ArrowUp'));
+  input.setVirtual('throttle', true);
+  input.beginFrame();
+
+  target.emit('keyup', keyEvent('ArrowUp'));
+  assert.equal(input.isActive('throttle'), true);
+  assert.equal(input.wasReleased('throttle'), false);
+});
+
+test('clearVirtual drops all virtual holds and emits their releases', () => {
+  const { input } = build();
+  input.setVirtual('throttle', true);
+  input.setVirtual('steerLeft', true);
+  input.beginFrame();
+
+  input.clearVirtual();
+  assert.equal(input.isActive('throttle'), false);
+  assert.equal(input.isActive('steerLeft'), false);
+  assert.equal(input.wasReleased('throttle'), true);
+  assert.equal(input.wasReleased('steerLeft'), true);
+
+  input.beginFrame();
+  input.clearVirtual();
+  assert.equal(input.wasReleased('throttle'), false, 'clearVirtual is idempotent');
+});
+
+test('blur releases virtual holds too', () => {
+  // The touch pad clears itself on blur as well, but a pointer event can go
+  // missing. Backgrounding the tab must never leave the throttle stuck on.
+  const { target, input } = build();
+  input.setVirtual('throttle', true);
+  target.emit('keydown', keyEvent('ArrowLeft'));
+
+  target.emit('blur', {});
+
+  assert.equal(input.isActive('throttle'), false);
+  assert.equal(input.isActive('steerLeft'), false);
+  assert.equal(input.wasReleased('throttle'), true);
+  assert.equal(input.wasReleased('steerLeft'), true);
+});
+
+test('blur reports one release for an action held by both sources', () => {
+  const { target, input } = build();
+  input.setVirtual('throttle', true);
+  target.emit('keydown', keyEvent('ArrowUp'));
+
+  target.emit('blur', {});
+  assert.equal(input.wasReleased('throttle'), true);
+  assert.equal(input.isActive('throttle'), false);
+});
+
+test('detach clears virtual holds', () => {
+  const { input } = build();
+  input.setVirtual('brake', true);
+  input.detach();
+  assert.equal(input.isActive('brake'), false);
+});

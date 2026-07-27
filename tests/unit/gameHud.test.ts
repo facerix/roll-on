@@ -18,7 +18,11 @@ test('game HUD snapshot formats persistent driving values', () => {
   });
 
   assert.deepEqual(
-    buildGameHudSnapshot(truck, DEFAULT_TRUCK_TUNING, createFuelState({ level: 0.42 })),
+    buildGameHudSnapshot(truck, DEFAULT_TRUCK_TUNING, createFuelState({ level: 0.42 }), undefined, {
+      score: 12_345,
+      takedowns: 4,
+      eventText: 'ROAD RAGE +250',
+    }),
     {
       speedMphText: '70',
       speedMetersPerSecondText: '31.3 m/s',
@@ -30,6 +34,9 @@ test('game HUD snapshot formats persistent driving values', () => {
       fuelStatusText: 'FUEL',
       distanceText: '402 m',
       statusText: 'DRIVING',
+      scoreText: '12,345',
+      takedownsText: '4',
+      eventText: 'ROAD RAGE +250',
     }
   );
 });
@@ -59,5 +66,8 @@ test('game HUD snapshot clamps display percentages without mutating state', () =
   assert.equal(snapshot.isFuelInFumes, true);
   assert.equal(snapshot.fuelStatusText, 'FUMES');
   assert.equal(snapshot.statusText, 'CRASHED');
+  assert.equal(snapshot.scoreText, '0');
+  assert.equal(snapshot.takedownsText, '0');
+  assert.equal(snapshot.eventText, '');
   assert.equal(truck.cargoIntegrity, 0);
 });

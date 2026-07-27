@@ -16,7 +16,10 @@ export function createGameHudView(): GameHudView {
   const fuelFill = h('span', { className: 'roll-on-hud-fuel-fill' });
   const fuelGauge = h('span', { className: 'roll-on-hud-fuel-gauge' }, [fuelFill]);
   const distance = h('span', { className: 'roll-on-hud-value', textContent: '0 m' });
+  const score = h('span', { className: 'roll-on-hud-value', textContent: '0' });
+  const takedowns = h('span', { className: 'roll-on-hud-value', textContent: '0' });
   const status = h('span', { className: 'roll-on-hud-status', textContent: 'DRIVING' });
+  const event = h('output', { className: 'roll-on-hud-event', textContent: '' });
 
   const root = h('section', { className: 'roll-on-hud', ariaLabel: 'Driving status' }, [
     h('div', { className: 'roll-on-hud-brand', textContent: 'ROLL ON' }),
@@ -41,8 +44,17 @@ export function createGameHudView(): GameHudView {
         h('dt', { textContent: 'Run' }),
         h('dd', {}, [distance]),
       ]),
+      h('div', { className: 'roll-on-hud-readout' }, [
+        h('dt', { textContent: 'Score' }),
+        h('dd', {}, [score]),
+      ]),
+      h('div', { className: 'roll-on-hud-readout' }, [
+        h('dt', { textContent: 'Rage' }),
+        h('dd', {}, [takedowns]),
+      ]),
     ]),
     status,
+    event,
   ]);
 
   return {
@@ -56,8 +68,12 @@ export function createGameHudView(): GameHudView {
       fuelFill.style.transform = `scaleX(${snapshot.fuelLevel})`;
       fuelGauge.dataset.fumes = String(snapshot.isFuelInFumes);
       distance.textContent = snapshot.distanceText;
+      score.textContent = snapshot.scoreText;
+      takedowns.textContent = snapshot.takedownsText;
       status.textContent = snapshot.isFuelInFumes ? snapshot.fuelStatusText : snapshot.statusText;
       status.dataset.status = snapshot.isFuelInFumes ? 'fumes' : snapshot.statusText.toLowerCase();
+      event.textContent = snapshot.eventText;
+      event.dataset.visible = String(snapshot.eventText.length > 0);
     },
   };
 }

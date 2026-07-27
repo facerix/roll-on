@@ -12,6 +12,15 @@ export interface GameHudSnapshot {
   readonly fuelStatusText: string;
   readonly distanceText: string;
   readonly statusText: string;
+  readonly scoreText: string;
+  readonly takedownsText: string;
+  readonly eventText: string;
+}
+
+export interface GameHudRunStats {
+  readonly score: number;
+  readonly takedowns: number;
+  readonly eventText: string;
 }
 
 const METERS_PER_SECOND_TO_MPH = 2.2369362921;
@@ -21,13 +30,16 @@ export function buildGameHudSnapshot(
   truck: TruckState,
   tuning: TruckTuning,
   fuel: FuelState,
-  fuelTuning?: FuelTuning
+  fuelTuning?: FuelTuning,
+  runStats: GameHudRunStats = { score: 0, takedowns: 0, eventText: '' }
 ): GameHudSnapshot {
   assertFinite('speedMetersPerSecond', truck.speedMetersPerSecond);
   assertFinite('distanceMeters', truck.position.distanceMeters);
   assertFinite('cargoIntegrity', truck.cargoIntegrity);
   assertFinite('fuel.level', fuel.level);
   assertPositive('maxForwardSpeedMetersPerSecond', tuning.maxForwardSpeedMetersPerSecond);
+  assertNonNegativeInteger('score', runStats.score);
+  assertNonNegativeInteger('takedowns', runStats.takedowns);
 
   const topSpeedPercent = clamp(
     truck.speedMetersPerSecond / tuning.maxForwardSpeedMetersPerSecond,
@@ -49,6 +61,9 @@ export function buildGameHudSnapshot(
     fuelStatusText: fumes ? 'FUMES' : 'FUEL',
     distanceText: `${Math.max(0, Math.round(truck.position.distanceMeters))} m`,
     statusText: truck.status.toUpperCase(),
+    scoreText: runStats.score.toLocaleString('en-US'),
+    takedownsText: String(runStats.takedowns),
+    eventText: runStats.eventText,
   };
 }
 
@@ -63,6 +78,12 @@ function assertPositive(label: string, value: number): void {
   if (value <= 0) {
     throw new RangeError(`${label} must be positive, got ${value}`);
   }
+}
+
+function assertNonNegativeInteger(label: string, value: number): void {
+  assertFinite(label, value);
+  if (!Number.isInteger(value)) throw new TypeError(`${label} must be an integer, got ${value}`);
+  if (value < 0) throw new RangeError(`${label} must be non-negative, got ${value}`);
 }
 
 function clamp(value: number, min: number, max: number): number {

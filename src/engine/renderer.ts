@@ -43,11 +43,23 @@ export interface OrientedRectDrawable {
   color: Color;
 }
 
+/** Raster sprite rotated around its center point. */
+export interface OrientedSpriteDrawable {
+  kind: 'oriented-sprite';
+  centerX: number;
+  centerY: number;
+  w: number;
+  h: number;
+  rotationRadians: number;
+  /** Root-relative URL so scene data stays serializable and deployment-safe. */
+  src: string;
+}
+
 /**
  * Discriminated union. Grows over time (sprites, lines, text). The `kind`
  * tag exists so the renderer's switch is exhaustiveness-checked by TS.
  */
-export type Drawable = RectDrawable | OrientedRectDrawable;
+export type Drawable = RectDrawable | OrientedRectDrawable | OrientedSpriteDrawable;
 
 export interface Scene {
   /** Background color painted before any drawable. */
@@ -65,11 +77,24 @@ export interface Renderer {
   draw(scene: Scene): void;
 }
 
+export interface Canvas2DRendererOptions {
+  /** Injectable for deterministic tests; production uses the browser Image constructor. */
+  readonly createImage?: () => HTMLImageElement;
+}
+
+interface SpriteImageState {
+  readonly image: HTMLImageElement;
+  status: 'loading' | 'loaded' | 'error';
+}
+
 export class Canvas2DRenderer implements Renderer {
   readonly #ctx: CanvasRenderingContext2D;
+  readonly #createImage: () => HTMLImageElement;
+  readonly #spriteImages = new Map<string, SpriteImageState>();
 
-  constructor(ctx: CanvasRenderingContext2D) {
+  constructor(ctx: CanvasRenderingContext2D, options: Canvas2DRendererOptions = {}) {
     this.#ctx = ctx;
+    this.#createImage = options.createImage ?? (() => new Image());
     // Disable image smoothing once at construction. Browsers reset some
     // context state across context-loss events, but for the prototype this
     // is sufficient — we'll revisit if we hit a context-lost recovery path.
@@ -114,11 +139,45 @@ export class Canvas2DRenderer implements Renderer {
           ctx.fillRect(-d.w / 2, -d.h / 2, d.w, d.h);
           ctx.restore();
           break;
+        case 'oriented-sprite': {
+          const state = this.#getSpriteImage(d.src);
+          if (state.status === 'error') {
+            throw new Error(`Failed to load sprite: ${d.src}`);
+          }
+          if (state.status === 'loading') break;
+
+          ctx.save();
+          ctx.translate(d.centerX, d.centerY);
+          ctx.rotate(d.rotationRadians);
+          ctx.drawImage(state.image, -d.w / 2, -d.h / 2, d.w, d.h);
+          ctx.restore();
+          break;
+        }
         default: {
           const exhaustive: never = d;
           throw new Error(`Unhandled drawable kind: ${String(exhaustive)}`);
         }
       }
     }
+  }
+
+  #getSpriteImage(src: string): SpriteImageState {
+    const cached = this.#spriteImages.get(src);
+    if (cached) return cached;
+
+    const image = this.#createImage();
+    const state: SpriteImageState = { image, status: 'loading' };
+    image.addEventListener('load', () => {
+      state.status = 'loaded';
+    });
+    image.addEventListener('error', () => {
+      state.status = 'error';
+    });
+    image.src = src;
+    if (image.complete) {
+      state.status = image.naturalWidth > 0 ? 'loaded' : 'error';
+    }
+    this.#spriteImages.set(src, state);
+    return state;
   }
 }

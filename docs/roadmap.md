@@ -89,14 +89,42 @@ Exit criterion: fuel pressure is the dominant tension during a run.
 
 ## Milestone 4 — Traffic + collisions + scoring
 
-- [ ] **Commuter car** entity: slow, lane-locked, occasional lane changes.
-- [ ] **Plow-over** for smaller vehicles → "Road Rage" bonus; integrity nick.
-- [ ] **Highway patrol cruiser**: faster, tries to pace the truck, mild ramming. No weapons yet.
-- [ ] **Cargo Integrity %**: degrades on hits; surfaces on HUD.
-- [ ] **Score model**: base + integrity×multiplier + takedowns. Mirrors §6 formula (minus diesel-residuals/bonuses for now).
+- [x] **Commuter car** entity. ✓ Deterministic world-space traffic state with slow lane-locked
+  cars, timed adjacent-lane changes, seeded spawning, and offscreen culling in
+  `src/game/traffic.ts`.
+- [x] **Plow-over** for smaller vehicles. ✓ Overlapping commuters are removed, award a Road Rage
+  takedown and HUD callout, and nick Cargo Integrity.
+- [x] **Highway patrol cruiser**. ✓ Faster cruisers converge on the player's nearest lane, adjust
+  speed to pace the trailer, and deliver cooldown-limited ramming damage. No weapons yet.
+- [x] **Cargo Integrity %**. ✓ Commuter and patrol hits degrade the existing truck integrity model;
+  the HUD keeps the percentage visible alongside live traffic feedback.
+- [x] **Score model**. ✓ `src/game/score.ts` evaluates base + integrity×multiplier + takedowns.
+  During play, distance supplies provisional base points; diesel residuals, bonuses, and the final
+  delivered-cargo tally remain Milestone 5 work.
   - *Test*: score formula evaluates correctly for given inputs.
 
-Exit criterion: a 60-second run produces a meaningful, comparable score.
+**Exit criterion met**: a 60-second run produces a live, comparable score from distance, retained
+cargo integrity, and Road Rage takedowns. Traffic simulation, collisions, rendering, HUD state, and
+score arithmetic are covered by deterministic unit tests.
+
+### Milestone 4.1 — Limited rigid-body response
+
+- [x] **Oriented collision geometry**. ✓ Cab, trailer, commuters, and patrol cruisers resolve
+  contacts through SAT-generated normals, penetration depths, and approximate contact points.
+- [x] **Arcade impulse solver**. ✓ Low-restitution, friction-limited impulses and mass-weighted
+  positional correction keep bodies separated while preserving the truck's weight advantage.
+- [x] **Physical takedowns**. ✓ A sufficiently fast commuter impact pushes and spins a short-lived
+  disabled wreck before awarding Road Rage; low-speed contact separates without a false takedown.
+- [x] **Patrol standoff**. ✓ Cruiser AI paces behind the trailer's rear bumper instead of targeting
+  a point inside it; ramming damage uses per-cruiser cooldowns.
+- [x] **Bounded patrol encounters**. ✓ Only one cruiser encounter may exist at a time. Patrol AI
+  uses stronger emergency braking when the truck slows, and a cruiser that lands a ram disengages
+  behind the player before leaving the simulation instead of rejoining or stacking with another.
+- [x] **Traffic spacing**. ✓ Cars reject unsafe lane changes, occupied spawn windows are skipped,
+  and traffic-to-traffic contacts are resolved by the same solver.
+
+The solver is deliberately bounded: five sequential contact iterations per fixed tick, simple
+rectangular inertia, damped collision velocities, and no general-purpose physics dependency.
 
 ---
 
