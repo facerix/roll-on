@@ -1,5 +1,7 @@
 import {
   createWorldPoint,
+  normalizeHeading as normalizeAngle,
+  shortestHeadingDelta as angleDelta,
   validatePoint,
   type WorldPoint,
   type WorldSegment,
@@ -404,12 +406,4 @@ function assertPositive(label: string, value: number): void {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
-}
-
-function normalizeAngle(angle: number): number {
-  return Math.atan2(Math.sin(angle), Math.cos(angle));
-}
-
-function angleDelta(a: number, b: number): number {
-  return normalizeAngle(a - b);
 }

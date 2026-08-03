@@ -67,6 +67,25 @@ export function headingToUnitVector(headingRadians: number): WorldVector {
   });
 }
 
+/**
+ * Wrap a heading into `(-pi, pi]`, the canonical form for every heading stored
+ * in simulation state.
+ */
+export function normalizeHeading(headingRadians: number): number {
+  assertFinite('headingRadians', headingRadians);
+  return Math.atan2(Math.sin(headingRadians), Math.cos(headingRadians));
+}
+
+/**
+ * Signed shortest rotation from `fromRadians` to `toRadians`, in `(-pi, pi]`.
+ * Positive turns right, matching the rotation sense of this frame.
+ */
+export function shortestHeadingDelta(toRadians: number, fromRadians: number): number {
+  assertFinite('toRadians', toRadians);
+  assertFinite('fromRadians', fromRadians);
+  return normalizeHeading(toRadians - fromRadians);
+}
+
 export function velocityAlongHeading(
   headingRadians: number,
   speedMetersPerSecond: number

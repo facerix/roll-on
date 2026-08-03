@@ -12,7 +12,9 @@ import {
   dotVectors,
   dotVelocityWithVector,
   headingToUnitVector,
+  normalizeHeading,
   scaleVector,
+  shortestHeadingDelta,
   subtractVectors,
   subtractVelocities,
   velocityAlongHeading,
@@ -121,4 +123,29 @@ test('vector helpers reject non-finite operands', () => {
   assert.throws(() => headingToUnitVector(Number.NaN), TypeError);
   assert.throws(() => velocityAlongHeading(0, Number.NaN), TypeError);
   assert.throws(() => angularVelocityAtPoint(Number.NaN, valid), TypeError);
+});
+
+test('normalizeHeading wraps a heading into (-pi, pi]', () => {
+  assert.equal(normalizeHeading(0), 0);
+  assert.ok(Math.abs(normalizeHeading(Math.PI / 2 + 2 * Math.PI) - Math.PI / 2) < 1e-12);
+  assert.ok(Math.abs(normalizeHeading((-3 * Math.PI) / 2) - Math.PI / 2) < 1e-12);
+  assert.ok(Math.abs(normalizeHeading(-0.75 - 4 * Math.PI) + 0.75) < 1e-12);
+  for (const value of NON_FINITE) {
+    assert.throws(() => normalizeHeading(value), TypeError);
+  }
+});
+
+test('shortestHeadingDelta takes the short way around and is positive turning right', () => {
+  assert.ok(Math.abs(shortestHeadingDelta(0.1, -0.1) - 0.2) < 1e-12);
+  assert.ok(Math.abs(shortestHeadingDelta(-0.1, 0.1) + 0.2) < 1e-12);
+
+  // Across the +/-pi seam: a small right turn, not a nearly-full left one.
+  const acrossSeam = shortestHeadingDelta(-3, 3);
+  assert.ok(acrossSeam > 0);
+  assert.ok(Math.abs(acrossSeam - (2 * Math.PI - 6)) < 1e-12);
+
+  for (const value of NON_FINITE) {
+    assert.throws(() => shortestHeadingDelta(value, 0), TypeError);
+    assert.throws(() => shortestHeadingDelta(0, value), TypeError);
+  }
 });

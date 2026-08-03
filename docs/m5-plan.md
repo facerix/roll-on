@@ -223,7 +223,24 @@ straight-road regression is unchanged.
 
 ## M5.2 — Piecewise route geometry
 
-**Status:** Not started.
+**Status:** Complete (2026-08-02).
+
+Landed as `src/game/route.ts`: `createRoute` compiles validated `RouteSegmentDefinition`s into frozen
+chained segments, and `sampleRoute` returns center, unit tangent, unit normal, heading, and curvature
+at any distance. Positive `curvaturePerMeter` bends toward the driver's right; the sample normal is
+the tangent turned right, so positive lateral offset keeps the sign `road.ts` lane offsets already
+use. A distance exactly on a join belongs to the segment starting there, so reported curvature is the
+one being entered; the final segment owns its own end. Outside `[0, totalLengthMeters]` the route
+continues straight along its endpoint tangent with zero curvature.
+
+Curvature validation is two-tier per this plan: `RouteConstraints.maximumAbsoluteRoadOffsetMeters`
+rejects arcs that would fold a road edge through the curve center, and the stricter
+`minimumBendRadiusMeters` rejects playable-but-unnavigable hairpins. Constraints are caller-supplied
+and required — the route still knows nothing about lane count or width. `road.ts` must become the
+source of that offset in M5.4 rather than leaving fixtures to guess it.
+
+`normalizeAngle`/`angleDelta` moved out of `truck.ts` into `worldGeometry.ts` as `normalizeHeading` /
+`shortestHeadingDelta` so route and truck share one heading convention instead of two private copies.
 
 Add a pure route module that compiles validated segment definitions into deterministic sampleable
 geometry. Implement straight segments, constant-curvature arcs, cumulative segment-distance lookup,
