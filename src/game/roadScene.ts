@@ -235,13 +235,7 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
     if (vehicle.kind !== 'commuter' && vehicle.kind !== 'patrol') {
       throw new TypeError(`Unknown traffic vehicle kind: ${String(vehicle.kind)}`);
     }
-    const center = projectWorldPoint(
-      options.camera,
-      routeToWorld(options.road.route, {
-        distanceAlongRouteMeters: vehicle.distanceMeters,
-        lateralOffsetMeters: vehicle.lateralMeters,
-      })
-    );
+    const center = projectWorldPoint(options.camera, vehicle.worldPosition);
     const isPatrol = vehicle.kind === 'patrol';
     drawables.push({
       kind: 'oriented-sprite',

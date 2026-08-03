@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createRoad, DEFAULT_ROAD_TUNING } from '../../src/game/road.ts';
+import { createRoute, routeToWorld, sampleRoute } from '../../src/game/route.ts';
 import type { TruckFootprintDimensions } from '../../src/game/roadCollision.ts';
 import {
   detectRigidBodyContact,
@@ -18,6 +19,19 @@ import {
 import { createTruckState, type TruckState } from '../../src/game/truck.ts';
 
 const ROAD = createRoad(DEFAULT_ROAD_TUNING);
+const CURVED_ROAD = createRoad(
+  DEFAULT_ROAD_TUNING,
+  createRoute({
+    origin: { xMeters: 0, yMeters: 0 },
+    headingRadians: 0,
+    constraints: { maximumAbsoluteRoadOffsetMeters: 12, minimumBendRadiusMeters: 40 },
+    segments: [
+      { kind: 'straight', lengthMeters: 40 },
+      { kind: 'arc', lengthMeters: 60, curvaturePerMeter: 0.01 },
+      { kind: 'arc', lengthMeters: 60, curvaturePerMeter: -0.01 },
+    ],
+  })
+);
 const TRUCK_DIMENSIONS: TruckFootprintDimensions = {
   cabWidthMeters: 2.6,
   cabLengthMeters: 4,
@@ -60,6 +74,89 @@ test('commuter cars move forward and stay centered in their lane', () => {
 
   assert.equal(result.state.vehicles[0]!.distanceMeters, 145);
   assert.equal(result.state.vehicles[0]!.lateralMeters, ROAD.laneCenterOffsetsMeters[2]);
+});
+
+test('commuters follow route lane centers and headings through an S-curve', () => {
+  const commuter = createTrafficVehicle({
+    id: 1,
+    kind: 'commuter',
+    laneIndex: 2,
+    distanceMeters: 65,
+    speedMetersPerSecond: 15,
+    laneChangeCooldownSeconds: 99,
+  });
+  const distanceAlongRouteMeters = commuter.distanceMeters + commuter.speedMetersPerSecond;
+  const result = stepTraffic({
+    state: createTrafficState({ seed: 7, vehicles: [commuter], spawnCountdownSeconds: 99 }),
+    truck: truck({ position: { xMeters: 0, yMeters: 0 } }),
+    truckRoutePosition: { distanceAlongRouteMeters: 0, lateralOffsetMeters: 0 },
+    road: CURVED_ROAD,
+    truckDimensions: TRUCK_DIMENSIONS,
+    dtSeconds: 1,
+  });
+  const moved = result.state.vehicles[0]!;
+  const expected = routeToWorld(CURVED_ROAD.route, {
+    distanceAlongRouteMeters,
+    lateralOffsetMeters: CURVED_ROAD.laneCenterOffsetsMeters[2]!,
+  });
+  const expectedHeading = sampleRoute(CURVED_ROAD.route, distanceAlongRouteMeters).headingRadians;
+
+  assert.ok(Math.abs(moved.worldPosition.xMeters - expected.xMeters) < 1e-9);
+  assert.ok(Math.abs(moved.worldPosition.yMeters - expected.yMeters) < 1e-9);
+  assert.ok(Math.abs(moved.headingRadians - expectedHeading) < 1e-9);
+  assert.ok(Math.abs(moved.lateralMeters - CURVED_ROAD.laneCenterOffsetsMeters[2]!) < 1e-9);
+});
+
+test('a collision-displaced driving vehicle reacquires its nearby route position', () => {
+  const distanceAlongRouteMeters = 70;
+  const lateralOffsetMeters = CURVED_ROAD.laneCenterOffsetsMeters[2]!;
+  const sample = sampleRoute(CURVED_ROAD.route, distanceAlongRouteMeters);
+  const commuter = createTrafficVehicle({
+    id: 1,
+    kind: 'commuter',
+    laneIndex: 2,
+    distanceMeters: distanceAlongRouteMeters,
+    speedMetersPerSecond: 5,
+    laneChangeCooldownSeconds: 99,
+  });
+  const positioned = {
+    ...commuter,
+    lateralMeters: lateralOffsetMeters,
+    headingRadians: sample.headingRadians,
+    worldPosition: routeToWorld(CURVED_ROAD.route, {
+      distanceAlongRouteMeters,
+      lateralOffsetMeters,
+    }),
+    worldVelocity: {
+      xMetersPerSecond: sample.tangent.xMeters * 5,
+      yMetersPerSecond: sample.tangent.yMeters * 5,
+    },
+  };
+  const result = stepTraffic({
+    state: createTrafficState({
+      seed: 7,
+      vehicles: [positioned],
+      spawnCountdownSeconds: 99,
+    }),
+    truck: truck({ position: positioned.worldPosition, speedMetersPerSecond: 0 }),
+    truckRoutePosition: { distanceAlongRouteMeters, lateralOffsetMeters },
+    road: CURVED_ROAD,
+    truckDimensions: TRUCK_DIMENSIONS,
+    dtSeconds: 0,
+    tuning: {
+      ...DEFAULT_TRAFFIC_TUNING,
+      plowImpactSpeedMetersPerSecond: 100,
+    },
+  });
+
+  const resolved = result.state.vehicles[0]!;
+  assert.ok(Math.abs(resolved.distanceMeters - distanceAlongRouteMeters) < 2);
+  const reacquiredWorldPosition = routeToWorld(CURVED_ROAD.route, {
+    distanceAlongRouteMeters: resolved.distanceMeters,
+    lateralOffsetMeters: resolved.lateralMeters,
+  });
+  assert.ok(Math.abs(resolved.worldPosition.xMeters - reacquiredWorldPosition.xMeters) < 1e-9);
+  assert.ok(Math.abs(resolved.worldPosition.yMeters - reacquiredWorldPosition.yMeters) < 1e-9);
 });
 
 test('traffic accepts the signed hitch offset used by truck collision geometry', () => {

@@ -1,4 +1,5 @@
 import type { Road } from '/src/game/road.js';
+import { routeToWorld, sampleRoute, worldToRoute, type RoutePosition } from '/src/game/route.js';
 import {
   detectRigidBodyContact,
   resolveRigidBodyContact,
@@ -10,9 +11,15 @@ import {
 import type { TruckFootprintDimensions } from '/src/game/roadCollision.js';
 import type { TruckState } from '/src/game/truck.js';
 import {
+  createWorldVelocity,
   dotVelocityWithVector,
   headingToUnitVector,
+  normalizeHeading,
+  shortestHeadingDelta,
+  validatePoint,
   velocityAlongHeading,
+  type WorldPoint,
+  type WorldVelocity,
 } from '/src/game/worldGeometry.js';
 
 export type TrafficVehicleKind = 'commuter' | 'patrol';
@@ -43,6 +50,9 @@ export interface TrafficVehicle {
   readonly status: TrafficVehicleStatus;
   readonly disabledSecondsRemaining: number;
   readonly patrolDisengageSecondsRemaining: number;
+  /** Cartesian pose used by rendering and rigid-body contacts. */
+  readonly worldPosition: WorldPoint;
+  readonly worldVelocity: WorldVelocity;
 }
 
 export interface CreateTrafficVehicleOptions {
@@ -120,6 +130,7 @@ export interface StepTrafficOptions {
   readonly road: Road;
   readonly truckDimensions: TruckFootprintDimensions;
   readonly dtSeconds: number;
+  readonly truckRoutePosition?: RoutePosition;
   readonly tuning?: TrafficTuning;
 }
 
@@ -210,6 +221,8 @@ export function createTrafficVehicle(options: CreateTrafficVehicleOptions): Traf
     status: 'driving',
     disabledSecondsRemaining: 0,
     patrolDisengageSecondsRemaining: 0,
+    worldPosition: { xMeters: lateralMeters, yMeters: options.distanceMeters },
+    worldVelocity: velocityAlongHeading(0, options.speedMetersPerSecond),
   };
 }
 
@@ -238,12 +251,15 @@ export function stepTraffic(options: StepTrafficOptions): StepTrafficResult {
   let nextVehicleId = options.state.nextVehicleId;
   let spawnCountdownSeconds = options.state.spawnCountdownSeconds - options.dtSeconds;
   const contactCooldowns = coolContactCooldowns(options.state.contactCooldowns, options.dtSeconds);
+  const truckRoutePosition =
+    options.truckRoutePosition ?? projectTruckRoutePosition(options.road, options.truck);
 
   const moved = options.state.vehicles.map(vehicle =>
     stepVehicle(
       vehicle,
       options.state.vehicles,
       options.truck,
+      truckRoutePosition,
       options.road,
       options.truckDimensions,
       options.dtSeconds,
@@ -253,7 +269,15 @@ export function stepTraffic(options: StepTrafficOptions): StepTrafficResult {
   );
 
   if (spawnCountdownSeconds <= 0) {
-    const spawned = spawnVehicle(nextVehicleId, options.truck, moved, options.road, tuning, rng);
+    const spawned = spawnVehicle(
+      nextVehicleId,
+      options.truck,
+      truckRoutePosition,
+      moved,
+      options.road,
+      tuning,
+      rng
+    );
     if (spawned) {
       moved.push(spawned);
       nextVehicleId += 1;
@@ -262,9 +286,7 @@ export function stepTraffic(options: StepTrafficOptions): StepTrafficResult {
   }
 
   const inRange = moved.filter(vehicle => {
-    // Straight-route coincidence: the truck's world y is also its route
-    // distance today. M5.7 replaces these reads with a projected route position.
-    const relativeDistance = vehicle.distanceMeters - options.truck.position.yMeters;
+    const relativeDistance = vehicle.distanceMeters - truckRoutePosition.distanceAlongRouteMeters;
     const isActive =
       vehicle.status === 'driving' ||
       (vehicle.status === 'disengaging' && vehicle.patrolDisengageSecondsRemaining > 0) ||
@@ -278,6 +300,7 @@ export function stepTraffic(options: StepTrafficOptions): StepTrafficResult {
   const collisionResult = resolveWorldContacts({
     truck: options.truck,
     vehicles: inRange,
+    road: options.road,
     truckDimensions: options.truckDimensions,
     tuning,
   });
@@ -308,6 +331,7 @@ function stepVehicle(
   vehicle: TrafficVehicle,
   allVehicles: readonly TrafficVehicle[],
   truck: TruckState,
+  truckRoutePosition: RoutePosition,
   road: Road,
   truckDimensions: TruckFootprintDimensions,
   dtSeconds: number,
@@ -320,18 +344,28 @@ function stepVehicle(
     lateralMeters: vehicle.lateralCollisionVelocityMetersPerSecond * dtSeconds,
     distanceMeters: vehicle.distanceCollisionVelocityMetersPerSecond * dtSeconds,
   };
+  const routeSample = sampleRoute(road.route, vehicle.distanceMeters);
+  const headingOffsetRadians = shortestHeadingDelta(
+    vehicle.headingRadians,
+    routeSample.headingRadians
+  );
 
   if (vehicle.status === 'disabled') {
+    const position = vehicle.worldPosition;
+    const velocity = vehicle.worldVelocity;
     return {
       ...vehicle,
-      lateralMeters: vehicle.lateralMeters + collisionMotion.lateralMeters,
-      distanceMeters:
-        vehicle.distanceMeters +
-        (vehicle.speedMetersPerSecond + vehicle.distanceCollisionVelocityMetersPerSecond) *
-          dtSeconds,
-      headingRadians:
-        moveToward(vehicle.headingRadians, 0, tuning.headingRecoveryRadiansPerSecond * dtSeconds) +
-        vehicle.angularVelocityRadiansPerSecond * dtSeconds,
+      worldPosition: {
+        xMeters: position.xMeters + velocity.xMetersPerSecond * dtSeconds,
+        yMeters: position.yMeters + velocity.yMetersPerSecond * dtSeconds,
+      },
+      worldVelocity: createWorldVelocity(
+        velocity.xMetersPerSecond * collisionDamping,
+        velocity.yMetersPerSecond * collisionDamping
+      ),
+      headingRadians: normalizeHeading(
+        vehicle.headingRadians + vehicle.angularVelocityRadiansPerSecond * dtSeconds
+      ),
       angularVelocityRadiansPerSecond: vehicle.angularVelocityRadiansPerSecond * angularDamping,
       lateralCollisionVelocityMetersPerSecond:
         vehicle.lateralCollisionVelocityMetersPerSecond * collisionDamping,
@@ -349,11 +383,11 @@ function stepVehicle(
     const isDisengaging = vehicle.status === 'disengaging';
     const targetLaneIndex = nearestLaneIndex(
       road,
-      isDisengaging ? vehicle.lateralMeters : truck.position.xMeters
+      isDisengaging ? vehicle.lateralMeters : truckRoutePosition.lateralOffsetMeters
     );
     const targetLateral = road.laneCenterOffsetsMeters[targetLaneIndex]!;
     const trailerRearDistanceMeters =
-      truck.position.yMeters -
+      truckRoutePosition.distanceAlongRouteMeters -
       (truckDimensions.cabLengthMeters / 2 +
         truckDimensions.trailerLengthMeters +
         truckDimensions.hitchGapMeters);
@@ -368,27 +402,30 @@ function stepVehicle(
         ? tuning.patrolBrakingMetersPerSecondSquared
         : tuning.patrolAccelerationMetersPerSecondSquared;
     const speed = moveToward(vehicle.speedMetersPerSecond, desiredSpeed, acceleration * dtSeconds);
-    return {
-      ...vehicle,
-      targetLaneIndex,
-      lateralMeters:
-        moveToward(
-          vehicle.lateralMeters,
-          targetLateral,
-          tuning.patrolLateralSpeedMetersPerSecond * dtSeconds
-        ) + collisionMotion.lateralMeters,
-      distanceMeters:
-        vehicle.distanceMeters +
-        (speed + vehicle.distanceCollisionVelocityMetersPerSecond) * dtSeconds,
-      speedMetersPerSecond: speed,
-      patrolDisengageSecondsRemaining: disengageSecondsRemaining,
-      headingRadians: vehicle.headingRadians + vehicle.angularVelocityRadiansPerSecond * dtSeconds,
-      angularVelocityRadiansPerSecond: vehicle.angularVelocityRadiansPerSecond * angularDamping,
-      lateralCollisionVelocityMetersPerSecond:
-        vehicle.lateralCollisionVelocityMetersPerSecond * collisionDamping,
-      distanceCollisionVelocityMetersPerSecond:
-        vehicle.distanceCollisionVelocityMetersPerSecond * collisionDamping,
-    };
+    return finalizeRouteVehicle(
+      {
+        ...vehicle,
+        targetLaneIndex,
+        lateralMeters:
+          moveToward(
+            vehicle.lateralMeters,
+            targetLateral,
+            tuning.patrolLateralSpeedMetersPerSecond * dtSeconds
+          ) + collisionMotion.lateralMeters,
+        distanceMeters:
+          vehicle.distanceMeters +
+          (speed + vehicle.distanceCollisionVelocityMetersPerSecond) * dtSeconds,
+        speedMetersPerSecond: speed,
+        patrolDisengageSecondsRemaining: disengageSecondsRemaining,
+        headingRadians: headingOffsetRadians + vehicle.angularVelocityRadiansPerSecond * dtSeconds,
+        angularVelocityRadiansPerSecond: vehicle.angularVelocityRadiansPerSecond * angularDamping,
+        lateralCollisionVelocityMetersPerSecond:
+          vehicle.lateralCollisionVelocityMetersPerSecond * collisionDamping,
+        distanceCollisionVelocityMetersPerSecond:
+          vehicle.distanceCollisionVelocityMetersPerSecond * collisionDamping,
+      },
+      road
+    );
   }
 
   let next = vehicle;
@@ -428,21 +465,24 @@ function stepVehicle(
           tuning.laneRecoveryMetersPerSecond * dtSeconds
         )
       : next.lateralMeters;
-  return {
-    ...next,
-    lateralMeters: laneCenteredLateralMeters + collisionMotion.lateralMeters,
-    distanceMeters:
-      next.distanceMeters +
-      (next.speedMetersPerSecond + next.distanceCollisionVelocityMetersPerSecond) * dtSeconds,
-    headingRadians:
-      moveToward(next.headingRadians, 0, tuning.headingRecoveryRadiansPerSecond * dtSeconds) +
-      next.angularVelocityRadiansPerSecond * dtSeconds,
-    angularVelocityRadiansPerSecond: next.angularVelocityRadiansPerSecond * angularDamping,
-    lateralCollisionVelocityMetersPerSecond:
-      next.lateralCollisionVelocityMetersPerSecond * collisionDamping,
-    distanceCollisionVelocityMetersPerSecond:
-      next.distanceCollisionVelocityMetersPerSecond * collisionDamping,
-  };
+  return finalizeRouteVehicle(
+    {
+      ...next,
+      lateralMeters: laneCenteredLateralMeters + collisionMotion.lateralMeters,
+      distanceMeters:
+        next.distanceMeters +
+        (next.speedMetersPerSecond + next.distanceCollisionVelocityMetersPerSecond) * dtSeconds,
+      headingRadians:
+        moveToward(headingOffsetRadians, 0, tuning.headingRecoveryRadiansPerSecond * dtSeconds) +
+        next.angularVelocityRadiansPerSecond * dtSeconds,
+      angularVelocityRadiansPerSecond: next.angularVelocityRadiansPerSecond * angularDamping,
+      lateralCollisionVelocityMetersPerSecond:
+        next.lateralCollisionVelocityMetersPerSecond * collisionDamping,
+      distanceCollisionVelocityMetersPerSecond:
+        next.distanceCollisionVelocityMetersPerSecond * collisionDamping,
+    },
+    road
+  );
 }
 
 function advanceLaneChange(
@@ -476,6 +516,7 @@ function advanceLaneChange(
 function spawnVehicle(
   id: number,
   truck: TruckState,
+  truckRoutePosition: RoutePosition,
   vehicles: readonly TrafficVehicle[],
   road: Road,
   tuning: TrafficTuning,
@@ -487,7 +528,8 @@ function spawnVehicle(
   const ahead =
     tuning.spawnAheadMinMeters +
     rng.next() * (tuning.spawnAheadMaxMeters - tuning.spawnAheadMinMeters);
-  const distanceMeters = truck.position.yMeters + (kind === 'patrol' ? -30 : ahead);
+  const distanceMeters =
+    truckRoutePosition.distanceAlongRouteMeters + (kind === 'patrol' ? -30 : ahead);
   const availableLaneIndices = Array.from(
     { length: road.laneCount },
     (_, laneIndex) => laneIndex
@@ -516,11 +558,15 @@ function spawnVehicle(
       tuning.minLaneChangeCooldownSeconds +
       rng.next() * (tuning.maxLaneChangeCooldownSeconds - tuning.minLaneChangeCooldownSeconds),
   });
-  return {
-    ...initial,
-    lateralMeters: road.laneCenterOffsetsMeters[laneIndex]!,
-    massKilograms: kind === 'commuter' ? tuning.commuterMassKilograms : tuning.patrolMassKilograms,
-  };
+  return finalizeRouteVehicle(
+    {
+      ...initial,
+      lateralMeters: road.laneCenterOffsetsMeters[laneIndex]!,
+      massKilograms:
+        kind === 'commuter' ? tuning.commuterMassKilograms : tuning.patrolMassKilograms,
+    },
+    road
+  );
 }
 
 function isLaneGapClear(
@@ -549,6 +595,7 @@ interface WorldContactResult {
 interface ResolveWorldContactsOptions {
   readonly truck: TruckState;
   readonly vehicles: readonly TrafficVehicle[];
+  readonly road: Road;
   readonly truckDimensions: TruckFootprintDimensions;
   readonly tuning: TrafficTuning;
 }
@@ -576,7 +623,7 @@ function resolveWorldContacts(options: ResolveWorldContactsOptions): WorldContac
         Math.max(impactSpeeds.get(vehicle.id) ?? 0, response.impactSpeedMetersPerSecond)
       );
       truck = applyResolvedTruckBody(truck, strongest.truckBody, response.bodyA);
-      vehicles[index] = applyResolvedVehicleBody(vehicle, response.bodyB);
+      vehicles[index] = applyResolvedVehicleBody(vehicle, response.bodyB, options.road);
     }
 
     for (let firstIndex = 0; firstIndex < vehicles.length; firstIndex++) {
@@ -593,8 +640,8 @@ function resolveWorldContacts(options: ResolveWorldContactsOptions): WorldContac
           contact,
           options.tuning.rigidBodyResponse
         );
-        vehicles[firstIndex] = applyResolvedVehicleBody(first, response.bodyA);
-        vehicles[secondIndex] = applyResolvedVehicleBody(second, response.bodyB);
+        vehicles[firstIndex] = applyResolvedVehicleBody(first, response.bodyA, options.road);
+        vehicles[secondIndex] = applyResolvedVehicleBody(second, response.bodyB, options.road);
       }
     }
   }
@@ -671,15 +718,8 @@ function buildVehicleRigidBody(vehicle: TrafficVehicle, tuning: TrafficTuning): 
     vehicle.kind === 'commuter' ? tuning.commuterLengthMeters : tuning.patrolLengthMeters;
   return {
     id: `traffic-${vehicle.id}`,
-    position: {
-      xMeters: vehicle.lateralMeters,
-      yMeters: vehicle.distanceMeters,
-    },
-    velocity: {
-      xMetersPerSecond: vehicle.lateralCollisionVelocityMetersPerSecond,
-      yMetersPerSecond:
-        vehicle.speedMetersPerSecond + vehicle.distanceCollisionVelocityMetersPerSecond,
-    },
+    position: vehicle.worldPosition,
+    velocity: vehicle.worldVelocity,
     headingRadians: vehicle.headingRadians,
     angularVelocityRadiansPerSecond: vehicle.angularVelocityRadiansPerSecond,
     widthMeters,
@@ -688,16 +728,73 @@ function buildVehicleRigidBody(vehicle: TrafficVehicle, tuning: TrafficTuning): 
   };
 }
 
-function applyResolvedVehicleBody(vehicle: TrafficVehicle, body: RigidBody): TrafficVehicle {
+function applyResolvedVehicleBody(
+  vehicle: TrafficVehicle,
+  body: RigidBody,
+  road: Road
+): TrafficVehicle {
+  if (vehicle.status === 'disabled') {
+    return {
+      ...vehicle,
+      worldPosition: body.position,
+      worldVelocity: body.velocity,
+      headingRadians: body.headingRadians,
+      angularVelocityRadiansPerSecond: body.angularVelocityRadiansPerSecond,
+    };
+  }
+  const projection = worldToRoute(road.route, body.position, {
+    hintDistanceAlongRouteMeters: vehicle.distanceMeters,
+    searchRadiusMeters: 100,
+  });
+  const tangent = projection.tangent;
+  const normal = projection.normal;
+  const forwardRouteSpeed = dotVelocityWithVector(body.velocity, tangent);
+  const lateralRouteSpeed = dotVelocityWithVector(body.velocity, normal);
   return {
     ...vehicle,
-    lateralMeters: body.position.xMeters,
-    distanceMeters: body.position.yMeters,
+    lateralMeters: projection.lateralOffsetMeters,
+    distanceMeters: projection.distanceAlongRouteMeters,
     headingRadians: body.headingRadians,
     angularVelocityRadiansPerSecond: body.angularVelocityRadiansPerSecond,
-    lateralCollisionVelocityMetersPerSecond: body.velocity.xMetersPerSecond,
-    distanceCollisionVelocityMetersPerSecond:
-      body.velocity.yMetersPerSecond - vehicle.speedMetersPerSecond,
+    lateralCollisionVelocityMetersPerSecond: lateralRouteSpeed,
+    distanceCollisionVelocityMetersPerSecond: forwardRouteSpeed - vehicle.speedMetersPerSecond,
+    worldPosition: body.position,
+    worldVelocity: body.velocity,
+  };
+}
+
+function finalizeRouteVehicle(vehicle: TrafficVehicle, road: Road): TrafficVehicle {
+  const sample = sampleRoute(road.route, vehicle.distanceMeters);
+  const position = routeToWorld(road.route, {
+    distanceAlongRouteMeters: vehicle.distanceMeters,
+    lateralOffsetMeters: vehicle.lateralMeters,
+  });
+  const headingRadians = normalizeHeading(sample.headingRadians + vehicle.headingRadians);
+  const tangent = sample.tangent;
+  const normal = sample.normal;
+  const forwardSpeed =
+    vehicle.speedMetersPerSecond + vehicle.distanceCollisionVelocityMetersPerSecond;
+  return {
+    ...vehicle,
+    headingRadians,
+    worldPosition: position,
+    worldVelocity: createWorldVelocity(
+      tangent.xMeters * forwardSpeed +
+        normal.xMeters * vehicle.lateralCollisionVelocityMetersPerSecond,
+      tangent.yMeters * forwardSpeed +
+        normal.yMeters * vehicle.lateralCollisionVelocityMetersPerSecond
+    ),
+  };
+}
+
+function projectTruckRoutePosition(road: Road, truck: TruckState): RoutePosition {
+  const projection = worldToRoute(road.route, truck.position, {
+    hintDistanceAlongRouteMeters: truck.position.yMeters - road.route.segments[0]!.start.yMeters,
+    searchRadiusMeters: 100,
+  });
+  return {
+    distanceAlongRouteMeters: projection.distanceAlongRouteMeters,
+    lateralOffsetMeters: projection.lateralOffsetMeters,
   };
 }
 
@@ -990,6 +1087,9 @@ function validateVehicle(vehicle: TrafficVehicle): void {
     'vehicle.patrolDisengageSecondsRemaining',
     vehicle.patrolDisengageSecondsRemaining
   );
+  validatePoint('vehicle.worldPosition', vehicle.worldPosition);
+  assertFinite('vehicle.worldVelocity.xMetersPerSecond', vehicle.worldVelocity.xMetersPerSecond);
+  assertFinite('vehicle.worldVelocity.yMetersPerSecond', vehicle.worldVelocity.yMetersPerSecond);
 }
 
 function assertTrafficKind(kind: TrafficVehicleKind): void {

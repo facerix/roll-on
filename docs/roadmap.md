@@ -147,13 +147,13 @@ See `docs/m5-plan.md` for the slice-by-slice implementation plan.
   moved out of `traffic.ts` into a road-agnostic module. Guarded by
   `tests/unit/coordinateSpaces.test.ts`; behavior is unchanged on the straight road. See
   `docs/m5-plan.md` M5.1.
-- [ ] **Piecewise route geometry**: validated straight/arc segments, tangent-continuous chaining,
+- [x] **Piecewise route geometry**: validated straight/arc segments, tangent-continuous chaining,
   deterministic sampling. See M5.2.
-- [ ] **Route/world conversion and bounded projection**. See M5.3.
-- [ ] **Road cross-section laid over the route**: lanes, shoulders, markers, barriers. See M5.4.
-- [ ] **Sampled winding-road mesh in the top-down renderer**. See M5.5.
+- [x] **Route/world conversion and bounded projection**. See M5.3.
+- [x] **Road cross-section laid over the route**: lanes, shoulders, markers, barriers. See M5.4.
+- [x] **Sampled winding-road mesh in the top-down renderer**. See M5.5.
 - [x] **Curved barrier collision + truck route tracking**. See M5.6.
-- [ ] **Route-aware traffic with Cartesian rigid-body reconciliation**. See M5.7.
+- [x] **Route-aware traffic with Cartesian rigid-body reconciliation**. See M5.7.
 - [ ] **Camera follow, debug geometry, and feel**. See M5.8.
 - [ ] **Integration, compatibility, and closeout**. See M5.9.
 

@@ -77,6 +77,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       const trafficResult = stepTraffic({
         state: trafficState,
         truck: drivingState.truck,
+        truckRoutePosition: drivingState.routePosition,
         road,
         truckDimensions,
         dtSeconds: dt,

@@ -454,7 +454,15 @@ The route, rendered road edge, and collision boundary agree through the entire t
 
 ## M5.7 — Route-aware traffic and rigid-body reconciliation
 
-**Status:** Not started.
+**Status:** Complete (2026-08-03).
+
+Landed in `src/game/traffic.ts`, `src/game/roadScene.ts`, and `src/game/roadGame.ts`: traffic
+retains route distance/lane intent while carrying explicit Cartesian world pose and velocity for
+rendering and SAT. Driving commuters and patrols advance in route space, derive tangent-following
+world poses, and use route-relative patrol gaps, spawn windows, culling, and lane clearance.
+Rigid-body responses project driving vehicles back onto the nearby route; disabled vehicles are
+explicitly ballistic in world space for their short lifetime. Added S-curve lane-following and
+collision-reacquisition coverage while retaining the straight-road traffic regression suite.
 
 Separate traffic route intent from Cartesian collision state. Driving traffic should retain route
 distance, lateral offset, lane and target-lane intent, and scalar cruise speed. It should expose or
