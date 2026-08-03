@@ -155,7 +155,10 @@ See `docs/m5-plan.md` for the slice-by-slice implementation plan.
 - [x] **Curved barrier collision + truck route tracking**. See M5.6.
 - [x] **Route-aware traffic with Cartesian rigid-body reconciliation**. See M5.7.
 - [x] **Camera follow, debug geometry, and feel**. See M5.8.
-- [ ] **Integration, compatibility, and closeout**. See M5.9.
+- [x] **Integration, compatibility, and closeout**. ✓ `createDefaultStageRoute()` supplies the
+  authored long-straight/shallow-S default while the straight factory remains a regression fixture;
+  seeded fixed-step winding-run coverage verifies deterministic progress, traffic, and finite state.
+  See M5.9.
 
 Exit criterion: a 60-second seeded run on a default winding route is playable and deterministic,
 with route, rendered road edge, and collision boundary in agreement through both bend directions.

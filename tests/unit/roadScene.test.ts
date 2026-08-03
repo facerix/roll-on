@@ -21,7 +21,8 @@ import {
 } from '../../src/game/roadScene.ts';
 import { createTruckState, type TruckState } from '../../src/game/truck.ts';
 import { createTrafficVehicle } from '../../src/game/traffic.ts';
-import { createRoute } from '../../src/game/route.ts';
+import { createRoute, routeToWorld } from '../../src/game/route.ts';
+import { getTruckTrailerCenter } from '../../src/game/roadCollision.ts';
 
 const ROAD = createRoad(DEFAULT_ROAD_TUNING);
 const VIEWPORT = { width: 320, height: 480 };
@@ -182,6 +183,68 @@ test('negative hitch offset overlaps the front of the trailer with the rear of t
   assert.equal(cabRearY - trailerFrontY, hitchOverlapMeters * CAMERA_TUNING.pixelsPerMeter);
 });
 
+test('articulated trailer stays connected when cab and trailer headings differ', () => {
+  const truck = createTruckState({
+    ...truckAt(42),
+    headingRadians: 0.35,
+    trailerHeadingRadians: 0.1,
+  });
+  const trailerCenter = getTruckTrailerCenter(truck, TRUCK_DIMENSIONS);
+  const cabForward = {
+    xMeters: Math.sin(truck.headingRadians),
+    yMeters: Math.cos(truck.headingRadians),
+  };
+  const trailerForward = {
+    xMeters: Math.sin(truck.trailerHeadingRadians),
+    yMeters: Math.cos(truck.trailerHeadingRadians),
+  };
+  const cabRear = {
+    xMeters: truck.position.xMeters - cabForward.xMeters * (TRUCK_DIMENSIONS.cabLengthMeters / 2),
+    yMeters: truck.position.yMeters - cabForward.yMeters * (TRUCK_DIMENSIONS.cabLengthMeters / 2),
+  };
+  const trailerFront = {
+    xMeters:
+      trailerCenter.xMeters + trailerForward.xMeters * (TRUCK_DIMENSIONS.trailerLengthMeters / 2),
+    yMeters:
+      trailerCenter.yMeters + trailerForward.yMeters * (TRUCK_DIMENSIONS.trailerLengthMeters / 2),
+  };
+  const connectionDistance = Math.hypot(
+    trailerFront.xMeters - cabRear.xMeters,
+    trailerFront.yMeters - cabRear.yMeters
+  );
+
+  assert.ok(Math.abs(connectionDistance - TRUCK_DIMENSIONS.hitchGapMeters) < 1e-12);
+});
+
+test('cab, trailer, and traffic headings rotate into the camera frame', () => {
+  const truck = createTruckState({
+    ...truckAt(42),
+    headingRadians: 0.7,
+    trailerHeadingRadians: 0.2,
+  });
+  const camera = buildRoadCamera(truck.position, VIEWPORT, CAMERA_TUNING, 0.4);
+  const commuter = createTrafficVehicle({
+    id: 1,
+    kind: 'commuter',
+    laneIndex: 1,
+    distanceMeters: 50,
+    speedMetersPerSecond: 10,
+  });
+  const sprites = orientedSprites(
+    buildRoadScene({
+      road: ROAD,
+      camera,
+      truck,
+      traffic: [commuter],
+      truckDimensions: TRUCK_DIMENSIONS,
+    }).drawables
+  );
+
+  assert.equal(sprites[0]!.rotationRadians, -0.4);
+  assert.ok(Math.abs(sprites.at(-2)!.rotationRadians - 0.3) < Number.EPSILON * 4);
+  assert.ok(Math.abs(sprites.at(-1)!.rotationRadians + 0.2) < Number.EPSILON * 4);
+});
+
 test('traffic vehicles project in world space below the player truck', () => {
   const truck = truckAt(42);
   const camera = buildRoadCamera(truck.position, VIEWPORT, CAMERA_TUNING);
@@ -276,6 +339,36 @@ test('curved road scene emits finite sampled polygons in back-to-front mesh orde
   assert.equal(mesh[0]!.color, DEFAULT_ROAD_SCENE_TUNING.shoulderColor);
   assert.ok(mesh.some(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.roadColor));
   assert.ok(mesh.some(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.laneMarkerColor));
+});
+
+test('curved road sampling covers the whole rotated viewport around route focus', () => {
+  const route = createRoute({
+    origin: { xMeters: 0, yMeters: 0 },
+    headingRadians: 0,
+    segments: [{ kind: 'arc', lengthMeters: 220, curvaturePerMeter: 0.004 }],
+    constraints: { maximumAbsoluteRoadOffsetMeters: 12, minimumBendRadiusMeters: 40 },
+  });
+  const road = createRoad(DEFAULT_ROAD_TUNING, route);
+  const focusDistanceAlongRouteMeters = 150;
+  const focus = routeToWorld(route, {
+    distanceAlongRouteMeters: focusDistanceAlongRouteMeters,
+    lateralOffsetMeters: 0,
+  });
+  const camera = buildRoadCamera(focus, VIEWPORT, CAMERA_TUNING, 0.55);
+  const scene = buildRoadScene({
+    road,
+    camera,
+    truck: truckAt(focus.yMeters),
+    truckDimensions: TRUCK_DIMENSIONS,
+    focusDistanceAlongRouteMeters,
+  });
+  const roadPolygons = polygons(scene.drawables);
+
+  assert.ok(roadPolygons.length > 20);
+  assert.ok(roadPolygons.some(polygon => polygon.points.some(point => point.y < 80)));
+  assert.ok(
+    roadPolygons.some(polygon => polygon.points.some(point => point.y > VIEWPORT.height - 80))
+  );
 });
 
 test('adjacent curved road mesh quads share exact projected edge points', () => {

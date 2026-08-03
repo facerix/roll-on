@@ -1,12 +1,14 @@
 import type { Drawable, Scene } from '/src/engine/renderer.js';
 import { sampleRoad, sampleRoadWindow, type LaneMarkerSpan, type Road } from '/src/game/road.js';
 import { projectWorldPoint, type RoadCamera } from '/src/game/roadCamera.js';
-import { routeToWorld } from '/src/game/route.js';
+import { routeToWorld, worldToRoute } from '/src/game/route.js';
+import { getTruckTrailerCenter } from '/src/game/roadCollision.js';
 import type { TruckState } from '/src/game/truck.js';
 import type { WorldPoint } from '/src/game/worldGeometry.js';
 import type { TrafficVehicle } from '/src/game/traffic.js';
 import { buildRoadDebugDrawables } from '/src/game/roadDebug.js';
 import type { RoadDistanceWindow } from '/src/game/road.js';
+import { shortestHeadingDelta } from '/src/game/worldGeometry.js';
 
 export const COMMUTER_SPRITES = Object.freeze([
   '/images/vehicles/commuter-blue.png',
@@ -79,6 +81,8 @@ export interface BuildRoadSceneOptions {
   readonly tuning?: RoadSceneTuning;
   readonly debug?: boolean;
   readonly debugWindow?: RoadDistanceWindow;
+  /** Route-space distance at the camera focus; supplied by simulation state. */
+  readonly focusDistanceAlongRouteMeters?: number;
 }
 
 export const DEFAULT_PARALLAX_LAYERS: readonly ParallaxLayerTuning[] = Object.freeze([
@@ -203,7 +207,10 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
   }
 
   if (hasCurvature(options.road)) {
-    drawables.push(...buildCurvedRoadDrawables(options.road, options.camera, tuning));
+    const focusDistance = getFocusDistanceAlongRoute(options);
+    drawables.push(
+      ...buildCurvedRoadDrawables(options.road, options.camera, tuning, focusDistance)
+    );
   } else {
     drawables.push(
       horizontalBand(
@@ -228,7 +235,11 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
       barrier(options.camera, options.road.rightBarrierLateralMeters, tuning.barrierColor)
     );
 
-    for (const marker of visibleLaneMarkerSpans(options.road, options.camera)) {
+    for (const marker of visibleLaneMarkerSpans(
+      options.road,
+      options.camera,
+      options.focusDistanceAlongRouteMeters
+    )) {
       drawables.push(
         straightMarker(options.camera, marker, tuning.laneMarkerWidthMeters, tuning.laneMarkerColor)
       );
@@ -251,7 +262,7 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
       h:
         (isPatrol ? tuning.patrolLengthMeters : tuning.commuterLengthMeters) *
         options.camera.pixelsPerMeter,
-      rotationRadians: vehicle.headingRadians,
+      rotationRadians: screenRotation(options.camera, vehicle.headingRadians),
       src: isPatrol ? PATROL_SPRITE : commuterSpriteForId(vehicle.id),
     });
   }
@@ -285,12 +296,12 @@ export function commuterSpriteForId(id: number): (typeof COMMUTER_SPRITES)[numbe
   return COMMUTER_SPRITES[id % COMMUTER_SPRITES.length]!;
 }
 
-function visibleLaneMarkerSpans(road: Road, camera: RoadCamera): readonly LaneMarkerSpan[] {
-  const window = {
-    startDistanceMeters:
-      camera.focus.yMeters - (camera.viewportHeight - camera.anchorY) / camera.pixelsPerMeter,
-    endDistanceMeters: camera.focus.yMeters + camera.anchorY / camera.pixelsPerMeter,
-  };
+function visibleLaneMarkerSpans(
+  road: Road,
+  camera: RoadCamera,
+  focusDistanceAlongRouteMeters = camera.focus.yMeters
+): readonly LaneMarkerSpan[] {
+  const window = visibleRouteWindow(road, camera, focusDistanceAlongRouteMeters);
   const spans: LaneMarkerSpan[] = [];
   const firstCadenceIndex = Math.floor(window.startDistanceMeters / road.markerCadenceMeters);
 
@@ -323,16 +334,11 @@ function hasCurvature(road: Road): boolean {
 function buildCurvedRoadDrawables(
   road: Road,
   camera: RoadCamera,
-  tuning: RoadSceneTuning
+  tuning: RoadSceneTuning,
+  focusDistanceAlongRouteMeters: number
 ): readonly Drawable[] {
-  const startDistanceMeters =
-    camera.focus.yMeters - (camera.viewportHeight - camera.anchorY) / camera.pixelsPerMeter;
-  const endDistanceMeters = camera.focus.yMeters + camera.anchorY / camera.pixelsPerMeter;
-  const samples = sampleRoadWindow(
-    road,
-    { startDistanceMeters, endDistanceMeters },
-    Math.max(2, 24 / camera.pixelsPerMeter)
-  );
+  const visibleWindow = visibleRouteWindow(road, camera, focusDistanceAlongRouteMeters);
+  const samples = sampleRoadWindow(road, visibleWindow, Math.max(2, 24 / camera.pixelsPerMeter));
   const drawables: Drawable[] = [];
   for (let index = 1; index < samples.length; index++) {
     const previous = samples[index - 1]!;
@@ -390,6 +396,35 @@ function buildCurvedRoadDrawables(
     );
   }
   return drawables;
+}
+
+function visibleRouteWindow(
+  _road: Road,
+  camera: RoadCamera,
+  focusDistanceAlongRouteMeters: number
+): RoadDistanceWindow {
+  assertFinite('focusDistanceAlongRouteMeters', focusDistanceAlongRouteMeters);
+  // Rotation and curvature mean screen-forward is not world +y. Use the
+  // viewport diagonal as a conservative route-space envelope so the road
+  // cannot disappear from the top or bottom while the camera follows a bend.
+  const halfVisibleDistanceMeters =
+    Math.hypot(camera.viewportWidth, camera.viewportHeight) / camera.pixelsPerMeter;
+  return {
+    startDistanceMeters: focusDistanceAlongRouteMeters - halfVisibleDistanceMeters,
+    endDistanceMeters: focusDistanceAlongRouteMeters + halfVisibleDistanceMeters,
+  };
+}
+
+function getFocusDistanceAlongRoute(options: BuildRoadSceneOptions): number {
+  if (options.focusDistanceAlongRouteMeters !== undefined) {
+    return options.focusDistanceAlongRouteMeters;
+  }
+  const hintDistanceMeters =
+    options.camera.focus.yMeters - options.road.route.segments[0]!.start.yMeters;
+  return worldToRoute(options.road.route, options.camera.focus, {
+    hintDistanceAlongRouteMeters: hintDistanceMeters,
+    searchRadiusMeters: Math.max(100, options.road.route.totalLengthMeters),
+  }).distanceAlongRouteMeters;
 }
 
 function barrierSegment(
@@ -527,12 +562,7 @@ function buildTruckDrawables(
   dimensions: RoadSceneTruckDimensions
 ): readonly Drawable[] {
   const cabCenter = projectWorldPoint(camera, truck.position);
-  const hitchLengthMeters =
-    dimensions.cabLengthMeters / 2 + dimensions.trailerLengthMeters / 2 + dimensions.hitchGapMeters;
-  const trailerCenter = projectWorldPoint(camera, {
-    xMeters: truck.position.xMeters - Math.sin(truck.trailerHeadingRadians) * hitchLengthMeters,
-    yMeters: truck.position.yMeters - Math.cos(truck.trailerHeadingRadians) * hitchLengthMeters,
-  });
+  const trailerCenter = projectWorldPoint(camera, getTruckTrailerCenter(truck, dimensions));
   return [
     {
       kind: 'oriented-sprite',
@@ -540,7 +570,7 @@ function buildTruckDrawables(
       centerY: cabCenter.y,
       w: dimensions.cabWidthMeters * camera.pixelsPerMeter,
       h: dimensions.cabLengthMeters * camera.pixelsPerMeter,
-      rotationRadians: truck.headingRadians,
+      rotationRadians: screenRotation(camera, truck.headingRadians),
       src: TRUCK_CAB_SPRITE,
     },
     {
@@ -549,10 +579,14 @@ function buildTruckDrawables(
       centerY: trailerCenter.y,
       w: dimensions.trailerWidthMeters * camera.pixelsPerMeter,
       h: dimensions.trailerLengthMeters * camera.pixelsPerMeter,
-      rotationRadians: truck.trailerHeadingRadians,
+      rotationRadians: screenRotation(camera, truck.trailerHeadingRadians),
       src: TRUCK_TRAILER_SPRITE,
     },
   ];
+}
+
+function screenRotation(camera: RoadCamera, worldHeadingRadians: number): number {
+  return shortestHeadingDelta(worldHeadingRadians, camera.rotationRadians);
 }
 
 function validateTruckDimensions(dimensions: RoadSceneTruckDimensions): void {

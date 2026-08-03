@@ -3,7 +3,7 @@ import { createGameHudView } from '/src/game/gameHudView.js';
 import { createFuelState, DEFAULT_FUEL_TUNING, isFuelInFumes } from '/src/game/fuel.js';
 import { stepDriving, ZERO_FUEL_BURN, type DrivingState } from '/src/game/drivingUpdate.js';
 import { mountGame } from '/src/game/mount.js';
-import { createRoad, DEFAULT_ROAD_TUNING } from '/src/game/road.js';
+import { createDefaultStageRoute, createRoad, DEFAULT_ROAD_TUNING } from '/src/game/road.js';
 import {
   buildRoadCamera,
   getVisibleWorldDistanceRange,
@@ -40,7 +40,7 @@ export interface StartRoadGameOptions {
 }
 
 export function startRoadGame(options: StartRoadGameOptions): RoadGame {
-  const road = createRoad(DEFAULT_ROAD_TUNING);
+  const road = createRoad(DEFAULT_ROAD_TUNING, createDefaultStageRoute());
   const cameraTuning = buildRoadCameraTuning(road, options.viewport);
   const truckDimensions: RoadSceneTruckDimensions = {
     cabWidthMeters: 2.6,
@@ -180,6 +180,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
             }
           : undefined,
         truckDimensions,
+        focusDistanceAlongRouteMeters: drivingState.routePosition.distanceAlongRouteMeters,
         tuning: {
           ...DEFAULT_ROAD_SCENE_TUNING,
           barrierColor:

@@ -133,7 +133,7 @@ test('barrier collision detection works for cab and trailer footprint inputs', (
   );
   const trailerCrossing = buildTruckFootprint(
     truck({
-      position: { xMeters: ROAD.rightBarrierLateralMeters - 5.5, yMeters: 100 },
+      position: { xMeters: -1.5, yMeters: 100 },
       trailerHeadingRadians: Math.PI / 2,
     }),
     DIMENSIONS

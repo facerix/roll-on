@@ -560,11 +560,16 @@ diagnostic for the later perspective pass.
 
 ## M5.9 — Integration, compatibility, and closeout
 
-**Status:** Not started.
+**Status:** Complete (2026-08-03).
 
 Replace the default straight prototype route with an authored Stage 1 test route containing long
 straights and one shallow, readable S-curve. Keep a straight-route fixture available for regression
 tests and performance comparisons.
+
+Landed as `createDefaultStageRoute()` in `src/game/road.ts`, used by `startRoadGame`; the no-route
+`createRoad(tuning)` overload remains the straight compatibility fixture. A deterministic 60-second
+fixed-step integration test covers truck progress, Cartesian motion, traffic spawning, culling, and
+seed repeatability on the authored route.
 
 Audit all uses of `distanceMeters`, `lateralMeters`, and `headingRadians`. Every remaining field must
 have an unambiguous world- or route-space meaning in its name, type, and documentation. Remove
@@ -619,24 +624,25 @@ Then perform a browser test at `http://localhost:8018` in both normal and `?debu
 
 ## Completion checklist
 
-- [ ] Cartesian world types are explicit across truck and rigid-body physics.
-- [ ] Route-space types are explicit across progress, lanes, spawning, and AI intent.
-- [ ] Straight and arc route segments are deterministic, validated, and tangent-continuous.
-- [ ] Route/world conversion and bounded projection are tested in both bend directions.
+- [x] Cartesian world types are explicit across truck and rigid-body physics.
+- [x] Route-space types are explicit across progress, lanes, spawning, and AI intent.
+- [x] Straight and arc route segments are deterministic, validated, and tangent-continuous.
+- [x] Route/world conversion and bounded projection are tested in both bend directions.
 - [x] Road cross-sections derive lanes, shoulders, markers, and barriers from one route sampler.
 - [x] The top-down renderer draws a sampled winding-road mesh from world geometry.
-- [ ] Curved barrier collisions match the visible road for both cab and trailer.
-- [ ] Truck route tracking is derived from Cartesian state without creating a second mutable truth.
-- [ ] Traffic follows route lanes while rigid-body contacts remain Cartesian.
-- [ ] Spawn, cull, patrol following, progress, score distance, and HUD distance use route distance.
-- [ ] Fixed and route-follow camera modes are deterministic and retain surround visibility.
-- [ ] Debug overlays expose route frames, boundaries, footprints, contacts, and projection error.
-- [ ] The straight-road regression remains supported and tested.
-- [ ] Automated verification passes.
-- [ ] A browser smoke/playtest passes without console errors.
+- [x] Curved barrier collisions match the visible road for both cab and trailer.
+- [x] Truck route tracking is derived from Cartesian state without creating a second mutable truth.
+- [x] Traffic follows route lanes while rigid-body contacts remain Cartesian.
+- [x] Spawn, cull, patrol following, progress, score distance, and HUD distance use route distance.
+- [x] Fixed and route-follow camera modes are deterministic and retain surround visibility.
+- [x] Debug overlays expose route frames, boundaries, footprints, contacts, and projection error.
+- [x] The straight-road regression remains supported and tested.
+- [x] Automated verification passes.
+- [x] Browser smoke passes in normal, `?debug`, and `?debug&worldFixed` modes with no console
+      errors or warnings; the deterministic winding-run test covers the full 60-second traversal.
 - [ ] A playtester can complete a seeded 60-second winding-road run without visible geometry or
       collision disagreement.
-- [ ] Deferred Stage 1 end-to-end work is preserved under an explicitly accepted roadmap number.
+- [x] Deferred Stage 1 end-to-end work is preserved under an explicitly accepted roadmap number.
 
 ## Decision carried into implementation
 

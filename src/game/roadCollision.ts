@@ -1,7 +1,7 @@
 import { sampleRoadWindow, type Road } from '/src/game/road.js';
 import { worldToRoute } from '/src/game/route.js';
 import type { TruckImpact, TruckState } from '/src/game/truck.js';
-import { validatePoint, type WorldPoint } from '/src/game/worldGeometry.js';
+import { headingToUnitVector, validatePoint, type WorldPoint } from '/src/game/worldGeometry.js';
 
 export type BarrierSide = 'left' | 'right';
 
@@ -60,6 +60,30 @@ export const DEFAULT_ROAD_COLLISION_TUNING: RoadCollisionTuning = Object.freeze(
   barrierDamageCooldownSeconds: 0.5,
 });
 
+/**
+ * Place the trailer from the actual articulated connection: the cab rear is
+ * measured along the cab heading, then the trailer's front-to-center distance
+ * is measured along the trailer heading. Using one heading for both spans
+ * creates a visible gap whenever the truck is turning.
+ */
+export function getTruckTrailerCenter(
+  truck: TruckState,
+  dimensions: TruckFootprintDimensions
+): WorldPoint {
+  const cabForward = headingToUnitVector(truck.headingRadians);
+  const trailerForward = headingToUnitVector(truck.trailerHeadingRadians);
+  const cabRear = {
+    xMeters: truck.position.xMeters - cabForward.xMeters * (dimensions.cabLengthMeters / 2),
+    yMeters: truck.position.yMeters - cabForward.yMeters * (dimensions.cabLengthMeters / 2),
+  };
+  const trailerCenterDistanceMeters =
+    dimensions.trailerLengthMeters / 2 + dimensions.hitchGapMeters;
+  return {
+    xMeters: cabRear.xMeters - trailerForward.xMeters * trailerCenterDistanceMeters,
+    yMeters: cabRear.yMeters - trailerForward.yMeters * trailerCenterDistanceMeters,
+  };
+}
+
 export function buildTruckFootprint(
   truck: TruckState,
   dimensions: TruckFootprintDimensions
@@ -67,12 +91,7 @@ export function buildTruckFootprint(
   validateTruck(truck);
   validateDimensions(dimensions);
 
-  const hitchLengthMeters =
-    dimensions.cabLengthMeters / 2 + dimensions.trailerLengthMeters / 2 + dimensions.hitchGapMeters;
-  const trailerCenter = {
-    xMeters: truck.position.xMeters - Math.sin(truck.trailerHeadingRadians) * hitchLengthMeters,
-    yMeters: truck.position.yMeters - Math.cos(truck.trailerHeadingRadians) * hitchLengthMeters,
-  };
+  const trailerCenter = getTruckTrailerCenter(truck, dimensions);
 
   return [
     orientedRectAabb(

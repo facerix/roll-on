@@ -8,7 +8,7 @@ import {
   type RigidBodyContact,
   type RigidBodyResponseTuning,
 } from '/src/game/rigidBody.js';
-import type { TruckFootprintDimensions } from '/src/game/roadCollision.js';
+import { getTruckTrailerCenter, type TruckFootprintDimensions } from '/src/game/roadCollision.js';
 import type { TruckState } from '/src/game/truck.js';
 import {
   createWorldVelocity,
@@ -676,12 +676,7 @@ function buildTruckRigidBodies(
   truck: TruckState,
   dimensions: TruckFootprintDimensions
 ): readonly [RigidBody, RigidBody] {
-  const hitchLengthMeters =
-    dimensions.cabLengthMeters / 2 + dimensions.trailerLengthMeters / 2 + dimensions.hitchGapMeters;
-  const trailerCenter = {
-    xMeters: truck.position.xMeters - Math.sin(truck.trailerHeadingRadians) * hitchLengthMeters,
-    yMeters: truck.position.yMeters - Math.cos(truck.trailerHeadingRadians) * hitchLengthMeters,
-  };
+  const trailerCenter = getTruckTrailerCenter(truck, dimensions);
   const cabVelocity = velocityAlongHeading(truck.headingRadians, truck.speedMetersPerSecond);
   const trailerVelocity = velocityAlongHeading(
     truck.trailerHeadingRadians,

@@ -62,6 +62,28 @@ export const DEFAULT_ROAD_TUNING: RoadTuning = Object.freeze({
   markerLengthMeters: 5,
 });
 
+/**
+ * The authored Stage 1 prototype route.  The two opposing arcs form a shallow
+ * S after a long approach, leaving enough straight road for traffic to spawn
+ * and for the player to read each bend before entering it.
+ */
+export function createDefaultStageRoute(): Route {
+  return createRoute({
+    origin: { xMeters: 0, yMeters: 0 },
+    headingRadians: 0,
+    segments: [
+      { kind: 'straight', lengthMeters: 320 },
+      { kind: 'arc', lengthMeters: 180, curvaturePerMeter: 0.004 },
+      { kind: 'arc', lengthMeters: 180, curvaturePerMeter: -0.004 },
+      { kind: 'straight', lengthMeters: 640 },
+    ],
+    constraints: {
+      maximumAbsoluteRoadOffsetMeters: 10,
+      minimumBendRadiusMeters: 100,
+    },
+  });
+}
+
 export function createRoad(tuning: RoadTuning, route: Route = defaultStraightRoute()): Road {
   validateRoadTuning(tuning);
   validateRouteForRoad(route, tuning);
