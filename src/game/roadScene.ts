@@ -5,6 +5,8 @@ import { routeToWorld } from '/src/game/route.js';
 import type { TruckState } from '/src/game/truck.js';
 import type { WorldPoint } from '/src/game/worldGeometry.js';
 import type { TrafficVehicle } from '/src/game/traffic.js';
+import { buildRoadDebugDrawables } from '/src/game/roadDebug.js';
+import type { RoadDistanceWindow } from '/src/game/road.js';
 
 export const COMMUTER_SPRITES = Object.freeze([
   '/images/vehicles/commuter-blue.png',
@@ -75,6 +77,8 @@ export interface BuildRoadSceneOptions {
   readonly traffic?: readonly TrafficVehicle[];
   readonly truckDimensions: RoadSceneTruckDimensions;
   readonly tuning?: RoadSceneTuning;
+  readonly debug?: boolean;
+  readonly debugWindow?: RoadDistanceWindow;
 }
 
 export const DEFAULT_PARALLAX_LAYERS: readonly ParallaxLayerTuning[] = Object.freeze([
@@ -250,6 +254,18 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
       rotationRadians: vehicle.headingRadians,
       src: isPatrol ? PATROL_SPRITE : commuterSpriteForId(vehicle.id),
     });
+  }
+
+  if (options.debug && options.debugWindow) {
+    drawables.push(
+      ...buildRoadDebugDrawables({
+        road: options.road,
+        camera: options.camera,
+        window: options.debugWindow,
+        truck: options.truck,
+        traffic: options.traffic,
+      })
+    );
   }
 
   drawables.push(...buildTruckDrawables(options.camera, options.truck, options.truckDimensions));

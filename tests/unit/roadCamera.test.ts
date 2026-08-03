@@ -6,6 +6,7 @@ import {
   DEFAULT_ROAD_CAMERA_TUNING,
   getVisibleWorldDistanceRange,
   projectWorldPoint,
+  stepRoadCameraRotation,
   type RoadCameraTuning,
   type RoadViewport,
 } from '../../src/game/roadCamera.ts';
@@ -47,6 +48,29 @@ test('positive world distance ahead of the truck projects upward on screen', () 
     }),
     { x: 400, y: 340 }
   );
+});
+
+test('camera rotation keeps the focus anchored and rotates world points into local axes', () => {
+  const camera = buildRoadCamera(FOCUS, VIEWPORT, TUNING, Math.PI / 2);
+
+  assert.deepEqual(projectWorldPoint(camera, FOCUS), { x: 400, y: 420 });
+  assert.deepEqual(
+    projectWorldPoint(camera, { xMeters: FOCUS.xMeters, yMeters: FOCUS.yMeters + 8 }),
+    { x: 320, y: 420 }
+  );
+});
+
+test('camera orientation smoothing is frame-rate independent and takes the shortest path', () => {
+  const target = -Math.PI + 0.1;
+  const current = Math.PI - 0.1;
+  const oneSecond = stepRoadCameraRotation(current, target, 1, 1);
+  let sixtySteps = current;
+  for (let index = 0; index < 60; index++) {
+    sixtySteps = stepRoadCameraRotation(sixtySteps, target, 1 / 60, 1);
+  }
+
+  assert.ok(Math.abs(oneSecond - sixtySteps) < 0.01);
+  assert.ok(oneSecond > Math.PI - 0.1 || oneSecond < -Math.PI + 0.1);
 });
 
 test('projection is deterministic and does not mutate inputs', () => {

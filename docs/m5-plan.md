@@ -504,7 +504,14 @@ space for physical contact.
 
 ## M5.8 — Camera follow, debug geometry, and feel
 
-**Status:** Not started.
+**Status:** Complete (2026-08-03).
+
+Landed in `src/game/roadCamera.ts`, `src/game/roadDebug.ts`, `src/game/roadScene.ts`, and
+`src/game/roadGame.ts`: the camera now supports a frame-rate-independent, shortest-path rotation
+toward the route tangent while preserving the truck anchor. `?worldFixed` keeps the zero-rotation
+diagnostic view available. `?debug` overlays route centerline, lane/barrier edges, tangent/normal
+frames, and actor world positions generated from simulation geometry; HUD telemetry now includes
+route progress and camera rotation. Added camera smoothing and deterministic debug-geometry tests.
 
 Make the orthographic camera useful for both diagnosis and play on a winding route. Add a tested
 camera orientation/follow policy that can align gradually with the route tangent while preserving

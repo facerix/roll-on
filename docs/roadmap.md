@@ -154,7 +154,7 @@ See `docs/m5-plan.md` for the slice-by-slice implementation plan.
 - [x] **Sampled winding-road mesh in the top-down renderer**. See M5.5.
 - [x] **Curved barrier collision + truck route tracking**. See M5.6.
 - [x] **Route-aware traffic with Cartesian rigid-body reconciliation**. See M5.7.
-- [ ] **Camera follow, debug geometry, and feel**. See M5.8.
+- [x] **Camera follow, debug geometry, and feel**. See M5.8.
 - [ ] **Integration, compatibility, and closeout**. See M5.9.
 
 Exit criterion: a 60-second seeded run on a default winding route is playable and deterministic,
