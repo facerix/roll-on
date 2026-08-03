@@ -1,3 +1,12 @@
+import {
+  createRoute,
+  routeToWorld,
+  sampleRoute,
+  type Route,
+  type RouteSample,
+} from '/src/game/route.js';
+import type { WorldPoint } from '/src/game/worldGeometry.js';
+
 export interface RoadTuning {
   readonly laneCount: number;
   readonly laneWidthMeters: number;
@@ -7,6 +16,7 @@ export interface RoadTuning {
 }
 
 export interface Road {
+  readonly route: Route;
   readonly laneCount: number;
   readonly laneWidthMeters: number;
   readonly laneCenterOffsetsMeters: readonly number[];
@@ -33,6 +43,17 @@ export interface LaneMarkerSpan {
   readonly endDistanceMeters: number;
 }
 
+export interface RoadCrossSectionSample {
+  readonly distanceAlongRouteMeters: number;
+  readonly center: WorldPoint;
+  readonly laneCenters: readonly WorldPoint[];
+  readonly laneBoundaries: readonly WorldPoint[];
+  readonly roadEdges: readonly [WorldPoint, WorldPoint];
+  readonly shoulderEdges: readonly [WorldPoint, WorldPoint];
+  readonly barrierEdges: readonly [WorldPoint, WorldPoint];
+  readonly routeSample: RouteSample;
+}
+
 export const DEFAULT_ROAD_TUNING: RoadTuning = Object.freeze({
   laneCount: 4,
   laneWidthMeters: 3.7,
@@ -41,8 +62,9 @@ export const DEFAULT_ROAD_TUNING: RoadTuning = Object.freeze({
   markerLengthMeters: 5,
 });
 
-export function createRoad(tuning: RoadTuning): Road {
+export function createRoad(tuning: RoadTuning, route: Route = defaultStraightRoute()): Road {
   validateRoadTuning(tuning);
+  validateRouteForRoad(route, tuning);
 
   const roadHalfWidthMeters = roundMeters((tuning.laneCount * tuning.laneWidthMeters) / 2);
   const leftRoadEdgeMeters = roundMeters(-roadHalfWidthMeters);
@@ -51,6 +73,7 @@ export function createRoad(tuning: RoadTuning): Road {
   const rightShoulderEdgeMeters = roundMeters(rightRoadEdgeMeters + tuning.shoulderWidthMeters);
 
   return Object.freeze({
+    route,
     laneCount: tuning.laneCount,
     laneWidthMeters: tuning.laneWidthMeters,
     laneCenterOffsetsMeters: Object.freeze(buildLaneCenters(tuning)),
@@ -65,6 +88,66 @@ export function createRoad(tuning: RoadTuning): Road {
     markerCadenceMeters: tuning.markerCadenceMeters,
     markerLengthMeters: tuning.markerLengthMeters,
   });
+}
+
+export function sampleRoad(road: Road, distanceAlongRouteMeters: number): RoadCrossSectionSample {
+  validateRoad(road);
+  assertFinite('distanceAlongRouteMeters', distanceAlongRouteMeters);
+  const routeSample = sampleRoute(road.route, distanceAlongRouteMeters);
+  const pointAt = (lateralMeters: number): WorldPoint =>
+    routeToWorld(road.route, { distanceAlongRouteMeters, lateralOffsetMeters: lateralMeters });
+
+  return Object.freeze({
+    distanceAlongRouteMeters,
+    center: routeSample.center,
+    laneCenters: Object.freeze(road.laneCenterOffsetsMeters.map(pointAt)),
+    laneBoundaries: Object.freeze(road.laneBoundaryOffsetsMeters.map(pointAt)),
+    roadEdges: Object.freeze([
+      pointAt(road.leftRoadEdgeMeters),
+      pointAt(road.rightRoadEdgeMeters),
+    ] as [WorldPoint, WorldPoint]),
+    shoulderEdges: Object.freeze([
+      pointAt(road.leftShoulderEdgeMeters),
+      pointAt(road.rightShoulderEdgeMeters),
+    ] as [WorldPoint, WorldPoint]),
+    barrierEdges: Object.freeze([
+      pointAt(road.leftBarrierLateralMeters),
+      pointAt(road.rightBarrierLateralMeters),
+    ] as [WorldPoint, WorldPoint]),
+    routeSample,
+  });
+}
+
+export function sampleRoadWindow(
+  road: Road,
+  window: RoadDistanceWindow,
+  maximumStepMeters: number
+): readonly RoadCrossSectionSample[] {
+  validateRoad(road);
+  assertFinite('startDistanceMeters', window.startDistanceMeters);
+  assertFinite('endDistanceMeters', window.endDistanceMeters);
+  assertPositive('maximumStepMeters', maximumStepMeters);
+  if (window.endDistanceMeters < window.startDistanceMeters) {
+    throw new RangeError('endDistanceMeters must be >= startDistanceMeters');
+  }
+
+  const distances = new Set<number>([window.startDistanceMeters, window.endDistanceMeters]);
+  for (const segment of road.route.segments) {
+    if (
+      segment.startDistanceMeters > window.startDistanceMeters &&
+      segment.startDistanceMeters < window.endDistanceMeters
+    ) {
+      distances.add(segment.startDistanceMeters);
+    }
+  }
+  const sorted = [...distances].sort((a, b) => a - b);
+  const expanded: number[] = [sorted[0]!];
+  for (const end of sorted.slice(1)) {
+    const start = expanded[expanded.length - 1]!;
+    const steps = Math.ceil((end - start) / maximumStepMeters);
+    for (let step = 1; step <= steps; step++) expanded.push(start + ((end - start) * step) / steps);
+  }
+  return Object.freeze(expanded.map(distance => sampleRoad(road, distance)));
 }
 
 export function getVisibleLaneMarkerSpans(
@@ -123,6 +206,29 @@ function validateRoad(road: Road): void {
     throw new TypeError('Road must be an object');
   }
   validateRoadTuning(road);
+  validateRouteForRoad(road.route, road);
+}
+
+function defaultStraightRoute(): Route {
+  return createRoute({
+    origin: { xMeters: 0, yMeters: 0 },
+    headingRadians: 0,
+    segments: [{ kind: 'straight', lengthMeters: 1 }],
+    constraints: { maximumAbsoluteRoadOffsetMeters: 10, minimumBendRadiusMeters: 30 },
+  });
+}
+
+function validateRouteForRoad(route: Route, tuning: RoadTuning): void {
+  if (typeof route !== 'object' || route === null || !Array.isArray(route.segments)) {
+    throw new TypeError('route must be a compiled Route');
+  }
+  const maximumOffset =
+    (tuning.laneCount * tuning.laneWidthMeters) / 2 + tuning.shoulderWidthMeters;
+  if (maximumOffset > route.constraints.maximumAbsoluteRoadOffsetMeters) {
+    throw new RangeError(
+      `road outer offset ${maximumOffset} exceeds route constraint ${route.constraints.maximumAbsoluteRoadOffsetMeters}`
+    );
+  }
 }
 
 function validateRoadTuning(tuning: RoadTuning): void {

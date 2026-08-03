@@ -318,7 +318,14 @@ directions of the S-curve.
 
 ## M5.4 — Lay the road cross-section over the route
 
-**Status:** Not started.
+**Status:** Complete (2026-08-03).
+
+Landed in `src/game/road.ts`: `Road` now carries a compiled route, while the existing
+`createRoad(tuning)` call remains a straight-route compatibility fixture. `sampleRoad` projects
+lane centers, lane boundaries, road edges, shoulder edges, and barrier edges into world space from
+one route sample. `sampleRoadWindow` uses meter-based subdivision, includes exact endpoints and
+authored segment joins once, and never stores screen or pixel data. Road creation rejects a
+cross-section whose outer barrier offset exceeds the route's declared curvature envelope.
 
 Refactor `Road` so its existing lane widths, lane offsets, shoulders, marker cadence, and barriers
 are a cross-section laid over a route. Preserve the current straight-road factory as a zero-curvature
@@ -587,7 +594,7 @@ Then perform a browser test at `http://localhost:8018` in both normal and `?debu
 - [ ] Route-space types are explicit across progress, lanes, spawning, and AI intent.
 - [ ] Straight and arc route segments are deterministic, validated, and tangent-continuous.
 - [ ] Route/world conversion and bounded projection are tested in both bend directions.
-- [ ] Road cross-sections derive lanes, shoulders, markers, and barriers from one route sampler.
+- [x] Road cross-sections derive lanes, shoulders, markers, and barriers from one route sampler.
 - [ ] The top-down renderer draws a sampled winding-road mesh from world geometry.
 - [ ] Curved barrier collisions match the visible road for both cab and trailer.
 - [ ] Truck route tracking is derived from Cartesian state without creating a second mutable truth.
