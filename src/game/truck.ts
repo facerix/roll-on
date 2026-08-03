@@ -1,8 +1,11 @@
-/** Position on the road's ground plane, independent of any camera or projection. */
-export interface WorldPosition {
-  readonly lateralMeters: number;
-  readonly distanceMeters: number;
-}
+import {
+  createWorldPoint,
+  normalizeHeading as normalizeAngle,
+  shortestHeadingDelta as angleDelta,
+  validatePoint,
+  type WorldPoint,
+  type WorldSegment,
+} from '/src/game/worldGeometry.js';
 
 export type TruckStatus = 'driving' | 'jackknifed' | 'crashed';
 
@@ -13,7 +16,7 @@ export type TruckStatus = 'driving' | 'jackknifed' | 'crashed';
  * pixels or frame-relative values as rendering and physics grow separately.
  */
 export interface TruckState {
-  readonly position: WorldPosition;
+  readonly position: WorldPoint;
   readonly headingRadians: number;
   readonly speedMetersPerSecond: number;
   readonly yawRateRadiansPerSecond: number;
@@ -61,11 +64,6 @@ export interface TruckTuning {
   readonly jackknifeMinimumSpeedMetersPerSecond: number;
 }
 
-export interface WorldSegment {
-  readonly start: WorldPosition;
-  readonly end: WorldPosition;
-}
-
 /** Capsule occupied by the swinging trailer while jackknifed. */
 export interface TrailerSwipeHitZone {
   readonly segment: WorldSegment;
@@ -103,10 +101,7 @@ export function createTruckState(initial: TruckState): TruckState {
   validateTruckState(initial);
 
   return {
-    position: {
-      lateralMeters: initial.position.lateralMeters,
-      distanceMeters: initial.position.distanceMeters,
-    },
+    position: createWorldPoint(initial.position.xMeters, initial.position.yMeters),
     headingRadians: initial.headingRadians,
     speedMetersPerSecond: initial.speedMetersPerSecond,
     yawRateRadiansPerSecond: initial.yawRateRadiansPerSecond,
@@ -184,9 +179,9 @@ export function stepTruck(
   // Trapezoidal speed integration avoids using either the old or new speed
   // alone for the whole step.
   const distanceTravelled = averageSpeed * dtSeconds;
-  const nextPosition: WorldPosition = {
-    lateralMeters: state.position.lateralMeters + Math.sin(movementHeading) * distanceTravelled,
-    distanceMeters: state.position.distanceMeters + Math.cos(movementHeading) * distanceTravelled,
+  const nextPosition: WorldPoint = {
+    xMeters: state.position.xMeters + Math.sin(movementHeading) * distanceTravelled,
+    yMeters: state.position.yMeters + Math.cos(movementHeading) * distanceTravelled,
   };
 
   // A single-track trailer follower: its axle rotates toward the cab according
@@ -225,18 +220,13 @@ export function getTrailerSwipeHitZone(
 
   return {
     segment: {
-      start: {
-        lateralMeters: state.position.lateralMeters,
-        distanceMeters: state.position.distanceMeters,
-      },
-      end: {
-        lateralMeters:
-          state.position.lateralMeters -
+      start: createWorldPoint(state.position.xMeters, state.position.yMeters),
+      end: createWorldPoint(
+        state.position.xMeters -
           Math.sin(state.trailerHeadingRadians) * tuning.trailerWheelbaseMeters,
-        distanceMeters:
-          state.position.distanceMeters -
-          Math.cos(state.trailerHeadingRadians) * tuning.trailerWheelbaseMeters,
-      },
+        state.position.yMeters -
+          Math.cos(state.trailerHeadingRadians) * tuning.trailerWheelbaseMeters
+      ),
     },
     radiusMeters: tuning.trailerWidthMeters / 2,
   };
@@ -261,12 +251,7 @@ function validateTruckState(state: TruckState): void {
   if (typeof state !== 'object' || state === null) {
     throw new TypeError('TruckState must be an object');
   }
-  if (typeof state.position !== 'object' || state.position === null) {
-    throw new TypeError('TruckState.position must be an object');
-  }
-
-  assertFinite('position.lateralMeters', state.position.lateralMeters);
-  assertFinite('position.distanceMeters', state.position.distanceMeters);
+  validatePoint('TruckState.position', state.position);
   assertFinite('headingRadians', state.headingRadians);
   assertFinite('speedMetersPerSecond', state.speedMetersPerSecond);
   assertFinite('yawRateRadiansPerSecond', state.yawRateRadiansPerSecond);
@@ -421,12 +406,4 @@ function assertPositive(label: string, value: number): void {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
-}
-
-function normalizeAngle(angle: number): number {
-  return Math.atan2(Math.sin(angle), Math.cos(angle));
-}
-
-function angleDelta(a: number, b: number): number {
-  return normalizeAngle(a - b);
 }

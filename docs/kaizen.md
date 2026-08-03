@@ -11,11 +11,11 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
 - **Difficulty curve shape**: linear ramp vs. wave pattern (lulls between intensity spikes)? Decide once Milestone 4 is playable enough to feel.
 - **Run length target**: M3 uses a prototype target of about 135 seconds at efficient cruise before
   an empty tank. The final "good" Stage 1 run length is still open because enemy density, finish
-  distance, and scoring pressure arrive in later milestones. Revisit during Milestone 5.
-- **Permadeath vs. continues**: arcade tradition is continues with score reset penalty. Design doc is silent. Decide before Milestone 5.
+  distance, and scoring pressure arrive in later milestones. Revisit during Milestone 6.
+- **Permadeath vs. continues**: arcade tradition is continues with score reset penalty. Design doc is silent. Decide before Milestone 6.
 - **Score formula precise weights**: §6 of the design doc gives the formula but no coefficients. M4
   uses prototype weights (10 points/meter, 2,000 integrity multiplier, 250/takedown); tune during
-  the M5 finish-tally playtest.
+  the M6 finish-tally playtest.
 - **Touch control ergonomics**: the pad layout (steer arrows at left/right centre, brake+gas centred
   along the bottom, horn in the bottom-left corner) is a first pass that has NOT been played on a
   real device yet. Open: whether steering wants held arrows at all versus a drag-anywhere lane
@@ -23,7 +23,7 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
   the first phone playtest.
 - **Horn mechanics**: the `horn` action is bound (Space, plus a touch button) but does nothing.
   Stubbed deliberately so the input surface is complete; decide what it does — scatter traffic?
-  bait patrol? — during Milestone 5.
+  bait patrol? — during Milestone 6.
 
 ## Deferred technical work
 
@@ -43,8 +43,9 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
 - **Development service-worker module skew**: the M4 browser pass caught one startup where the
   stale-while-refresh strategy served a cached `gameHud.ts` build beside a fresh `gameHudView.ts`
   build. A reload used the refreshed cache and clean runs were stable, but dev should never execute
-  a mixed module graph. Revisit before M5 by making refreshable development resources network-first
-  (with cache fallback) or versioning each watch build as one atomic cache generation.
+  a mixed module graph. Revisit by making refreshable development resources network-first (with
+  cache fallback) or versioning each watch build as one atomic cache generation. **Now due**: this
+  was filed as "revisit before M5", and M5 (winding roads) has begun without it being addressed.
 
 ## Risks to monitor
 
@@ -53,6 +54,22 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
 - **`DataStore` schema churn**: deferred — during prototyping we accept tearing down localStorage and starting fresh whenever the shape changes. Revisit once gameplay stabilizes and real player data is at stake; at that point we want explicit version tags and crash-on-unknown-version (per directive: crashing > corruption).
 
 ## Resolved (move entries here when decided, with the decision)
+
+- **Milestone 5 numbering** (2026-07-26): the winding-road foundation took the M5 slot and the
+  original "Stage 1 end-to-end" entry moved to M6. Route geometry is prerequisite work for Stage 1
+  and for the later pseudo-perspective renderer. Nothing from the Stage 1 entry was discarded;
+  `docs/roadmap.md` records the move at both milestones, and deferred items in this file that meant
+  "the Stage 1 finish milestone" now say M6.
+
+- **Absolute import specifiers under `node --test`** (2026-07-26): app source imports with
+  browser-absolute specifiers (`/src/game/truck.js`) that Node would resolve against the filesystem
+  root. This never surfaced because every cross-module import in tested code was `import type`, and
+  therefore erased before runtime. M5.1 introduced the first real value imports between game
+  modules. Resolved with a Node module-resolution hook (`tests/browserSpecifierHooks.mjs`, wired in
+  via `tests/register.mjs`) that rewrites `/src/…` and `/components/…` to project-relative `.ts`
+  sources. Rejected alternatives: relative imports in app source (violates the project rule and
+  breaks in the browser), and testing against `dist/` (would require a build step before every test
+  run and stop exercising the real sources).
 
 - **Renderer exhaustiveness check** (2026-07-14): M1.3 added the `oriented-rect` drawable for cab
   and trailer placeholders. `Canvas2DRenderer.draw` now has multiple discriminated-union arms and a

@@ -1,7 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import type { Drawable, OrientedSpriteDrawable, RectDrawable } from '../../src/engine/renderer.ts';
+import type {
+  Drawable,
+  OrientedSpriteDrawable,
+  PolygonDrawable,
+  RectDrawable,
+} from '../../src/engine/renderer.ts';
 import { buildRoadCamera } from '../../src/game/roadCamera.ts';
 import { createRoad, DEFAULT_ROAD_TUNING } from '../../src/game/road.ts';
 import {
@@ -16,6 +21,8 @@ import {
 } from '../../src/game/roadScene.ts';
 import { createTruckState, type TruckState } from '../../src/game/truck.ts';
 import { createTrafficVehicle } from '../../src/game/traffic.ts';
+import { createRoute, routeToWorld } from '../../src/game/route.ts';
+import { getTruckTrailerCenter } from '../../src/game/roadCollision.ts';
 
 const ROAD = createRoad(DEFAULT_ROAD_TUNING);
 const VIEWPORT = { width: 320, height: 480 };
@@ -30,7 +37,7 @@ const TRUCK_DIMENSIONS: RoadSceneTruckDimensions = {
 
 function truckAt(distanceMeters: number): TruckState {
   return createTruckState({
-    position: { lateralMeters: 0, distanceMeters },
+    position: { xMeters: 0, yMeters: distanceMeters },
     headingRadians: 0,
     speedMetersPerSecond: 0,
     yawRateRadiansPerSecond: 0,
@@ -57,6 +64,10 @@ function rects(drawables: readonly Drawable[]): RectDrawable[] {
 
 function orientedSprites(drawables: readonly Drawable[]): OrientedSpriteDrawable[] {
   return drawables.filter((d): d is OrientedSpriteDrawable => d.kind === 'oriented-sprite');
+}
+
+function polygons(drawables: readonly Drawable[]): PolygonDrawable[] {
+  return drawables.filter((d): d is PolygonDrawable => d.kind === 'polygon');
 }
 
 test('road scene emits drawables in back-to-front order', () => {
@@ -122,7 +133,7 @@ test('road scene drawables remain finite for normal viewport and truck positions
   const scene = sceneFor(
     createTruckState({
       ...truckAt(128),
-      position: { lateralMeters: 3.4, distanceMeters: 128 },
+      position: { xMeters: 3.4, yMeters: 128 },
       headingRadians: 0.1,
       trailerHeadingRadians: -0.08,
     })
@@ -170,6 +181,68 @@ test('negative hitch offset overlaps the front of the trailer with the rear of t
   const trailerFrontY = trailer.centerY - trailer.h / 2;
   const cabRearY = cab.centerY + cab.h / 2;
   assert.equal(cabRearY - trailerFrontY, hitchOverlapMeters * CAMERA_TUNING.pixelsPerMeter);
+});
+
+test('articulated trailer stays connected when cab and trailer headings differ', () => {
+  const truck = createTruckState({
+    ...truckAt(42),
+    headingRadians: 0.35,
+    trailerHeadingRadians: 0.1,
+  });
+  const trailerCenter = getTruckTrailerCenter(truck, TRUCK_DIMENSIONS);
+  const cabForward = {
+    xMeters: Math.sin(truck.headingRadians),
+    yMeters: Math.cos(truck.headingRadians),
+  };
+  const trailerForward = {
+    xMeters: Math.sin(truck.trailerHeadingRadians),
+    yMeters: Math.cos(truck.trailerHeadingRadians),
+  };
+  const cabRear = {
+    xMeters: truck.position.xMeters - cabForward.xMeters * (TRUCK_DIMENSIONS.cabLengthMeters / 2),
+    yMeters: truck.position.yMeters - cabForward.yMeters * (TRUCK_DIMENSIONS.cabLengthMeters / 2),
+  };
+  const trailerFront = {
+    xMeters:
+      trailerCenter.xMeters + trailerForward.xMeters * (TRUCK_DIMENSIONS.trailerLengthMeters / 2),
+    yMeters:
+      trailerCenter.yMeters + trailerForward.yMeters * (TRUCK_DIMENSIONS.trailerLengthMeters / 2),
+  };
+  const connectionDistance = Math.hypot(
+    trailerFront.xMeters - cabRear.xMeters,
+    trailerFront.yMeters - cabRear.yMeters
+  );
+
+  assert.ok(Math.abs(connectionDistance - TRUCK_DIMENSIONS.hitchGapMeters) < 1e-12);
+});
+
+test('cab, trailer, and traffic headings rotate into the camera frame', () => {
+  const truck = createTruckState({
+    ...truckAt(42),
+    headingRadians: 0.7,
+    trailerHeadingRadians: 0.2,
+  });
+  const camera = buildRoadCamera(truck.position, VIEWPORT, CAMERA_TUNING, 0.4);
+  const commuter = createTrafficVehicle({
+    id: 1,
+    kind: 'commuter',
+    laneIndex: 1,
+    distanceMeters: 50,
+    speedMetersPerSecond: 10,
+  });
+  const sprites = orientedSprites(
+    buildRoadScene({
+      road: ROAD,
+      camera,
+      truck,
+      traffic: [commuter],
+      truckDimensions: TRUCK_DIMENSIONS,
+    }).drawables
+  );
+
+  assert.equal(sprites[0]!.rotationRadians, -0.4);
+  assert.ok(Math.abs(sprites.at(-2)!.rotationRadians - 0.3) < Number.EPSILON * 4);
+  assert.ok(Math.abs(sprites.at(-1)!.rotationRadians + 0.2) < Number.EPSILON * 4);
 });
 
 test('traffic vehicles project in world space below the player truck', () => {
@@ -236,6 +309,92 @@ test('road scene rejects unknown traffic kinds instead of drawing a commuter fal
       }),
     TypeError
   );
+});
+
+test('curved road scene emits finite sampled polygons in back-to-front mesh order', () => {
+  const route = createRoute({
+    origin: { xMeters: 0, yMeters: 0 },
+    headingRadians: 0,
+    segments: [
+      { kind: 'straight', lengthMeters: 20 },
+      { kind: 'arc', lengthMeters: 80, curvaturePerMeter: 0.004 },
+      { kind: 'arc', lengthMeters: 80, curvaturePerMeter: -0.004 },
+      { kind: 'straight', lengthMeters: 60 },
+    ],
+    constraints: { maximumAbsoluteRoadOffsetMeters: 10, minimumBendRadiusMeters: 30 },
+  });
+  const road = createRoad(DEFAULT_ROAD_TUNING, route);
+  const truck = truckAt(90);
+  const camera = buildRoadCamera(truck.position, VIEWPORT, CAMERA_TUNING);
+  const scene = buildRoadScene({ road, camera, truck, truckDimensions: TRUCK_DIMENSIONS });
+  const mesh = polygons(scene.drawables);
+
+  assert.ok(mesh.length > 10);
+  assert.ok(mesh.every(polygon => polygon.points.length === 4));
+  assert.ok(
+    mesh.every(polygon =>
+      polygon.points.every(point => Number.isFinite(point.x) && Number.isFinite(point.y))
+    )
+  );
+  assert.equal(mesh[0]!.color, DEFAULT_ROAD_SCENE_TUNING.shoulderColor);
+  assert.ok(mesh.some(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.roadColor));
+  assert.ok(mesh.some(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.laneMarkerColor));
+});
+
+test('curved road sampling covers the whole rotated viewport around route focus', () => {
+  const route = createRoute({
+    origin: { xMeters: 0, yMeters: 0 },
+    headingRadians: 0,
+    segments: [{ kind: 'arc', lengthMeters: 220, curvaturePerMeter: 0.004 }],
+    constraints: { maximumAbsoluteRoadOffsetMeters: 12, minimumBendRadiusMeters: 40 },
+  });
+  const road = createRoad(DEFAULT_ROAD_TUNING, route);
+  const focusDistanceAlongRouteMeters = 150;
+  const focus = routeToWorld(route, {
+    distanceAlongRouteMeters: focusDistanceAlongRouteMeters,
+    lateralOffsetMeters: 0,
+  });
+  const camera = buildRoadCamera(focus, VIEWPORT, CAMERA_TUNING, 0.55);
+  const scene = buildRoadScene({
+    road,
+    camera,
+    truck: truckAt(focus.yMeters),
+    truckDimensions: TRUCK_DIMENSIONS,
+    focusDistanceAlongRouteMeters,
+  });
+  const roadPolygons = polygons(scene.drawables);
+
+  assert.ok(roadPolygons.length > 20);
+  assert.ok(roadPolygons.some(polygon => polygon.points.some(point => point.y < 80)));
+  assert.ok(
+    roadPolygons.some(polygon => polygon.points.some(point => point.y > VIEWPORT.height - 80))
+  );
+});
+
+test('adjacent curved road mesh quads share exact projected edge points', () => {
+  const route = createRoute({
+    origin: { xMeters: 0, yMeters: 0 },
+    headingRadians: 0,
+    segments: [
+      { kind: 'straight', lengthMeters: 20 },
+      { kind: 'arc', lengthMeters: 80, curvaturePerMeter: 0.004 },
+      { kind: 'straight', lengthMeters: 80 },
+    ],
+    constraints: { maximumAbsoluteRoadOffsetMeters: 10, minimumBendRadiusMeters: 30 },
+  });
+  const road = createRoad(DEFAULT_ROAD_TUNING, route);
+  const truck = truckAt(70);
+  const camera = buildRoadCamera(truck.position, VIEWPORT, CAMERA_TUNING);
+  const roadQuads = polygons(
+    buildRoadScene({ road, camera, truck, truckDimensions: TRUCK_DIMENSIONS }).drawables
+  ).filter(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.roadColor);
+
+  assert.ok(roadQuads.length > 2);
+  for (let index = 1; index < roadQuads.length; index++) {
+    const previous = roadQuads[index - 1]!;
+    const current = roadQuads[index]!;
+    assert.deepEqual(previous.points.slice(2), current.points.slice(0, 2).reverse());
+  }
 });
 
 test('disabled traffic renders as a visibly rotated wreck', () => {

@@ -5,7 +5,7 @@ import { buildTruckTelemetry, formatTruckTelemetry } from '../../src/game/truckT
 import { createTruckState, DEFAULT_TRUCK_TUNING } from '../../src/game/truck.ts';
 
 const state = createTruckState({
-  position: { lateralMeters: 0, distanceMeters: 0 },
+  position: { xMeters: 0, yMeters: 0 },
   headingRadians: Math.PI / 6,
   speedMetersPerSecond: 10,
   yawRateRadiansPerSecond: -Math.PI / 12,

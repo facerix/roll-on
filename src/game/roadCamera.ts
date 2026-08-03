@@ -1,5 +1,10 @@
 import type { RoadDistanceWindow } from '/src/game/road.js';
-import type { WorldPosition } from '/src/game/truck.js';
+import {
+  normalizeHeading,
+  shortestHeadingDelta,
+  validatePoint,
+  type WorldPoint,
+} from '/src/game/worldGeometry.js';
 
 export interface RoadViewport {
   readonly width: number;
@@ -10,6 +15,7 @@ export interface RoadCameraTuning {
   readonly pixelsPerMeter: number;
   readonly anchorX: number;
   readonly anchorY: number;
+  readonly orientationResponsePerSecond?: number;
 }
 
 export interface RoadCamera {
@@ -18,7 +24,9 @@ export interface RoadCamera {
   readonly pixelsPerMeter: number;
   readonly anchorX: number;
   readonly anchorY: number;
-  readonly focus: WorldPosition;
+  readonly focus: WorldPoint;
+  /** World heading aligned to the camera's local forward axis. Zero is world-fixed. */
+  readonly rotationRadians: number;
 }
 
 export interface ScreenPoint {
@@ -30,16 +38,19 @@ export const DEFAULT_ROAD_CAMERA_TUNING: RoadCameraTuning = Object.freeze({
   pixelsPerMeter: 10,
   anchorX: 160,
   anchorY: 360,
+  orientationResponsePerSecond: 4,
 });
 
 export function buildRoadCamera(
-  focus: WorldPosition,
+  focus: WorldPoint,
   viewport: RoadViewport,
-  tuning: RoadCameraTuning
+  tuning: RoadCameraTuning,
+  rotationRadians = 0
 ): RoadCamera {
-  validateWorldPosition('focus', focus);
+  validatePoint('focus', focus);
   validateViewport(viewport);
   validateTuning(tuning, viewport);
+  assertFinite('rotationRadians', rotationRadians);
 
   return Object.freeze({
     viewportWidth: viewport.width,
@@ -47,24 +58,46 @@ export function buildRoadCamera(
     pixelsPerMeter: tuning.pixelsPerMeter,
     anchorX: tuning.anchorX,
     anchorY: tuning.anchorY,
-    focus: Object.freeze({
-      lateralMeters: focus.lateralMeters,
-      distanceMeters: focus.distanceMeters,
-    }),
+    focus: Object.freeze({ xMeters: focus.xMeters, yMeters: focus.yMeters }),
+    rotationRadians: normalizeHeading(rotationRadians),
   });
 }
 
-export function projectWorldPoint(camera: RoadCamera, position: WorldPosition): ScreenPoint {
-  validateCamera(camera);
-  validateWorldPosition('position', position);
+/** Exponential, frame-rate-independent camera orientation follow. */
+export function stepRoadCameraRotation(
+  currentRotationRadians: number,
+  targetRotationRadians: number,
+  dtSeconds: number,
+  responsePerSecond: number
+): number {
+  assertFinite('currentRotationRadians', currentRotationRadians);
+  assertFinite('targetRotationRadians', targetRotationRadians);
+  assertFinite('dtSeconds', dtSeconds);
+  assertFinite('responsePerSecond', responsePerSecond);
+  if (dtSeconds < 0) throw new RangeError(`dtSeconds must be non-negative, got ${dtSeconds}`);
+  if (responsePerSecond <= 0) {
+    throw new RangeError(`responsePerSecond must be positive, got ${responsePerSecond}`);
+  }
+  const fraction = 1 - Math.exp(-responsePerSecond * dtSeconds);
+  return normalizeHeading(
+    currentRotationRadians +
+      shortestHeadingDelta(targetRotationRadians, currentRotationRadians) * fraction
+  );
+}
 
+export function projectWorldPoint(camera: RoadCamera, position: WorldPoint): ScreenPoint {
+  validateCamera(camera);
+  validatePoint('position', position);
+
+  const deltaX = position.xMeters - camera.focus.xMeters;
+  const deltaY = position.yMeters - camera.focus.yMeters;
+  const sin = Math.sin(camera.rotationRadians);
+  const cos = Math.cos(camera.rotationRadians);
+  const localAcross = cos * deltaX - sin * deltaY;
+  const localForward = sin * deltaX + cos * deltaY;
   return {
-    x:
-      camera.anchorX +
-      (position.lateralMeters - camera.focus.lateralMeters) * camera.pixelsPerMeter,
-    y:
-      camera.anchorY -
-      (position.distanceMeters - camera.focus.distanceMeters) * camera.pixelsPerMeter,
+    x: camera.anchorX + localAcross * camera.pixelsPerMeter,
+    y: camera.anchorY - localForward * camera.pixelsPerMeter,
   };
 }
 
@@ -73,9 +106,8 @@ export function getVisibleWorldDistanceRange(camera: RoadCamera): RoadDistanceWi
 
   return {
     startDistanceMeters:
-      camera.focus.distanceMeters -
-      (camera.viewportHeight - camera.anchorY) / camera.pixelsPerMeter,
-    endDistanceMeters: camera.focus.distanceMeters + camera.anchorY / camera.pixelsPerMeter,
+      camera.focus.yMeters - (camera.viewportHeight - camera.anchorY) / camera.pixelsPerMeter,
+    endDistanceMeters: camera.focus.yMeters + camera.anchorY / camera.pixelsPerMeter,
   };
 }
 
@@ -83,7 +115,8 @@ function validateCamera(camera: RoadCamera): void {
   if (typeof camera !== 'object' || camera === null) {
     throw new TypeError('RoadCamera must be an object');
   }
-  validateWorldPosition('camera.focus', camera.focus);
+  validatePoint('camera.focus', camera.focus);
+  assertFinite('camera.rotationRadians', camera.rotationRadians);
   validateViewport({ width: camera.viewportWidth, height: camera.viewportHeight });
   validateTuning(
     {
@@ -112,17 +145,13 @@ function validateTuning(tuning: RoadCameraTuning, viewport: RoadViewport): void 
   assertFinite('pixelsPerMeter', tuning.pixelsPerMeter);
   assertFinite('anchorX', tuning.anchorX);
   assertFinite('anchorY', tuning.anchorY);
+  if (tuning.orientationResponsePerSecond !== undefined) {
+    assertFinite('orientationResponsePerSecond', tuning.orientationResponsePerSecond);
+    assertPositive('orientationResponsePerSecond', tuning.orientationResponsePerSecond);
+  }
   assertPositive('pixelsPerMeter', tuning.pixelsPerMeter);
   assertRange('anchorX', tuning.anchorX, 0, viewport.width);
   assertRange('anchorY', tuning.anchorY, 0, viewport.height);
-}
-
-function validateWorldPosition(label: string, position: WorldPosition): void {
-  if (typeof position !== 'object' || position === null) {
-    throw new TypeError(`${label} must be an object`);
-  }
-  assertFinite(`${label}.lateralMeters`, position.lateralMeters);
-  assertFinite(`${label}.distanceMeters`, position.distanceMeters);
 }
 
 function assertFinite(label: string, value: number): void {

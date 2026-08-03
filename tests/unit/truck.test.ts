@@ -34,7 +34,7 @@ const NO_CONTROLS: TruckControls = {
 
 function validState(): TruckState {
   return createTruckState({
-    position: { lateralMeters: 2.5, distanceMeters: 100 },
+    position: { xMeters: 2.5, yMeters: 100 },
     headingRadians: 0.25,
     speedMetersPerSecond: 0,
     yawRateRadiansPerSecond: 0,
@@ -63,7 +63,7 @@ test('createTruckState creates a validated world-space state from explicit value
   const state = validState();
 
   assert.deepEqual(state, {
-    position: { lateralMeters: 2.5, distanceMeters: 100 },
+    position: { xMeters: 2.5, yMeters: 100 },
     headingRadians: 0.25,
     speedMetersPerSecond: 0,
     yawRateRadiansPerSecond: 0,
@@ -85,7 +85,7 @@ test('truck state contains world simulation data, not presentation data', () => 
     'trailerHeadingRadians',
     'yawRateRadiansPerSecond',
   ]);
-  assert.deepEqual(Object.keys(validState().position).sort(), ['distanceMeters', 'lateralMeters']);
+  assert.deepEqual(Object.keys(validState().position).sort(), ['xMeters', 'yMeters']);
 });
 
 test('stepTruck is deterministic for identical inputs', () => {
@@ -188,12 +188,10 @@ test('forward speed advances world position along cab heading', () => {
   const forward = stepTruck(movingForward, { ...NO_CONTROLS, throttle: 1 }, 0.1, TUNING);
   const sideways = stepTruck(movingSideways, { ...NO_CONTROLS, throttle: 1 }, 0.1, TUNING);
 
-  assert.equal(forward.position.lateralMeters, movingForward.position.lateralMeters);
-  assert.ok(forward.position.distanceMeters > movingForward.position.distanceMeters);
-  assert.ok(sideways.position.lateralMeters > movingSideways.position.lateralMeters);
-  assert.ok(
-    Math.abs(sideways.position.distanceMeters - movingSideways.position.distanceMeters) < 1e-12
-  );
+  assert.equal(forward.position.xMeters, movingForward.position.xMeters);
+  assert.ok(forward.position.yMeters > movingForward.position.yMeters);
+  assert.ok(sideways.position.xMeters > movingSideways.position.xMeters);
+  assert.ok(Math.abs(sideways.position.yMeters - movingSideways.position.yMeters) < 1e-12);
 });
 
 test('equivalent fixed-step simulations produce identical longitudinal state', () => {
@@ -376,7 +374,7 @@ test('jackknifed truck recovers below the recovery threshold', () => {
 test('jackknifed trailer exposes a world-space swipe capsule', () => {
   const jackknifed = {
     ...validState(),
-    position: { lateralMeters: 10, distanceMeters: 20 },
+    position: { xMeters: 10, yMeters: 20 },
     headingRadians: 0.5,
     trailerHeadingRadians: 0,
     speedMetersPerSecond: 25,
@@ -387,8 +385,8 @@ test('jackknifed trailer exposes a world-space swipe capsule', () => {
 
   assert.deepEqual(hitZone, {
     segment: {
-      start: { lateralMeters: 10, distanceMeters: 20 },
-      end: { lateralMeters: 10, distanceMeters: 8 },
+      start: { xMeters: 10, yMeters: 20 },
+      end: { xMeters: 10, yMeters: 8 },
     },
     radiusMeters: 1.3,
   });
@@ -398,7 +396,7 @@ test('jackknifed trailer exposes a world-space swipe capsule', () => {
 test('trailer swipe capsule follows trailer orientation', () => {
   const sidewaysTrailer = {
     ...validState(),
-    position: { lateralMeters: 10, distanceMeters: 20 },
+    position: { xMeters: 10, yMeters: 20 },
     headingRadians: 0,
     trailerHeadingRadians: Math.PI / 2,
     speedMetersPerSecond: 25,
@@ -408,8 +406,8 @@ test('trailer swipe capsule follows trailer orientation', () => {
   const hitZone = getTrailerSwipeHitZone(sidewaysTrailer, TUNING);
 
   assert.ok(hitZone !== null);
-  assert.ok(Math.abs(hitZone.segment.end.lateralMeters - -2) < 1e-12);
-  assert.ok(Math.abs(hitZone.segment.end.distanceMeters - 20) < 1e-12);
+  assert.ok(Math.abs(hitZone.segment.end.xMeters - -2) < 1e-12);
+  assert.ok(Math.abs(hitZone.segment.end.yMeters - 20) < 1e-12);
 });
 
 test('barrier impact while jackknifed causes a catastrophic crash', () => {
@@ -454,7 +452,7 @@ test('createTruckState rejects non-finite state values', () => {
     () =>
       createTruckState({
         ...state,
-        position: { ...state.position, distanceMeters: Number.POSITIVE_INFINITY },
+        position: { ...state.position, yMeters: Number.POSITIVE_INFINITY },
       }),
     TypeError
   );

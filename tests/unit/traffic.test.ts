@@ -2,20 +2,36 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createRoad, DEFAULT_ROAD_TUNING } from '../../src/game/road.ts';
+import { createRoute, routeToWorld, sampleRoute } from '../../src/game/route.ts';
 import type { TruckFootprintDimensions } from '../../src/game/roadCollision.ts';
+import {
+  detectRigidBodyContact,
+  resolveRigidBodyContact,
+  type RigidBody,
+} from '../../src/game/rigidBody.ts';
 import {
   createTrafficState,
   createTrafficVehicle,
   DEFAULT_TRAFFIC_TUNING,
-  detectRigidBodyContact,
-  resolveRigidBodyContact,
   stepTraffic,
-  type RigidBody,
   type TrafficState,
 } from '../../src/game/traffic.ts';
 import { createTruckState, type TruckState } from '../../src/game/truck.ts';
 
 const ROAD = createRoad(DEFAULT_ROAD_TUNING);
+const CURVED_ROAD = createRoad(
+  DEFAULT_ROAD_TUNING,
+  createRoute({
+    origin: { xMeters: 0, yMeters: 0 },
+    headingRadians: 0,
+    constraints: { maximumAbsoluteRoadOffsetMeters: 12, minimumBendRadiusMeters: 40 },
+    segments: [
+      { kind: 'straight', lengthMeters: 40 },
+      { kind: 'arc', lengthMeters: 60, curvaturePerMeter: 0.01 },
+      { kind: 'arc', lengthMeters: 60, curvaturePerMeter: -0.01 },
+    ],
+  })
+);
 const TRUCK_DIMENSIONS: TruckFootprintDimensions = {
   cabWidthMeters: 2.6,
   cabLengthMeters: 4,
@@ -26,7 +42,7 @@ const TRUCK_DIMENSIONS: TruckFootprintDimensions = {
 
 function truck(overrides: Partial<TruckState> = {}): TruckState {
   return createTruckState({
-    position: { lateralMeters: ROAD.laneCenterOffsetsMeters[1]!, distanceMeters: 100 },
+    position: { xMeters: ROAD.laneCenterOffsetsMeters[1]!, yMeters: 100 },
     headingRadians: 0,
     speedMetersPerSecond: 25,
     yawRateRadiansPerSecond: 0,
@@ -58,6 +74,89 @@ test('commuter cars move forward and stay centered in their lane', () => {
 
   assert.equal(result.state.vehicles[0]!.distanceMeters, 145);
   assert.equal(result.state.vehicles[0]!.lateralMeters, ROAD.laneCenterOffsetsMeters[2]);
+});
+
+test('commuters follow route lane centers and headings through an S-curve', () => {
+  const commuter = createTrafficVehicle({
+    id: 1,
+    kind: 'commuter',
+    laneIndex: 2,
+    distanceMeters: 65,
+    speedMetersPerSecond: 15,
+    laneChangeCooldownSeconds: 99,
+  });
+  const distanceAlongRouteMeters = commuter.distanceMeters + commuter.speedMetersPerSecond;
+  const result = stepTraffic({
+    state: createTrafficState({ seed: 7, vehicles: [commuter], spawnCountdownSeconds: 99 }),
+    truck: truck({ position: { xMeters: 0, yMeters: 0 } }),
+    truckRoutePosition: { distanceAlongRouteMeters: 0, lateralOffsetMeters: 0 },
+    road: CURVED_ROAD,
+    truckDimensions: TRUCK_DIMENSIONS,
+    dtSeconds: 1,
+  });
+  const moved = result.state.vehicles[0]!;
+  const expected = routeToWorld(CURVED_ROAD.route, {
+    distanceAlongRouteMeters,
+    lateralOffsetMeters: CURVED_ROAD.laneCenterOffsetsMeters[2]!,
+  });
+  const expectedHeading = sampleRoute(CURVED_ROAD.route, distanceAlongRouteMeters).headingRadians;
+
+  assert.ok(Math.abs(moved.worldPosition.xMeters - expected.xMeters) < 1e-9);
+  assert.ok(Math.abs(moved.worldPosition.yMeters - expected.yMeters) < 1e-9);
+  assert.ok(Math.abs(moved.headingRadians - expectedHeading) < 1e-9);
+  assert.ok(Math.abs(moved.lateralMeters - CURVED_ROAD.laneCenterOffsetsMeters[2]!) < 1e-9);
+});
+
+test('a collision-displaced driving vehicle reacquires its nearby route position', () => {
+  const distanceAlongRouteMeters = 70;
+  const lateralOffsetMeters = CURVED_ROAD.laneCenterOffsetsMeters[2]!;
+  const sample = sampleRoute(CURVED_ROAD.route, distanceAlongRouteMeters);
+  const commuter = createTrafficVehicle({
+    id: 1,
+    kind: 'commuter',
+    laneIndex: 2,
+    distanceMeters: distanceAlongRouteMeters,
+    speedMetersPerSecond: 5,
+    laneChangeCooldownSeconds: 99,
+  });
+  const positioned = {
+    ...commuter,
+    lateralMeters: lateralOffsetMeters,
+    headingRadians: sample.headingRadians,
+    worldPosition: routeToWorld(CURVED_ROAD.route, {
+      distanceAlongRouteMeters,
+      lateralOffsetMeters,
+    }),
+    worldVelocity: {
+      xMetersPerSecond: sample.tangent.xMeters * 5,
+      yMetersPerSecond: sample.tangent.yMeters * 5,
+    },
+  };
+  const result = stepTraffic({
+    state: createTrafficState({
+      seed: 7,
+      vehicles: [positioned],
+      spawnCountdownSeconds: 99,
+    }),
+    truck: truck({ position: positioned.worldPosition, speedMetersPerSecond: 0 }),
+    truckRoutePosition: { distanceAlongRouteMeters, lateralOffsetMeters },
+    road: CURVED_ROAD,
+    truckDimensions: TRUCK_DIMENSIONS,
+    dtSeconds: 0,
+    tuning: {
+      ...DEFAULT_TRAFFIC_TUNING,
+      plowImpactSpeedMetersPerSecond: 100,
+    },
+  });
+
+  const resolved = result.state.vehicles[0]!;
+  assert.ok(Math.abs(resolved.distanceMeters - distanceAlongRouteMeters) < 2);
+  const reacquiredWorldPosition = routeToWorld(CURVED_ROAD.route, {
+    distanceAlongRouteMeters: resolved.distanceMeters,
+    lateralOffsetMeters: resolved.lateralMeters,
+  });
+  assert.ok(Math.abs(resolved.worldPosition.xMeters - reacquiredWorldPosition.xMeters) < 1e-9);
+  assert.ok(Math.abs(resolved.worldPosition.yMeters - reacquiredWorldPosition.yMeters) < 1e-9);
 });
 
 test('traffic accepts the signed hitch offset used by truck collision geometry', () => {
@@ -130,8 +229,8 @@ test('commuters occasionally make a bounded adjacent-lane change', () => {
 function body(overrides: Partial<RigidBody> = {}): RigidBody {
   return {
     id: 'body',
-    position: { lateralMeters: 0, distanceMeters: 0 },
-    velocity: { lateralMetersPerSecond: 0, distanceMetersPerSecond: 0 },
+    position: { xMeters: 0, yMeters: 0 },
+    velocity: { xMetersPerSecond: 0, yMetersPerSecond: 0 },
     headingRadians: 0,
     angularVelocityRadiansPerSecond: 0,
     widthMeters: 2,
@@ -145,22 +244,17 @@ test('SAT reports a stable normal and penetration for rotated rigid bodies', () 
   const a = body({ id: 'a', headingRadians: Math.PI / 12 });
   const b = body({
     id: 'b',
-    position: { lateralMeters: 1.2, distanceMeters: 0.4 },
+    position: { xMeters: 1.2, yMeters: 0.4 },
     headingRadians: -Math.PI / 10,
   });
   const contact = detectRigidBodyContact(a, b);
 
   assert.ok(contact);
   assert.ok(contact.penetrationMeters > 0);
-  assert.ok(contact.normal.lateralMeters > 0);
-  assert.ok(
-    Math.abs(Math.hypot(contact.normal.lateralMeters, contact.normal.distanceMeters) - 1) < 1e-12
-  );
+  assert.ok(contact.normal.xMeters > 0);
+  assert.ok(Math.abs(Math.hypot(contact.normal.xMeters, contact.normal.yMeters) - 1) < 1e-12);
   assert.equal(
-    detectRigidBodyContact(
-      a,
-      body({ id: 'far', position: { lateralMeters: 10, distanceMeters: 0 } })
-    ),
+    detectRigidBodyContact(a, body({ id: 'far', position: { xMeters: 10, yMeters: 0 } })),
     null
   );
 });
@@ -168,15 +262,15 @@ test('SAT reports a stable normal and penetration for rotated rigid bodies', () 
 test('rigid-body response separates overlap and transfers less velocity to a heavy truck', () => {
   const truckBody = body({
     id: 'truck',
-    velocity: { lateralMetersPerSecond: 0, distanceMetersPerSecond: 25 },
+    velocity: { xMetersPerSecond: 0, yMetersPerSecond: 25 },
     widthMeters: 2.6,
     lengthMeters: 4,
     massKilograms: 36_287,
   });
   const carBody = body({
     id: 'car',
-    position: { lateralMeters: 0, distanceMeters: 2.5 },
-    velocity: { lateralMetersPerSecond: 0, distanceMetersPerSecond: 10 },
+    position: { xMeters: 0, yMeters: 2.5 },
+    velocity: { xMetersPerSecond: 0, yMetersPerSecond: 10 },
   });
   const contact = detectRigidBodyContact(truckBody, carBody);
   assert.ok(contact);
@@ -189,9 +283,9 @@ test('rigid-body response separates overlap and transfers less velocity to a hea
   });
 
   assert.equal(detectRigidBodyContact(result.bodyA, result.bodyB), null);
-  assert.ok(result.bodyA.velocity.distanceMetersPerSecond < 25);
-  assert.ok(result.bodyA.velocity.distanceMetersPerSecond > 24);
-  assert.ok(result.bodyB.velocity.distanceMetersPerSecond > 10);
+  assert.ok(result.bodyA.velocity.yMetersPerSecond < 25);
+  assert.ok(result.bodyA.velocity.yMetersPerSecond > 24);
+  assert.ok(result.bodyB.velocity.yMetersPerSecond > 10);
   assert.ok(result.normalImpulse > 0);
 });
 
@@ -341,7 +435,7 @@ test('patrol contact causes a stronger cooldown-limited cargo hit without a take
       first.state.vehicles[0]!.patrolDisengageSecondsRemaining
   );
   const trailerRearMeters =
-    first.truck.position.distanceMeters -
+    first.truck.position.yMeters -
     (TRUCK_DIMENSIONS.cabLengthMeters / 2 +
       TRUCK_DIMENSIONS.trailerLengthMeters +
       TRUCK_DIMENSIONS.hitchGapMeters);
@@ -386,15 +480,14 @@ test('patrol pacing target stays behind the trailer instead of inside it', () =>
       ...result.truck,
       position: {
         ...result.truck.position,
-        distanceMeters:
-          result.truck.position.distanceMeters + result.truck.speedMetersPerSecond / 60,
+        yMeters: result.truck.position.yMeters + result.truck.speedMetersPerSecond / 60,
       },
     };
   }
 
   const cruiser = state.vehicles[0]!;
   const trailerRearMeters =
-    currentTruck.position.distanceMeters -
+    currentTruck.position.yMeters -
     (TRUCK_DIMENSIONS.cabLengthMeters / 2 +
       TRUCK_DIMENSIONS.trailerLengthMeters +
       TRUCK_DIMENSIONS.hitchGapMeters);

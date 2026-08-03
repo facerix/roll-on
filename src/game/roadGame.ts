@@ -3,12 +3,14 @@ import { createGameHudView } from '/src/game/gameHudView.js';
 import { createFuelState, DEFAULT_FUEL_TUNING, isFuelInFumes } from '/src/game/fuel.js';
 import { stepDriving, ZERO_FUEL_BURN, type DrivingState } from '/src/game/drivingUpdate.js';
 import { mountGame } from '/src/game/mount.js';
-import { createRoad, DEFAULT_ROAD_TUNING } from '/src/game/road.js';
+import { createDefaultStageRoute, createRoad, DEFAULT_ROAD_TUNING } from '/src/game/road.js';
 import {
   buildRoadCamera,
   getVisibleWorldDistanceRange,
+  stepRoadCameraRotation,
   type RoadViewport,
 } from '/src/game/roadCamera.js';
+import { sampleRoute } from '/src/game/route.js';
 import type { RoadBarrierImpact } from '/src/game/roadCollision.js';
 import {
   buildRoadScene,
@@ -38,7 +40,7 @@ export interface StartRoadGameOptions {
 }
 
 export function startRoadGame(options: StartRoadGameOptions): RoadGame {
-  const road = createRoad(DEFAULT_ROAD_TUNING);
+  const road = createRoad(DEFAULT_ROAD_TUNING, createDefaultStageRoute());
   const cameraTuning = buildRoadCameraTuning(road, options.viewport);
   const truckDimensions: RoadSceneTruckDimensions = {
     cabWidthMeters: 2.6,
@@ -53,6 +55,9 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
   let barrierFlashSeconds = 0;
   let trafficEventSeconds = 0;
   let trafficEventText = '';
+  let cameraRotationRadians = 0;
+  const worldFixedCamera = isWorldFixedCamera();
+  const debugMode = isDebugMode();
   const hud = createGameHudView();
   updateHud();
 
@@ -74,9 +79,19 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         truckDimensions,
       });
       drivingState = result.state;
+      if (!worldFixedCamera) {
+        cameraRotationRadians = stepRoadCameraRotation(
+          cameraRotationRadians,
+          sampleRoute(road.route, drivingState.routePosition.distanceAlongRouteMeters)
+            .headingRadians,
+          dt,
+          cameraTuning.orientationResponsePerSecond ?? 4
+        );
+      }
       const trafficResult = stepTraffic({
         state: trafficState,
         truck: drivingState.truck,
+        truckRoutePosition: drivingState.routePosition,
         road,
         truckDimensions,
         dtSeconds: dt,
@@ -101,13 +116,21 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       updateHud();
     },
     debugLines: () => {
-      const camera = buildRoadCamera(drivingState.truck.position, options.viewport, cameraTuning);
+      const camera = buildRoadCamera(
+        drivingState.truck.position,
+        options.viewport,
+        cameraTuning,
+        cameraRotationRadians
+      );
       const visibleRange = getVisibleWorldDistanceRange(camera);
       return [
         ...formatTruckTelemetry(buildTruckTelemetry(drivingState.truck, DEFAULT_TRUCK_TUNING)),
         `camera: anchor ${camera.anchorX.toFixed(0)},${camera.anchorY.toFixed(
           0
-        )} @ ${camera.pixelsPerMeter.toFixed(1)} px/m`,
+        )} @ ${camera.pixelsPerMeter.toFixed(1)} px/m rot ${camera.rotationRadians.toFixed(3)}`,
+        `route: ${drivingState.routePosition.distanceAlongRouteMeters.toFixed(
+          1
+        )} m lateral ${drivingState.routePosition.lateralOffsetMeters.toFixed(2)} m`,
         `visible: ${visibleRange.startDistanceMeters.toFixed(
           1
         )}..${visibleRange.endDistanceMeters.toFixed(1)} m`,
@@ -134,13 +157,30 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       ];
     },
     buildScene: () => {
-      const camera = buildRoadCamera(drivingState.truck.position, options.viewport, cameraTuning);
+      const camera = buildRoadCamera(
+        drivingState.truck.position,
+        options.viewport,
+        cameraTuning,
+        cameraRotationRadians
+      );
       return buildRoadScene({
         road,
         camera,
         truck: drivingState.truck,
         traffic: trafficState.vehicles,
+        debug: debugMode,
+        debugWindow: debugMode
+          ? {
+              startDistanceMeters:
+                drivingState.routePosition.distanceAlongRouteMeters -
+                (options.viewport.height - camera.anchorY) / camera.pixelsPerMeter,
+              endDistanceMeters:
+                drivingState.routePosition.distanceAlongRouteMeters +
+                camera.anchorY / camera.pixelsPerMeter,
+            }
+          : undefined,
         truckDimensions,
+        focusDistanceAlongRouteMeters: drivingState.routePosition.distanceAlongRouteMeters,
         tuning: {
           ...DEFAULT_ROAD_SCENE_TUNING,
           barrierColor:
@@ -161,7 +201,8 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
   function buildCurrentScore(): number {
     return calculateScore({
       baseDeliveredCargo:
-        Math.max(0, Math.floor(drivingState.truck.position.distanceMeters)) * BASE_POINTS_PER_METER,
+        Math.max(0, Math.floor(drivingState.routePosition.distanceAlongRouteMeters)) *
+        BASE_POINTS_PER_METER,
       cargoIntegrity: drivingState.truck.cargoIntegrity,
       integrityMultiplier: INTEGRITY_SCORE_MULTIPLIER,
       takedownCount: trafficState.takedowns,
@@ -183,7 +224,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
 function createInitialDrivingState(): DrivingState {
   return {
     truck: createTruckState({
-      position: { lateralMeters: 0, distanceMeters: 0 },
+      position: { xMeters: 0, yMeters: 0 },
       headingRadians: 0,
       speedMetersPerSecond: 0,
       yawRateRadiansPerSecond: 0,
@@ -192,8 +233,19 @@ function createInitialDrivingState(): DrivingState {
       cargoIntegrity: 1,
       status: 'driving',
     }),
+    routePosition: { distanceAlongRouteMeters: 0, lateralOffsetMeters: 0 },
     fuel: createFuelState(),
     barrierContactState: { cooldownRemainingSeconds: 0 },
     lastFuelBurn: ZERO_FUEL_BURN,
   };
+}
+
+function isWorldFixedCamera(): boolean {
+  if (typeof window === 'undefined') return false;
+  return new URL(window.location.href).searchParams.has('worldFixed');
+}
+
+function isDebugMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  return new URL(window.location.href).searchParams.has('debug');
 }

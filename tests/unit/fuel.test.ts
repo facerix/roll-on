@@ -124,7 +124,7 @@ test('fumes effective tuning remains valid for truck stepping', () => {
   const fuel = createFuelState({ level: 0.05 });
   const effective = buildEffectiveTruckTuning(DEFAULT_TRUCK_TUNING, fuel);
   const truck = createTruckState({
-    position: { lateralMeters: 0, distanceMeters: 0 },
+    position: { xMeters: 0, yMeters: 0 },
     headingRadians: 0,
     speedMetersPerSecond: effective.maxForwardSpeedMetersPerSecond,
     yawRateRadiansPerSecond: 0,
@@ -141,7 +141,7 @@ test('fumes effective tuning remains valid for truck stepping', () => {
 
 test('truck above fumes cap is clamped through an explicit rule', () => {
   const truck = createTruckState({
-    position: { lateralMeters: 0, distanceMeters: 0 },
+    position: { xMeters: 0, yMeters: 0 },
     headingRadians: 0,
     speedMetersPerSecond: 30,
     yawRateRadiansPerSecond: 0,
