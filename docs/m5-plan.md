@@ -359,7 +359,14 @@ the straight or winding route.
 
 ## M5.5 — Render a sampled winding road top-down
 
-**Status:** Not started.
+**Status:** Complete (2026-08-03).
+
+Landed in `src/engine/renderer.ts` and `src/game/roadScene.ts`: the renderer now accepts a
+validated finite `polygon` drawable, preserving caller order and filling closed paths with image
+smoothing disabled. Curved road scenes consume `sampleRoadWindow` and emit ordered shoulder, road,
+barrier, and lane-marker quads in screen space. Adjacent quads reuse the exact projected sample
+points, while the straight route retains the existing rectangle path as a raster regression
+fixture. Vehicle centers in the scene are projected from route-converted world positions.
 
 Extend the renderer with the smallest primitive needed to draw a sampled road mesh—recommended:
 a solid polygon drawable with a validated list of finite screen points. Update renderer
@@ -595,7 +602,7 @@ Then perform a browser test at `http://localhost:8018` in both normal and `?debu
 - [ ] Straight and arc route segments are deterministic, validated, and tangent-continuous.
 - [ ] Route/world conversion and bounded projection are tested in both bend directions.
 - [x] Road cross-sections derive lanes, shoulders, markers, and barriers from one route sampler.
-- [ ] The top-down renderer draws a sampled winding-road mesh from world geometry.
+- [x] The top-down renderer draws a sampled winding-road mesh from world geometry.
 - [ ] Curved barrier collisions match the visible road for both cab and trailer.
 - [ ] Truck route tracking is derived from Cartesian state without creating a second mutable truth.
 - [ ] Traffic follows route lanes while rigid-body contacts remain Cartesian.

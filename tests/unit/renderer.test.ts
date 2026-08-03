@@ -37,6 +37,11 @@ interface FakeCtx {
   fillStyle: string;
   imageSmoothingEnabled: boolean;
   fillRect(x: number, y: number, w: number, h: number): void;
+  beginPath(): void;
+  moveTo(x: number, y: number): void;
+  lineTo(x: number, y: number): void;
+  closePath(): void;
+  fill(): void;
   save(): void;
   restore(): void;
   translate(x: number, y: number): void;
@@ -53,6 +58,21 @@ function makeFakeCtx(): FakeCtx {
     imageSmoothingEnabled: true,
     fillRect(x, y, w, h) {
       ops.push({ kind: 'call', method: 'fillRect', args: [x, y, w, h] });
+    },
+    beginPath() {
+      ops.push({ kind: 'call', method: 'beginPath', args: [] });
+    },
+    moveTo(x, y) {
+      ops.push({ kind: 'call', method: 'moveTo', args: [x, y] });
+    },
+    lineTo(x, y) {
+      ops.push({ kind: 'call', method: 'lineTo', args: [x, y] });
+    },
+    closePath() {
+      ops.push({ kind: 'call', method: 'closePath', args: [] });
+    },
+    fill() {
+      ops.push({ kind: 'call', method: 'fill', args: [] });
     },
     save() {
       ops.push({ kind: 'call', method: 'save', args: [] });
@@ -362,4 +382,73 @@ test('Canvas2DRenderer rejects scenes with non-finite dimensions', () => {
   const r = new Canvas2DRenderer(ctx as unknown as CanvasRenderingContext2D);
   assert.throws(() => r.draw({ clear: '#000', width: NaN, height: 100, drawables: [] }), TypeError);
   assert.throws(() => r.draw({ clear: '#000', width: 100, height: -5, drawables: [] }), RangeError);
+});
+
+test('Canvas2DRenderer fills polygon points in caller order and closes the path', () => {
+  const ctx = makeFakeCtx();
+  const r = new Canvas2DRenderer(ctx as unknown as CanvasRenderingContext2D);
+
+  r.draw({
+    clear: '#000',
+    width: 100,
+    height: 100,
+    drawables: [
+      {
+        kind: 'polygon',
+        points: [
+          { x: 10, y: 20 },
+          { x: 30, y: 20 },
+          { x: 20, y: 40 },
+        ],
+        color: '#abc',
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    ctx.ops
+      .filter(op => op.kind === 'call')
+      .map(op => (op.kind === 'call' ? [op.method, ...op.args] : null)),
+    [
+      ['fillRect', 0, 0, 100, 100],
+      ['beginPath'],
+      ['moveTo', 10, 20],
+      ['lineTo', 30, 20],
+      ['lineTo', 20, 40],
+      ['closePath'],
+      ['fill'],
+    ]
+  );
+});
+
+test('Canvas2DRenderer rejects insufficient or non-finite polygons', () => {
+  const ctx = makeFakeCtx();
+  const r = new Canvas2DRenderer(ctx as unknown as CanvasRenderingContext2D);
+  const base = { clear: '#000', width: 100, height: 100 };
+  assert.throws(
+    () =>
+      r.draw({
+        ...base,
+        drawables: [{ kind: 'polygon', points: [{ x: 0, y: 0 }], color: '#fff' }],
+      }),
+    RangeError
+  );
+  assert.throws(
+    () =>
+      r.draw({
+        ...base,
+        drawables: [
+          {
+            kind: 'polygon',
+            points: [
+              { x: 0, y: 0 },
+              { x: 1, y: 0 },
+              { x: Number.NaN, y: 1 },
+            ],
+            color: '#fff',
+          },
+        ],
+      }),
+    TypeError
+  );
 });

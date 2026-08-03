@@ -1,7 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import type { Drawable, OrientedSpriteDrawable, RectDrawable } from '../../src/engine/renderer.ts';
+import type {
+  Drawable,
+  OrientedSpriteDrawable,
+  PolygonDrawable,
+  RectDrawable,
+} from '../../src/engine/renderer.ts';
 import { buildRoadCamera } from '../../src/game/roadCamera.ts';
 import { createRoad, DEFAULT_ROAD_TUNING } from '../../src/game/road.ts';
 import {
@@ -16,6 +21,7 @@ import {
 } from '../../src/game/roadScene.ts';
 import { createTruckState, type TruckState } from '../../src/game/truck.ts';
 import { createTrafficVehicle } from '../../src/game/traffic.ts';
+import { createRoute } from '../../src/game/route.ts';
 
 const ROAD = createRoad(DEFAULT_ROAD_TUNING);
 const VIEWPORT = { width: 320, height: 480 };
@@ -57,6 +63,10 @@ function rects(drawables: readonly Drawable[]): RectDrawable[] {
 
 function orientedSprites(drawables: readonly Drawable[]): OrientedSpriteDrawable[] {
   return drawables.filter((d): d is OrientedSpriteDrawable => d.kind === 'oriented-sprite');
+}
+
+function polygons(drawables: readonly Drawable[]): PolygonDrawable[] {
+  return drawables.filter((d): d is PolygonDrawable => d.kind === 'polygon');
 }
 
 test('road scene emits drawables in back-to-front order', () => {
@@ -236,6 +246,62 @@ test('road scene rejects unknown traffic kinds instead of drawing a commuter fal
       }),
     TypeError
   );
+});
+
+test('curved road scene emits finite sampled polygons in back-to-front mesh order', () => {
+  const route = createRoute({
+    origin: { xMeters: 0, yMeters: 0 },
+    headingRadians: 0,
+    segments: [
+      { kind: 'straight', lengthMeters: 20 },
+      { kind: 'arc', lengthMeters: 80, curvaturePerMeter: 0.004 },
+      { kind: 'arc', lengthMeters: 80, curvaturePerMeter: -0.004 },
+      { kind: 'straight', lengthMeters: 60 },
+    ],
+    constraints: { maximumAbsoluteRoadOffsetMeters: 10, minimumBendRadiusMeters: 30 },
+  });
+  const road = createRoad(DEFAULT_ROAD_TUNING, route);
+  const truck = truckAt(90);
+  const camera = buildRoadCamera(truck.position, VIEWPORT, CAMERA_TUNING);
+  const scene = buildRoadScene({ road, camera, truck, truckDimensions: TRUCK_DIMENSIONS });
+  const mesh = polygons(scene.drawables);
+
+  assert.ok(mesh.length > 10);
+  assert.ok(mesh.every(polygon => polygon.points.length === 4));
+  assert.ok(
+    mesh.every(polygon =>
+      polygon.points.every(point => Number.isFinite(point.x) && Number.isFinite(point.y))
+    )
+  );
+  assert.equal(mesh[0]!.color, DEFAULT_ROAD_SCENE_TUNING.shoulderColor);
+  assert.ok(mesh.some(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.roadColor));
+  assert.ok(mesh.some(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.laneMarkerColor));
+});
+
+test('adjacent curved road mesh quads share exact projected edge points', () => {
+  const route = createRoute({
+    origin: { xMeters: 0, yMeters: 0 },
+    headingRadians: 0,
+    segments: [
+      { kind: 'straight', lengthMeters: 20 },
+      { kind: 'arc', lengthMeters: 80, curvaturePerMeter: 0.004 },
+      { kind: 'straight', lengthMeters: 80 },
+    ],
+    constraints: { maximumAbsoluteRoadOffsetMeters: 10, minimumBendRadiusMeters: 30 },
+  });
+  const road = createRoad(DEFAULT_ROAD_TUNING, route);
+  const truck = truckAt(70);
+  const camera = buildRoadCamera(truck.position, VIEWPORT, CAMERA_TUNING);
+  const roadQuads = polygons(
+    buildRoadScene({ road, camera, truck, truckDimensions: TRUCK_DIMENSIONS }).drawables
+  ).filter(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.roadColor);
+
+  assert.ok(roadQuads.length > 2);
+  for (let index = 1; index < roadQuads.length; index++) {
+    const previous = roadQuads[index - 1]!;
+    const current = roadQuads[index]!;
+    assert.deepEqual(previous.points.slice(2), current.points.slice(0, 2).reverse());
+  }
 });
 
 test('disabled traffic renders as a visibly rotated wreck', () => {

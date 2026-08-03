@@ -32,6 +32,13 @@ export interface RectDrawable {
   color: Color;
 }
 
+/** Solid polygon in screen-pixel space. Points are rendered in caller order. */
+export interface PolygonDrawable {
+  kind: 'polygon';
+  points: readonly { readonly x: number; readonly y: number }[];
+  color: Color;
+}
+
 /** Solid rectangle rotated around its center point. */
 export interface OrientedRectDrawable {
   kind: 'oriented-rect';
@@ -59,7 +66,11 @@ export interface OrientedSpriteDrawable {
  * Discriminated union. Grows over time (sprites, lines, text). The `kind`
  * tag exists so the renderer's switch is exhaustiveness-checked by TS.
  */
-export type Drawable = RectDrawable | OrientedRectDrawable | OrientedSpriteDrawable;
+export type Drawable =
+  | RectDrawable
+  | PolygonDrawable
+  | OrientedRectDrawable
+  | OrientedSpriteDrawable;
 
 export interface Scene {
   /** Background color painted before any drawable. */
@@ -131,6 +142,15 @@ export class Canvas2DRenderer implements Renderer {
           ctx.fillStyle = d.color;
           ctx.fillRect(d.x, d.y, d.w, d.h);
           break;
+        case 'polygon':
+          validatePolygon(d);
+          ctx.fillStyle = d.color;
+          ctx.beginPath();
+          ctx.moveTo(d.points[0]!.x, d.points[0]!.y);
+          for (const point of d.points.slice(1)) ctx.lineTo(point.x, point.y);
+          ctx.closePath();
+          ctx.fill();
+          break;
         case 'oriented-rect':
           ctx.fillStyle = d.color;
           ctx.save();
@@ -179,5 +199,16 @@ export class Canvas2DRenderer implements Renderer {
     }
     this.#spriteImages.set(src, state);
     return state;
+  }
+}
+
+function validatePolygon(drawable: PolygonDrawable): void {
+  if (drawable.points.length < 3) {
+    throw new RangeError(`polygon needs at least 3 points, got ${drawable.points.length}`);
+  }
+  for (const point of drawable.points) {
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      throw new TypeError(`polygon points must be finite, got (${point.x}, ${point.y})`);
+    }
   }
 }
