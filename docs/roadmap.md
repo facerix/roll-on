@@ -152,7 +152,7 @@ See `docs/m5-plan.md` for the slice-by-slice implementation plan.
 - [ ] **Route/world conversion and bounded projection**. See M5.3.
 - [ ] **Road cross-section laid over the route**: lanes, shoulders, markers, barriers. See M5.4.
 - [ ] **Sampled winding-road mesh in the top-down renderer**. See M5.5.
-- [ ] **Curved barrier collision + truck route tracking**. See M5.6.
+- [x] **Curved barrier collision + truck route tracking**. See M5.6.
 - [ ] **Route-aware traffic with Cartesian rigid-body reconciliation**. See M5.7.
 - [ ] **Camera follow, debug geometry, and feel**. See M5.8.
 - [ ] **Integration, compatibility, and closeout**. See M5.9.

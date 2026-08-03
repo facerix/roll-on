@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createRoad, DEFAULT_ROAD_TUNING } from '../../src/game/road.ts';
+import { createRoute, routeToWorld } from '../../src/game/route.ts';
 import {
   buildTruckFootprint,
   detectRoadBarrierImpact,
@@ -30,6 +31,20 @@ const COLLISION_TUNING: RoadCollisionTuning = {
   cargoDamagePerBarrierHit: 0.08,
   barrierDamageCooldownSeconds: 0.5,
 };
+
+const CURVED_ROAD = createRoad(
+  DEFAULT_ROAD_TUNING,
+  createRoute({
+    origin: { xMeters: 0, yMeters: 0 },
+    headingRadians: 0,
+    constraints: { maximumAbsoluteRoadOffsetMeters: 12, minimumBendRadiusMeters: 40 },
+    segments: [
+      { kind: 'straight', lengthMeters: 40 },
+      { kind: 'arc', lengthMeters: 60, curvaturePerMeter: 0.01 },
+      { kind: 'arc', lengthMeters: 60, curvaturePerMeter: -0.01 },
+    ],
+  })
+);
 
 function truck(overrides: Partial<TruckState> = {}): TruckState {
   return createTruckState({
@@ -126,6 +141,39 @@ test('barrier collision detection works for cab and trailer footprint inputs', (
 
   assert.equal(detectRoadBarrierImpact(ROAD, [cabCrossing[0]!])?.side, 'right');
   assert.equal(detectRoadBarrierImpact(ROAD, [trailerCrossing[1]!])?.side, 'left');
+});
+
+test('curved barriers follow the route instead of world x', () => {
+  const distanceAlongRouteMeters = 70;
+  const centerline = routeToWorld(CURVED_ROAD.route, {
+    distanceAlongRouteMeters,
+    lateralOffsetMeters: 0,
+  });
+  const inside = buildTruckFootprint(
+    truck({
+      position: centerline,
+      headingRadians: Math.PI / 10,
+      trailerHeadingRadians: Math.PI / 10,
+    }),
+    DIMENSIONS
+  );
+  assert.equal(detectRoadBarrierImpact(CURVED_ROAD, inside, distanceAlongRouteMeters), null);
+
+  const outside = routeToWorld(CURVED_ROAD.route, {
+    distanceAlongRouteMeters,
+    lateralOffsetMeters: CURVED_ROAD.rightBarrierLateralMeters + 1,
+  });
+  const outsideFootprint = buildTruckFootprint(
+    truck({
+      position: outside,
+      headingRadians: Math.PI / 10,
+      trailerHeadingRadians: Math.PI / 10,
+    }),
+    DIMENSIONS
+  );
+  const impact = detectRoadBarrierImpact(CURVED_ROAD, outsideFootprint, distanceAlongRouteMeters);
+  assert.equal(impact?.side, 'right');
+  assert.ok((impact?.penetrationMeters ?? 0) > 0);
 });
 
 test('jackknifed barrier contact transitions through the injected truck impact path', () => {

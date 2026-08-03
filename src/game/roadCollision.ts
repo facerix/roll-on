@@ -1,4 +1,5 @@
-import type { Road } from '/src/game/road.js';
+import { sampleRoadWindow, type Road } from '/src/game/road.js';
+import { worldToRoute } from '/src/game/route.js';
 import type { TruckImpact, TruckState } from '/src/game/truck.js';
 import { validatePoint, type WorldPoint } from '/src/game/worldGeometry.js';
 
@@ -91,7 +92,8 @@ export function buildTruckFootprint(
 
 export function detectRoadBarrierImpact(
   road: Road,
-  footprint: WorldAabb | readonly WorldAabb[]
+  footprint: WorldAabb | readonly WorldAabb[],
+  routeDistanceHintMeters?: number
 ): RoadBarrierImpact | null {
   validateRoad(road);
   const boxes = Array.isArray(footprint) ? footprint : [footprint];
@@ -99,33 +101,93 @@ export function detectRoadBarrierImpact(
   let strongest: RoadBarrierImpact | null = null;
   for (const box of boxes) {
     validateAabb(box);
-    // Zero-curvature shortcut: on the straight prototype route the road's
-    // lateral barrier offsets coincide with world x. M5.6 replaces this with
-    // sampled world-space barrier geometry.
-    const leftPenetration = road.leftBarrierLateralMeters - box.minXMeters;
-    const rightPenetration = box.maxXMeters - road.rightBarrierLateralMeters;
-
-    if (leftPenetration > 0) {
-      strongest = strongerImpact(strongest, {
-        kind: 'barrier',
-        side: 'left',
-        penetrationMeters: leftPenetration,
-        minYMeters: box.minYMeters,
-        maxYMeters: box.maxYMeters,
-      });
+    if (isStraightRoute(road)) {
+      const impact = detectStraightBarrierImpact(road, box);
+      if (impact !== null) strongest = strongerImpact(strongest, impact);
+      continue;
     }
-    if (rightPenetration > 0) {
-      strongest = strongerImpact(strongest, {
-        kind: 'barrier',
-        side: 'right',
-        penetrationMeters: rightPenetration,
-        minYMeters: box.minYMeters,
-        maxYMeters: box.maxYMeters,
-      });
+
+    const center = {
+      xMeters: (box.minXMeters + box.maxXMeters) / 2,
+      yMeters: (box.minYMeters + box.maxYMeters) / 2,
+    };
+    const hint = routeDistanceHintMeters ?? center.yMeters - road.route.segments[0]!.start.yMeters;
+    assertFinite('routeDistanceHintMeters', hint);
+    const acquisitionRadiusMeters = Math.max(30, diagonalMeters(box) + 8);
+    const projection = worldToRoute(road.route, center, {
+      hintDistanceAlongRouteMeters: hint,
+      searchRadiusMeters: Math.max(100, acquisitionRadiusMeters),
+    });
+    const halfExtentMeters = diagonalMeters(box) / 2 + 2;
+    const samples = sampleRoadWindow(
+      road,
+      {
+        startDistanceMeters: projection.distanceAlongRouteMeters - halfExtentMeters,
+        endDistanceMeters: projection.distanceAlongRouteMeters + halfExtentMeters,
+      },
+      1
+    );
+    const corners = aabbCorners(box);
+    for (const sample of samples) {
+      for (const corner of corners) {
+        const relativeX = corner.xMeters - sample.center.xMeters;
+        const relativeY = corner.yMeters - sample.center.yMeters;
+        const crossRoadOffsetMeters =
+          relativeX * sample.routeSample.normal.xMeters +
+          relativeY * sample.routeSample.normal.yMeters;
+        const leftPenetration = road.leftBarrierLateralMeters - crossRoadOffsetMeters;
+        const rightPenetration = crossRoadOffsetMeters - road.rightBarrierLateralMeters;
+        if (leftPenetration > 0) {
+          strongest = strongerImpact(strongest, barrierImpact('left', leftPenetration, box));
+        }
+        if (rightPenetration > 0) {
+          strongest = strongerImpact(strongest, barrierImpact('right', rightPenetration, box));
+        }
+      }
     }
   }
 
   return strongest;
+}
+
+function detectStraightBarrierImpact(road: Road, box: WorldAabb): RoadBarrierImpact | null {
+  const leftPenetration = road.leftBarrierLateralMeters - box.minXMeters;
+  const rightPenetration = box.maxXMeters - road.rightBarrierLateralMeters;
+  if (leftPenetration <= 0 && rightPenetration <= 0) return null;
+  return leftPenetration >= rightPenetration
+    ? barrierImpact('left', leftPenetration, box)
+    : barrierImpact('right', rightPenetration, box);
+}
+
+function barrierImpact(
+  side: BarrierSide,
+  penetrationMeters: number,
+  box: WorldAabb
+): RoadBarrierImpact {
+  return {
+    kind: 'barrier',
+    side,
+    penetrationMeters,
+    minYMeters: box.minYMeters,
+    maxYMeters: box.maxYMeters,
+  };
+}
+
+function isStraightRoute(road: Road): boolean {
+  return road.route.segments.every(segment => segment.curvaturePerMeter === 0);
+}
+
+function diagonalMeters(box: WorldAabb): number {
+  return Math.hypot(box.maxXMeters - box.minXMeters, box.maxYMeters - box.minYMeters);
+}
+
+function aabbCorners(box: WorldAabb): readonly WorldPoint[] {
+  return [
+    { xMeters: box.minXMeters, yMeters: box.minYMeters },
+    { xMeters: box.minXMeters, yMeters: box.maxYMeters },
+    { xMeters: box.maxXMeters, yMeters: box.minYMeters },
+    { xMeters: box.maxXMeters, yMeters: box.maxYMeters },
+  ];
 }
 
 export function resolveRoadBarrierContact(

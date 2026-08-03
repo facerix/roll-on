@@ -9,6 +9,7 @@ import {
   type FuelTuning,
 } from '/src/game/fuel.js';
 import type { Road } from '/src/game/road.js';
+import { worldToRoute, type RoutePosition } from '/src/game/route.js';
 import {
   buildTruckFootprint,
   DEFAULT_ROAD_COLLISION_TUNING,
@@ -30,6 +31,8 @@ import {
 
 export interface DrivingState {
   readonly truck: TruckState;
+  /** Derived route-space tracking for the Cartesian truck pose. */
+  readonly routePosition: RoutePosition;
   readonly fuel: FuelState;
   readonly barrierContactState: BarrierContactState;
   readonly lastFuelBurn: FuelBurnBreakdown;
@@ -44,6 +47,8 @@ export interface StepDrivingOptions {
   readonly truckTuning?: TruckTuning;
   readonly fuelTuning?: FuelTuning;
   readonly roadCollisionTuning?: RoadCollisionTuning;
+  /** Maximum route-distance window used to reacquire the truck after each step. */
+  readonly routeProjectionSearchRadiusMeters?: number;
 }
 
 export interface StepDrivingResult {
@@ -64,6 +69,15 @@ export function stepDriving(options: StepDrivingOptions): StepDrivingResult {
   const truckTuning = options.truckTuning ?? DEFAULT_TRUCK_TUNING;
   const fuelTuning = options.fuelTuning ?? DEFAULT_FUEL_TUNING;
   const roadCollisionTuning = options.roadCollisionTuning ?? DEFAULT_ROAD_COLLISION_TUNING;
+  const routeProjectionSearchRadiusMeters = options.routeProjectionSearchRadiusMeters ?? 100;
+  if (
+    !Number.isFinite(routeProjectionSearchRadiusMeters) ||
+    routeProjectionSearchRadiusMeters <= 0
+  ) {
+    throw new RangeError(
+      `routeProjectionSearchRadiusMeters must be positive and finite, got ${routeProjectionSearchRadiusMeters}`
+    );
+  }
   const fuelLimitedTruck = limitTruckSpeedForFuel(
     options.state.truck,
     truckTuning,
@@ -95,7 +109,11 @@ export function stepDriving(options: StepDrivingOptions): StepDrivingResult {
     effectiveTruckTuning
   );
   const footprint = buildTruckFootprint(steppedTruck, options.truckDimensions);
-  const barrierImpact = detectRoadBarrierImpact(options.road, footprint);
+  const barrierImpact = detectRoadBarrierImpact(
+    options.road,
+    footprint,
+    options.state.routePosition.distanceAlongRouteMeters
+  );
   const barrierResult = resolveRoadBarrierContact({
     truck: steppedTruck,
     impact: barrierImpact,
@@ -104,10 +122,18 @@ export function stepDriving(options: StepDrivingOptions): StepDrivingResult {
     tuning: roadCollisionTuning,
     resolveImpact: resolveTruckImpact,
   });
+  const routeProjection = worldToRoute(options.road.route, barrierResult.truck.position, {
+    hintDistanceAlongRouteMeters: options.state.routePosition.distanceAlongRouteMeters,
+    searchRadiusMeters: routeProjectionSearchRadiusMeters,
+  });
 
   return {
     state: {
       truck: barrierResult.truck,
+      routePosition: {
+        distanceAlongRouteMeters: routeProjection.distanceAlongRouteMeters,
+        lateralOffsetMeters: routeProjection.lateralOffsetMeters,
+      },
       fuel: fuelResult.fuel,
       barrierContactState: barrierResult.contactState,
       lastFuelBurn: fuelResult.burn,

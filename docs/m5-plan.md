@@ -407,7 +407,14 @@ traffic, and camera work.
 
 ## M5.6 — Curved barriers and truck route tracking
 
-**Status:** Not started.
+**Status:** Complete (2026-08-03).
+
+Landed in `src/game/roadCollision.ts` and `src/game/drivingUpdate.ts`: curved routes now derive
+barrier contacts from sampled world-space road edges around every cab and trailer footprint,
+while the straight route retains its existing direct AABB path. Barrier side and penetration
+consequences remain unchanged. `DrivingState.routePosition` is reacquired from the resolved
+Cartesian cab position after every driving step using the prior route distance as the projection
+hint; projection loss remains an explicit error. Added curved barrier and S-curve progress tests.
 
 Replace constant lateral barrier checks with world-space curved barrier geometry near the truck.
 Use sampled barrier segments or another explicit narrow representation derived from the road
