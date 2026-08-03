@@ -39,7 +39,9 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   event.respondWith(
-    ServiceWorkerCore.handleFetch(event.request, CACHE_NAMES, LOG_PREFIX)
+    // Dev modules must come from one fresh graph. Cache-first plus background
+    // refresh can serve an old importer beside a new dependency.
+    ServiceWorkerCore.handleFetch(event.request, CACHE_NAMES, LOG_PREFIX, false, true)
       .catch(error => {
         console.error(`${LOG_PREFIX} Fetch failed:`, error);
         if (event.request.mode === 'navigate') {

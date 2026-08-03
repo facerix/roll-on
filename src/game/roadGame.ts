@@ -63,8 +63,6 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
 
   const mountedGame = mountGame({
     root: options.root,
-    width: options.viewport.width,
-    height: options.viewport.height,
     update: (dt, input) => {
       const controls: TruckControls = {
         throttle: input.isActive('throttle') ? 1 : 0,
@@ -189,7 +187,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       });
     },
   });
-  options.root.appendChild(hud.root);
+  mountedGame.stage.appendChild(hud.root);
 
   return {
     dispose() {

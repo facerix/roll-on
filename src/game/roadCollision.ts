@@ -1,4 +1,4 @@
-import { sampleRoadWindow, type Road } from '/src/game/road.js';
+import type { Road } from '/src/game/road.js';
 import { worldToRoute } from '/src/game/route.js';
 import type { TruckImpact, TruckState } from '/src/game/truck.js';
 import { headingToUnitVector, validatePoint, type WorldPoint } from '/src/game/worldGeometry.js';
@@ -21,6 +21,16 @@ export interface WorldAabb {
   readonly minYMeters: number;
   readonly maxYMeters: number;
 }
+
+/** A rectangular body in Cartesian world space, preserving its true heading. */
+export interface WorldOrientedRect {
+  readonly center: WorldPoint;
+  readonly headingRadians: number;
+  readonly widthMeters: number;
+  readonly lengthMeters: number;
+}
+
+export type WorldFootprint = WorldAabb | WorldOrientedRect;
 
 export interface RoadBarrierImpact {
   readonly kind: 'barrier';
@@ -87,20 +97,20 @@ export function getTruckTrailerCenter(
 export function buildTruckFootprint(
   truck: TruckState,
   dimensions: TruckFootprintDimensions
-): readonly [WorldAabb, WorldAabb] {
+): readonly [WorldOrientedRect, WorldOrientedRect] {
   validateTruck(truck);
   validateDimensions(dimensions);
 
   const trailerCenter = getTruckTrailerCenter(truck, dimensions);
 
   return [
-    orientedRectAabb(
+    orientedRect(
       truck.position,
       truck.headingRadians,
       dimensions.cabWidthMeters,
       dimensions.cabLengthMeters
     ),
-    orientedRectAabb(
+    orientedRect(
       trailerCenter,
       truck.trailerHeadingRadians,
       dimensions.trailerWidthMeters,
@@ -111,57 +121,37 @@ export function buildTruckFootprint(
 
 export function detectRoadBarrierImpact(
   road: Road,
-  footprint: WorldAabb | readonly WorldAabb[],
+  footprint: WorldFootprint | readonly WorldFootprint[],
   routeDistanceHintMeters?: number
 ): RoadBarrierImpact | null {
   validateRoad(road);
-  const boxes = Array.isArray(footprint) ? footprint : [footprint];
+  const bodies = Array.isArray(footprint) ? footprint : [footprint];
 
   let strongest: RoadBarrierImpact | null = null;
-  for (const box of boxes) {
-    validateAabb(box);
+  for (const body of bodies) {
+    validateFootprint(body);
+    const bounds = footprintBounds(body);
     if (isStraightRoute(road)) {
-      const impact = detectStraightBarrierImpact(road, box);
+      const impact = detectStraightBarrierImpact(road, bounds);
       if (impact !== null) strongest = strongerImpact(strongest, impact);
       continue;
     }
 
-    const center = {
-      xMeters: (box.minXMeters + box.maxXMeters) / 2,
-      yMeters: (box.minYMeters + box.maxYMeters) / 2,
-    };
+    const center = footprintCenter(body, bounds);
     const hint = routeDistanceHintMeters ?? center.yMeters - road.route.segments[0]!.start.yMeters;
     assertFinite('routeDistanceHintMeters', hint);
-    const acquisitionRadiusMeters = Math.max(30, diagonalMeters(box) + 8);
-    const projection = worldToRoute(road.route, center, {
-      hintDistanceAlongRouteMeters: hint,
-      searchRadiusMeters: Math.max(100, acquisitionRadiusMeters),
-    });
-    const halfExtentMeters = diagonalMeters(box) / 2 + 2;
-    const samples = sampleRoadWindow(
-      road,
-      {
-        startDistanceMeters: projection.distanceAlongRouteMeters - halfExtentMeters,
-        endDistanceMeters: projection.distanceAlongRouteMeters + halfExtentMeters,
-      },
-      1
-    );
-    const corners = aabbCorners(box);
-    for (const sample of samples) {
-      for (const corner of corners) {
-        const relativeX = corner.xMeters - sample.center.xMeters;
-        const relativeY = corner.yMeters - sample.center.yMeters;
-        const crossRoadOffsetMeters =
-          relativeX * sample.routeSample.normal.xMeters +
-          relativeY * sample.routeSample.normal.yMeters;
-        const leftPenetration = road.leftBarrierLateralMeters - crossRoadOffsetMeters;
-        const rightPenetration = crossRoadOffsetMeters - road.rightBarrierLateralMeters;
-        if (leftPenetration > 0) {
-          strongest = strongerImpact(strongest, barrierImpact('left', leftPenetration, box));
-        }
-        if (rightPenetration > 0) {
-          strongest = strongerImpact(strongest, barrierImpact('right', rightPenetration, box));
-        }
+    for (const point of footprintBoundaryPoints(body)) {
+      const projection = worldToRoute(road.route, point, {
+        hintDistanceAlongRouteMeters: hint,
+        searchRadiusMeters: 100,
+      });
+      const leftPenetration = road.leftBarrierLateralMeters - projection.lateralOffsetMeters;
+      const rightPenetration = projection.lateralOffsetMeters - road.rightBarrierLateralMeters;
+      if (leftPenetration > 0) {
+        strongest = strongerImpact(strongest, barrierImpact('left', leftPenetration, bounds));
+      }
+      if (rightPenetration > 0) {
+        strongest = strongerImpact(strongest, barrierImpact('right', rightPenetration, bounds));
       }
     }
   }
@@ -196,10 +186,6 @@ function isStraightRoute(road: Road): boolean {
   return road.route.segments.every(segment => segment.curvaturePerMeter === 0);
 }
 
-function diagonalMeters(box: WorldAabb): number {
-  return Math.hypot(box.maxXMeters - box.minXMeters, box.maxYMeters - box.minYMeters);
-}
-
 function aabbCorners(box: WorldAabb): readonly WorldPoint[] {
   return [
     { xMeters: box.minXMeters, yMeters: box.minYMeters },
@@ -207,6 +193,63 @@ function aabbCorners(box: WorldAabb): readonly WorldPoint[] {
     { xMeters: box.maxXMeters, yMeters: box.minYMeters },
     { xMeters: box.maxXMeters, yMeters: box.maxYMeters },
   ];
+}
+
+function orientedRectCorners(rect: WorldOrientedRect): readonly WorldPoint[] {
+  const sin = Math.sin(rect.headingRadians);
+  const cos = Math.cos(rect.headingRadians);
+  const halfWidth = rect.widthMeters / 2;
+  const halfLength = rect.lengthMeters / 2;
+  return [
+    { across: -halfWidth, along: -halfLength },
+    { across: halfWidth, along: -halfLength },
+    { across: halfWidth, along: halfLength },
+    { across: -halfWidth, along: halfLength },
+  ].map(corner => ({
+    xMeters: rect.center.xMeters + corner.across * cos + corner.along * sin,
+    yMeters: rect.center.yMeters - corner.across * sin + corner.along * cos,
+  }));
+}
+
+function footprintBoundaryPoints(body: WorldFootprint): readonly WorldPoint[] {
+  const corners = isWorldAabb(body) ? aabbCorners(body) : orientedRectCorners(body);
+  const points: WorldPoint[] = [];
+  for (let index = 0; index < corners.length; index++) {
+    const start = corners[index]!;
+    const end = corners[(index + 1) % corners.length]!;
+    const steps = Math.ceil(Math.hypot(end.xMeters - start.xMeters, end.yMeters - start.yMeters));
+    for (let step = 0; step < steps; step++) {
+      const fraction = step / steps;
+      points.push({
+        xMeters: start.xMeters + (end.xMeters - start.xMeters) * fraction,
+        yMeters: start.yMeters + (end.yMeters - start.yMeters) * fraction,
+      });
+    }
+  }
+  return points;
+}
+
+function footprintBounds(body: WorldFootprint): WorldAabb {
+  if (isWorldAabb(body)) return body;
+  const corners = orientedRectCorners(body);
+  return {
+    minXMeters: Math.min(...corners.map(corner => corner.xMeters)),
+    maxXMeters: Math.max(...corners.map(corner => corner.xMeters)),
+    minYMeters: Math.min(...corners.map(corner => corner.yMeters)),
+    maxYMeters: Math.max(...corners.map(corner => corner.yMeters)),
+  };
+}
+
+function footprintCenter(body: WorldFootprint, bounds: WorldAabb): WorldPoint {
+  if (!isWorldAabb(body)) return body.center;
+  return {
+    xMeters: (bounds.minXMeters + bounds.maxXMeters) / 2,
+    yMeters: (bounds.minYMeters + bounds.maxYMeters) / 2,
+  };
+}
+
+function isWorldAabb(body: unknown): body is WorldAabb {
+  return typeof body === 'object' && body !== null && 'minXMeters' in body;
 }
 
 export function resolveRoadBarrierContact(
@@ -253,31 +296,17 @@ export function resolveRoadBarrierContact(
   };
 }
 
-function orientedRectAabb(
+function orientedRect(
   center: WorldPoint,
   headingRadians: number,
   widthMeters: number,
   lengthMeters: number
-): WorldAabb {
-  const sin = Math.sin(headingRadians);
-  const cos = Math.cos(headingRadians);
-  const halfWidth = widthMeters / 2;
-  const halfLength = lengthMeters / 2;
-  const corners = [
-    { across: -halfWidth, along: -halfLength },
-    { across: halfWidth, along: -halfLength },
-    { across: halfWidth, along: halfLength },
-    { across: -halfWidth, along: halfLength },
-  ].map(corner => ({
-    xMeters: center.xMeters + corner.across * cos + corner.along * sin,
-    yMeters: center.yMeters - corner.across * sin + corner.along * cos,
-  }));
-
+): WorldOrientedRect {
   return {
-    minXMeters: Math.min(...corners.map(corner => corner.xMeters)),
-    maxXMeters: Math.max(...corners.map(corner => corner.xMeters)),
-    minYMeters: Math.min(...corners.map(corner => corner.yMeters)),
-    maxYMeters: Math.max(...corners.map(corner => corner.yMeters)),
+    center: { ...center },
+    headingRadians,
+    widthMeters,
+    lengthMeters,
   };
 }
 
@@ -343,6 +372,20 @@ function validateRoad(road: Road): void {
       `leftBarrierLateralMeters must be < rightBarrierLateralMeters, got ${road.leftBarrierLateralMeters} >= ${road.rightBarrierLateralMeters}`
     );
   }
+}
+
+function validateFootprint(body: WorldFootprint): void {
+  if (typeof body !== 'object' || body === null) {
+    throw new TypeError('footprint must be an object');
+  }
+  if (!isWorldAabb(body)) {
+    validatePoint('footprint.center', body.center);
+    assertFinite('footprint.headingRadians', body.headingRadians);
+    assertPositive('footprint.widthMeters', body.widthMeters);
+    assertPositive('footprint.lengthMeters', body.lengthMeters);
+    return;
+  }
+  validateAabb(body);
 }
 
 function validateAabb(box: WorldAabb): void {

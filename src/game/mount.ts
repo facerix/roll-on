@@ -2,8 +2,7 @@
  * Game mount module — DOM glue between the engine and the page.
  *
  * Responsibilities (and ONLY these):
- *   - Create and size the `<canvas>` (handling devicePixelRatio so pixel
- *     art stays crisp on retina displays).
+ *   - Create a fixed logical stage and fit it responsively into its host.
  *   - Construct the engine pieces: loop, renderer, input.
  *   - Provide a "tick" callback that the loop drives, which runs whatever
  *     the current scene's update + render is.
@@ -30,14 +29,15 @@ import type { Scene } from '/src/engine/renderer.js';
 import { InputAdapter } from '/src/engine/input.js';
 import { FpsMeter } from '/src/engine/fpsMeter.js';
 import { runGameUpdate } from '/src/game/update.js';
+import {
+  STAGE_HEIGHT_PIXELS,
+  STAGE_WIDTH_PIXELS,
+  calculateStageLayout,
+} from '/src/game/stageLayout.js';
 
 export interface MountOptions {
   /** Where to mount the canvas (and the debug HUD, if enabled). */
   root: HTMLElement;
-  /** Logical (CSS-pixel) viewport width. */
-  width: number;
-  /** Logical (CSS-pixel) viewport height. */
-  height: number;
   /** Per-frame simulation step. Called with the fixed dt. */
   update: (dt: number, input: InputAdapter) => void;
   /** Per-frame scene producer. `alpha` is interpolation fraction in [0, 1). */
@@ -59,6 +59,8 @@ export interface MountedGame {
   readonly canvas: HTMLCanvasElement;
   /** Input adapter — pass-through for gameplay that wants direct queries. */
   readonly input: InputAdapter;
+  /** Fixed logical-stage wrapper for HUD and other presentation overlays. */
+  readonly stage: HTMLElement;
   /** Stop the loop, remove DOM nodes and listeners. Idempotent. */
   dispose(): void;
 }
@@ -72,49 +74,10 @@ function isDebugFromUrl(): boolean {
   }
 }
 
-/**
- * Size the canvas's backing store to `cssWidth × cssHeight × devicePixelRatio`
- * while leaving the CSS box at the logical size. This gives crisp pixels on
- * retina without changing the coordinate system game code uses.
- *
- * The renderer's coordinates remain in CSS pixels; we scale the context to
- * compensate.
- *
- * TODO(kaizen): once we want the true retro CRT vibe, we'll likely flip to
- * a fixed-internal-resolution canvas with CSS upscale (no DPR scaling), so
- * pixels are blocky on purpose. Recorded in `docs/kaizen.md`.
- */
-function sizeCanvasForDpr(
-  canvas: HTMLCanvasElement,
-  ctx: CanvasRenderingContext2D,
-  cssWidth: number,
-  cssHeight: number
-): void {
-  const dpr = window.devicePixelRatio || 1;
-  canvas.style.width = `${cssWidth}px`;
-  canvas.style.height = `${cssHeight}px`;
-  canvas.width = Math.round(cssWidth * dpr);
-  canvas.height = Math.round(cssHeight * dpr);
-  // Reset any prior transform before scaling, so re-sizing is idempotent.
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.scale(dpr, dpr);
-}
-
 export function mountGame(opts: MountOptions): MountedGame {
-  if (!Number.isFinite(opts.width) || !Number.isFinite(opts.height)) {
-    throw new TypeError(
-      `width/height must be finite, got width=${opts.width}, height=${opts.height}`
-    );
-  }
-  if (opts.width <= 0 || opts.height <= 0) {
-    throw new RangeError(
-      `width/height must be positive, got width=${opts.width}, height=${opts.height}`
-    );
-  }
-
   const canvas = h('canvas', {
-    width: opts.width,
-    height: opts.height,
+    width: STAGE_WIDTH_PIXELS,
+    height: STAGE_HEIGHT_PIXELS,
     className: 'roll-on-canvas',
     tabIndex: 0, // canvas needs tabindex to receive focus; arcade key capture wants focus
   });
@@ -124,13 +87,6 @@ export function mountGame(opts: MountOptions): MountedGame {
 
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas 2D context unavailable');
-  sizeCanvasForDpr(canvas, ctx, opts.width, opts.height);
-
-  // Re-apply DPR sizing on devicePixelRatio change (e.g. moving the window
-  // between a retina and non-retina monitor). Cheap, idempotent.
-  const dprMedia = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
-  const onDprChange = (): void => sizeCanvasForDpr(canvas, ctx, opts.width, opts.height);
-  dprMedia.addEventListener('change', onDprChange);
 
   const renderer = new Canvas2DRenderer(ctx);
   const input = new InputAdapter({ target: window });
@@ -164,15 +120,38 @@ export function mountGame(opts: MountOptions): MountedGame {
   }
 
   const overlays = [canvas, debugEl, touchPad].filter(el => el !== null);
-  const container = h(
+  const stage = h(
     'div',
     {
-      className: 'roll-on-game-container',
-      style: 'position:relative;display:inline-block;',
+      className: 'roll-on-game-stage',
+      style: `position:absolute;width:${STAGE_WIDTH_PIXELS}px;height:${STAGE_HEIGHT_PIXELS}px;transform-origin:top left;`,
     },
     overlays
   );
-  opts.root.appendChild(container);
+  const shell = h('div', {
+    className: 'roll-on-game-shell',
+    style:
+      'position:absolute;inset:0;overflow:hidden;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);',
+  });
+  shell.appendChild(stage);
+  opts.root.appendChild(shell);
+
+  const applyStageLayout = (): void => {
+    const shellRect = shell.getBoundingClientRect();
+    const style = getComputedStyle(shell);
+    const layout = calculateStageLayout({
+      viewport: { width: shellRect.width, height: shellRect.height },
+      safeAreaInsets: {
+        top: Number.parseFloat(style.paddingTop),
+        right: Number.parseFloat(style.paddingRight),
+        bottom: Number.parseFloat(style.paddingBottom),
+        left: Number.parseFloat(style.paddingLeft),
+      },
+    });
+    stage.style.transform = `translate(${layout.displayX}px, ${layout.displayY}px) scale(${layout.scale})`;
+  };
+  applyStageLayout();
+  window.addEventListener('resize', applyStageLayout);
 
   // Driving wall-clock for the FPS HUD. We use rAF timestamps via the loop's
   // start(); but the loop doesn't currently surface real dt. To keep the
@@ -212,6 +191,7 @@ export function mountGame(opts: MountOptions): MountedGame {
   return {
     canvas,
     input,
+    stage,
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -220,8 +200,8 @@ export function mountGame(opts: MountOptions): MountedGame {
       touchPad?.removeEventListener('action-down', onPadDown);
       touchPad?.removeEventListener('action-up', onPadUp);
       input.detach();
-      dprMedia.removeEventListener('change', onDprChange);
-      container.remove();
+      window.removeEventListener('resize', applyStageLayout);
+      shell.remove();
     },
   };
 }

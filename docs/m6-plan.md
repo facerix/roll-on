@@ -141,7 +141,7 @@ Before M6.1 visual work, resolve the development service-worker module-skew issu
 `docs/kaizen.md`. A visual feedback loop that can combine stale and fresh modules cannot provide
 trustworthy evidence.
 
-## M6.1 — Fixed virtual stage and responsive shell
+## M6.1 — Fixed virtual stage and responsive shell ✅
 
 Introduce named stage constants and a pure layout function that maps available viewport dimensions
 and safe-area insets to a centered display rectangle and scale. Mount a `384 × 576` backing store and

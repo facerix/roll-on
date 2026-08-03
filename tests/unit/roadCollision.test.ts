@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createRoad, DEFAULT_ROAD_TUNING } from '../../src/game/road.ts';
-import { createRoute, routeToWorld } from '../../src/game/route.ts';
+import { createDefaultStageRoute, createRoad, DEFAULT_ROAD_TUNING } from '../../src/game/road.ts';
+import { createRoute, routeToWorld, sampleRoute } from '../../src/game/route.ts';
 import {
   buildTruckFootprint,
   detectRoadBarrierImpact,
@@ -86,7 +86,13 @@ test('truck footprint accepts a signed hitch offset and keeps collision geometry
   const [cab, trailer] = buildTruckFootprint(truck(), dimensions);
 
   assert.ok(
-    Math.abs(cab.minYMeters - trailer.maxYMeters + hitchOverlapMeters) < Number.EPSILON * 100
+    Math.abs(
+      cab.center.yMeters -
+        cab.lengthMeters / 2 -
+        (trailer.center.yMeters + trailer.lengthMeters / 2) +
+        hitchOverlapMeters
+    ) <
+      Number.EPSILON * 100
   );
 });
 
@@ -174,6 +180,25 @@ test('curved barriers follow the route instead of world x', () => {
   const impact = detectRoadBarrierImpact(CURVED_ROAD, outsideFootprint, distanceAlongRouteMeters);
   assert.equal(impact?.side, 'right');
   assert.ok((impact?.penetrationMeters ?? 0) > 0);
+});
+
+test('an articulated trailer safely inside a curve does not strike a barrier through its AABB', () => {
+  const distanceAlongRouteMeters = 483;
+  const road = createRoad(DEFAULT_ROAD_TUNING, createDefaultStageRoute());
+  const routeHeadingRadians = sampleRoute(road.route, distanceAlongRouteMeters).headingRadians;
+  const footprint = buildTruckFootprint(
+    truck({
+      position: routeToWorld(road.route, {
+        distanceAlongRouteMeters,
+        lateralOffsetMeters: -4,
+      }),
+      headingRadians: routeHeadingRadians - 0.35,
+      trailerHeadingRadians: routeHeadingRadians,
+    }),
+    { ...DIMENSIONS, cabLengthMeters: 5.2, hitchGapMeters: -1.1 }
+  );
+
+  assert.equal(detectRoadBarrierImpact(road, footprint, distanceAlongRouteMeters), null);
 });
 
 test('jackknifed barrier contact transitions through the injected truck impact path', () => {
