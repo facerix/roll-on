@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 
 import {
   createRoute,
+  routeToWorld,
   sampleRoute,
+  worldToRoute,
   MAX_ROUTE_LENGTH_METERS,
   type RouteConstraints,
   type RouteDefinition,
@@ -387,4 +389,188 @@ test('sampling rejects non-finite distances', () => {
   for (const distanceMeters of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
     assert.throws(() => sampleRoute(straight, distanceMeters), TypeError);
   }
+});
+
+// --- routeToWorld --------------------------------------------------------------
+
+test('routeToWorld places zero lateral offset on the centerline', () => {
+  const sCurve = route([
+    { kind: 'straight', lengthMeters: 30 },
+    { kind: 'arc', lengthMeters: 120, curvaturePerMeter: 0.008 },
+  ]);
+
+  for (const distanceAlongRouteMeters of [-10, 0, 30, 90, 150, 200]) {
+    const sample = sampleRoute(sCurve, distanceAlongRouteMeters);
+    const point = routeToWorld(sCurve, { distanceAlongRouteMeters, lateralOffsetMeters: 0 });
+    assertClose(point.xMeters, sample.center.xMeters);
+    assertClose(point.yMeters, sample.center.yMeters);
+  }
+});
+
+test('routeToWorld offsets follow the sample normal direction', () => {
+  const straight = route([{ kind: 'straight', lengthMeters: 50 }]);
+  const sample = sampleRoute(straight, 20);
+
+  const right = routeToWorld(straight, { distanceAlongRouteMeters: 20, lateralOffsetMeters: 3 });
+  assertClose(right.xMeters, sample.center.xMeters + sample.normal.xMeters * 3);
+  assertClose(right.yMeters, sample.center.yMeters + sample.normal.yMeters * 3);
+
+  const left = routeToWorld(straight, { distanceAlongRouteMeters: 20, lateralOffsetMeters: -3 });
+  assertClose(left.xMeters, sample.center.xMeters + sample.normal.xMeters * -3);
+  assertClose(left.yMeters, sample.center.yMeters + sample.normal.yMeters * -3);
+});
+
+test('routeToWorld rejects non-finite route positions', () => {
+  const straight = route([{ kind: 'straight', lengthMeters: 50 }]);
+  assert.throws(
+    () => routeToWorld(straight, { distanceAlongRouteMeters: Number.NaN, lateralOffsetMeters: 0 }),
+    TypeError
+  );
+  assert.throws(
+    () =>
+      routeToWorld(straight, {
+        distanceAlongRouteMeters: 10,
+        lateralOffsetMeters: Number.POSITIVE_INFINITY,
+      }),
+    TypeError
+  );
+});
+
+// --- worldToRoute ----------------------------------------------------------------
+
+const PROJECTION_TOLERANCE_METERS = 1e-6;
+
+test('routeToWorld then worldToRoute round-trips across straight, arc, boundary, and S-curve positions', () => {
+  const sCurve = route([
+    { kind: 'straight', lengthMeters: 40 },
+    { kind: 'arc', lengthMeters: 120, curvaturePerMeter: 0.006 },
+    { kind: 'arc', lengthMeters: 120, curvaturePerMeter: -0.006 },
+    { kind: 'straight', lengthMeters: 40 },
+  ]);
+
+  const positions = [0, 20, 40, 60, 100, 160, 220, 260, 280, 320];
+  for (const distanceAlongRouteMeters of positions) {
+    for (const lateralOffsetMeters of [-4, 0, 3]) {
+      const worldPoint = routeToWorld(sCurve, { distanceAlongRouteMeters, lateralOffsetMeters });
+      const projection = worldToRoute(sCurve, worldPoint, {
+        hintDistanceAlongRouteMeters: distanceAlongRouteMeters,
+        searchRadiusMeters: 25,
+      });
+
+      assertClose(
+        projection.distanceAlongRouteMeters,
+        distanceAlongRouteMeters,
+        PROJECTION_TOLERANCE_METERS
+      );
+      assertClose(projection.lateralOffsetMeters, lateralOffsetMeters, PROJECTION_TOLERANCE_METERS);
+      assertClose(projection.errorMeters, 0, PROJECTION_TOLERANCE_METERS);
+    }
+  }
+});
+
+test('worldToRoute uses its hint to select the nearby solution', () => {
+  // A tight loop-back: two arcs of the same curvature bring the route close to its own start,
+  // so a point near the join is genuinely close to two different route distances.
+  const radiusMeters = 20;
+  const loop = route(
+    [
+      {
+        kind: 'arc',
+        lengthMeters: 2 * Math.PI * radiusMeters - 1,
+        curvaturePerMeter: 1 / radiusMeters,
+      },
+    ],
+    { constraints: { maximumAbsoluteRoadOffsetMeters: 2, minimumBendRadiusMeters: 5 } }
+  );
+
+  const nearStart = routeToWorld(loop, { distanceAlongRouteMeters: 2, lateralOffsetMeters: 0 });
+  const nearEnd = worldToRoute(loop, nearStart, {
+    hintDistanceAlongRouteMeters: loop.totalLengthMeters - 1,
+    searchRadiusMeters: 15,
+  });
+  // Hinting near the end of the loop finds the nearby end-of-route solution, not distance 2.
+  assert.ok(nearEnd.distanceAlongRouteMeters > loop.totalLengthMeters - 15);
+
+  const nearBeginning = worldToRoute(loop, nearStart, {
+    hintDistanceAlongRouteMeters: 2,
+    searchRadiusMeters: 15,
+  });
+  assertClose(nearBeginning.distanceAlongRouteMeters, 2, PROJECTION_TOLERANCE_METERS);
+});
+
+test('worldToRoute reports projection error rather than silently clamping', () => {
+  const straight = route([{ kind: 'straight', lengthMeters: 50 }]);
+  // Well off to the side of the route; the nearest centerline point is still distance 25, but
+  // the query point itself sits far along the normal, which is lateral offset, not error.
+  const farLateral = createWorldPoint(500, 25);
+  const projection = worldToRoute(straight, farLateral, {
+    hintDistanceAlongRouteMeters: 25,
+    searchRadiusMeters: 10,
+  });
+  assertClose(projection.distanceAlongRouteMeters, 25, PROJECTION_TOLERANCE_METERS);
+  assertClose(projection.lateralOffsetMeters, 500, PROJECTION_TOLERANCE_METERS);
+  assertClose(projection.errorMeters, 0, PROJECTION_TOLERANCE_METERS);
+
+  // A point genuinely past the search window's reach along the route is rejected, not clamped
+  // silently to the window edge.
+  assert.throws(
+    () =>
+      worldToRoute(straight, createWorldPoint(0, 45), {
+        hintDistanceAlongRouteMeters: 5,
+        searchRadiusMeters: 5,
+      }),
+    RangeError
+  );
+});
+
+test('worldToRoute rejects an invalid hint, search radius, or non-finite point', () => {
+  const straight = route([{ kind: 'straight', lengthMeters: 50 }]);
+  const point = createWorldPoint(0, 25);
+
+  assert.throws(
+    () =>
+      worldToRoute(straight, point, {
+        hintDistanceAlongRouteMeters: Number.NaN,
+        searchRadiusMeters: 10,
+      }),
+    TypeError
+  );
+  assert.throws(
+    () =>
+      worldToRoute(straight, point, { hintDistanceAlongRouteMeters: 25, searchRadiusMeters: 0 }),
+    RangeError
+  );
+  assert.throws(
+    () =>
+      worldToRoute(straight, point, {
+        hintDistanceAlongRouteMeters: 25,
+        searchRadiusMeters: Number.NaN,
+      }),
+    TypeError
+  );
+  assert.throws(
+    () =>
+      worldToRoute(straight, createWorldPoint(Number.NaN, 0), {
+        hintDistanceAlongRouteMeters: 25,
+        searchRadiusMeters: 10,
+      }),
+    TypeError
+  );
+});
+
+test('worldToRoute is deterministic and does not mutate the route', () => {
+  const sCurve = route([
+    { kind: 'straight', lengthMeters: 30 },
+    { kind: 'arc', lengthMeters: 120, curvaturePerMeter: 0.008 },
+  ]);
+  const snapshot = JSON.stringify(sCurve);
+  const point = createWorldPoint(15, 80);
+  const options = { hintDistanceAlongRouteMeters: 90, searchRadiusMeters: 40 };
+
+  const first = worldToRoute(sCurve, point, options);
+  const second = worldToRoute(sCurve, point, options);
+
+  assert.deepEqual(first, second);
+  assert.ok(Object.isFrozen(first));
+  assert.equal(JSON.stringify(sCurve), snapshot);
 });

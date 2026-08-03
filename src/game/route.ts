@@ -35,7 +35,10 @@
 import {
   createWorldPoint,
   createWorldVector,
+  dotVectors,
+  headingToUnitVector,
   normalizeHeading,
+  shortestHeadingDelta,
   validatePoint,
   type WorldPoint,
   type WorldVector,
@@ -105,6 +108,42 @@ export interface RouteSample {
   readonly normal: WorldVector;
   readonly headingRadians: number;
   readonly curvaturePerMeter: number;
+}
+
+/** A route-relative position: distance along the centerline plus signed lateral offset. */
+export interface RoutePosition {
+  readonly distanceAlongRouteMeters: number;
+  /** Signed offset along the sample normal; positive is right-of-center. */
+  readonly lateralOffsetMeters: number;
+}
+
+export interface WorldToRouteOptions {
+  /** A nearby route distance used to select among candidate solutions and bound the search. */
+  readonly hintDistanceAlongRouteMeters: number;
+  /**
+   * Half-width, in route-distance meters, of the window searched around the hint. Also the
+   * maximum tolerated projection error: a point whose true nearest route position falls further
+   * than this from the search window is reported as lost acquisition rather than silently
+   * returned as a best-effort guess.
+   */
+  readonly searchRadiusMeters: number;
+}
+
+export interface RouteProjection {
+  readonly distanceAlongRouteMeters: number;
+  readonly lateralOffsetMeters: number;
+  /** Nearest point on the route centerline, i.e. `routeToWorld` at zero lateral offset. */
+  readonly point: WorldPoint;
+  readonly tangent: WorldVector;
+  readonly normal: WorldVector;
+  readonly headingRadians: number;
+  readonly curvaturePerMeter: number;
+  /**
+   * Residual distance, along the local tangent, between the queried point and the reported
+   * nearest position. Zero for an unclamped analytic solution; positive when the true closest
+   * point was clamped to a segment or search-window boundary.
+   */
+  readonly errorMeters: number;
 }
 
 export function createRoute(definition: RouteDefinition): Route {
@@ -232,6 +271,201 @@ export function findSegmentIndex(route: Route, distanceAlongRouteMeters: number)
     }
   }
   return low;
+}
+
+/** Places a route-relative position in the Cartesian world plane. Zero lateral offset lands on the centerline. */
+export function routeToWorld(route: Route, routePosition: RoutePosition): WorldPoint {
+  validateRoute(route);
+  if (typeof routePosition !== 'object' || routePosition === null) {
+    throw new TypeError('routePosition must be an object');
+  }
+  assertFinite('routePosition.distanceAlongRouteMeters', routePosition.distanceAlongRouteMeters);
+  assertFinite('routePosition.lateralOffsetMeters', routePosition.lateralOffsetMeters);
+
+  const sample = sampleRoute(route, routePosition.distanceAlongRouteMeters);
+  return createWorldPoint(
+    sample.center.xMeters + sample.normal.xMeters * routePosition.lateralOffsetMeters,
+    sample.center.yMeters + sample.normal.yMeters * routePosition.lateralOffsetMeters
+  );
+}
+
+/**
+ * Bounded, hint-assisted projection of a world point onto the route. Searches only the segment
+ * geometry within `hintDistanceAlongRouteMeters ± searchRadiusMeters`; it never scans the whole
+ * route, so it stays deterministic and cheap regardless of total route length.
+ *
+ * Fails explicitly — rather than returning a misleading best guess — when the true nearest route
+ * position falls outside that search window.
+ */
+export function worldToRoute(
+  route: Route,
+  worldPoint: WorldPoint,
+  options: WorldToRouteOptions
+): RouteProjection {
+  validateRoute(route);
+  validatePoint('worldPoint', worldPoint);
+  if (typeof options !== 'object' || options === null) {
+    throw new TypeError('options must be an object');
+  }
+  assertFinite('options.hintDistanceAlongRouteMeters', options.hintDistanceAlongRouteMeters);
+  assertPositive('options.searchRadiusMeters', options.searchRadiusMeters);
+
+  const windowStartMeters = options.hintDistanceAlongRouteMeters - options.searchRadiusMeters;
+  const windowEndMeters = options.hintDistanceAlongRouteMeters + options.searchRadiusMeters;
+
+  let bestDistanceAlongRouteMeters: number | undefined;
+  let bestSquaredMeters = Number.POSITIVE_INFINITY;
+
+  const consider = (
+    candidateLocalMeters: number,
+    loLocalMeters: number,
+    hiLocalMeters: number,
+    globalStartMeters: number
+  ): void => {
+    if (loLocalMeters > hiLocalMeters) {
+      return;
+    }
+    const clampedLocalMeters = Math.min(
+      Math.max(candidateLocalMeters, loLocalMeters),
+      hiLocalMeters
+    );
+    const distanceAlongRouteMeters = globalStartMeters + clampedLocalMeters;
+    const sample = sampleRoute(route, distanceAlongRouteMeters);
+    const dx = worldPoint.xMeters - sample.center.xMeters;
+    const dy = worldPoint.yMeters - sample.center.yMeters;
+    const squaredMeters = dx * dx + dy * dy;
+    if (squaredMeters < bestSquaredMeters) {
+      bestSquaredMeters = squaredMeters;
+      bestDistanceAlongRouteMeters = distanceAlongRouteMeters;
+    }
+  };
+
+  const first = route.segments[0]!;
+  const last = route.segments[route.segments.length - 1]!;
+
+  if (windowStartMeters < 0) {
+    const t = projectOntoStraight(worldPoint, first.start, first.startHeadingRadians);
+    consider(t, windowStartMeters, Math.min(windowEndMeters, 0), 0);
+  }
+
+  for (const segment of route.segments) {
+    const loGlobalMeters = Math.max(windowStartMeters, segment.startDistanceMeters);
+    const hiGlobalMeters = Math.min(windowEndMeters, segment.endDistanceMeters);
+    if (loGlobalMeters > hiGlobalMeters) {
+      continue;
+    }
+    const loLocalMeters = loGlobalMeters - segment.startDistanceMeters;
+    const hiLocalMeters = hiGlobalMeters - segment.startDistanceMeters;
+
+    if (segment.curvaturePerMeter === 0) {
+      const t = projectOntoStraight(worldPoint, segment.start, segment.startHeadingRadians);
+      consider(t, loLocalMeters, hiLocalMeters, segment.startDistanceMeters);
+    } else {
+      for (const t of projectOntoArc(
+        worldPoint,
+        segment.start,
+        segment.startHeadingRadians,
+        segment.curvaturePerMeter
+      )) {
+        consider(t, loLocalMeters, hiLocalMeters, segment.startDistanceMeters);
+      }
+    }
+  }
+
+  if (windowEndMeters > route.totalLengthMeters) {
+    const t = projectOntoStraight(worldPoint, last.end, last.endHeadingRadians);
+    consider(
+      t,
+      Math.max(windowStartMeters, route.totalLengthMeters) - route.totalLengthMeters,
+      windowEndMeters - route.totalLengthMeters,
+      route.totalLengthMeters
+    );
+  }
+
+  if (bestDistanceAlongRouteMeters === undefined) {
+    throw new RangeError('worldToRoute search window did not overlap any route geometry');
+  }
+
+  const sample = sampleRoute(route, bestDistanceAlongRouteMeters);
+  const relative = createWorldVector(
+    worldPoint.xMeters - sample.center.xMeters,
+    worldPoint.yMeters - sample.center.yMeters
+  );
+  const lateralOffsetMeters = dotVectors(relative, sample.normal);
+  const errorMeters = Math.abs(dotVectors(relative, sample.tangent));
+
+  if (errorMeters > options.searchRadiusMeters) {
+    throw new RangeError(
+      `worldToRoute lost acquisition: nearest route position is ${errorMeters} m beyond the ` +
+        `${options.searchRadiusMeters} m search window around hint ${options.hintDistanceAlongRouteMeters}`
+    );
+  }
+
+  return Object.freeze({
+    distanceAlongRouteMeters: bestDistanceAlongRouteMeters,
+    lateralOffsetMeters,
+    point: sample.center,
+    tangent: sample.tangent,
+    normal: sample.normal,
+    headingRadians: sample.headingRadians,
+    curvaturePerMeter: sample.curvaturePerMeter,
+    errorMeters,
+  });
+}
+
+/** Signed local distance from `anchor` along its tangent to the closest approach of `point`. */
+function projectOntoStraight(
+  point: WorldPoint,
+  anchor: WorldPoint,
+  headingRadians: number
+): number {
+  const tangent = headingToUnitVector(headingRadians);
+  return dotVectors(
+    createWorldVector(point.xMeters - anchor.xMeters, point.yMeters - anchor.yMeters),
+    tangent
+  );
+}
+
+/**
+ * Candidate local distances (unclamped) from an arc's start where the arc's underlying circle
+ * comes closest to `point`. A circle has exactly one true closest point, but the affine map from
+ * that point's angle back to arc-local distance is only unique modulo one full revolution, so
+ * three representative candidates (one period apart) are returned; the caller clamps each to its
+ * valid range and keeps whichever is genuinely closest.
+ */
+function projectOntoArc(
+  point: WorldPoint,
+  start: WorldPoint,
+  startHeadingRadians: number,
+  curvaturePerMeter: number
+): readonly number[] {
+  const radiusMeters = 1 / curvaturePerMeter;
+  const normalAtStart = createWorldVector(
+    Math.cos(startHeadingRadians),
+    -Math.sin(startHeadingRadians)
+  );
+  const center = createWorldPoint(
+    start.xMeters + normalAtStart.xMeters * radiusMeters,
+    start.yMeters + normalAtStart.yMeters * radiusMeters
+  );
+
+  const relative = {
+    xMeters: point.xMeters - center.xMeters,
+    yMeters: point.yMeters - center.yMeters,
+  };
+  const targetHeadingRadians = Math.atan2(
+    curvaturePerMeter * relative.yMeters,
+    -curvaturePerMeter * relative.xMeters
+  );
+
+  const deltaRadians = shortestHeadingDelta(
+    targetHeadingRadians,
+    normalizeHeading(startHeadingRadians)
+  );
+  const baseLocalMeters = deltaRadians / curvaturePerMeter;
+  const periodMeters = (2 * Math.PI) / Math.abs(curvaturePerMeter);
+
+  return [baseLocalMeters - periodMeters, baseLocalMeters, baseLocalMeters + periodMeters];
 }
 
 /** Position reached by travelling `lengthMeters` from a pose at fixed curvature. */

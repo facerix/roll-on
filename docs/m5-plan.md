@@ -270,7 +270,25 @@ road, truck, traffic, camera, or renderer code.
 
 ## M5.3 — Route/world conversion and projection
 
-**Status:** Not started.
+**Status:** Complete (2026-08-02).
+
+Landed in `src/game/route.ts`: `routeToWorld` places a `RoutePosition` (distance plus signed
+lateral offset) on the world plane via the existing sample's center/normal. `worldToRoute` projects
+a `WorldPoint` back with a required `{ hintDistanceAlongRouteMeters, searchRadiusMeters }` window —
+it only evaluates route geometry inside that window, never the whole route, so cost stays bounded
+regardless of route length.
+
+Per-segment projection is closed-form rather than iterative: straights project by dot product onto
+the tangent; arcs solve the closest point on the segment's underlying circle analytically (center
+derived from the same `start + normal/curvature` relationship the arc sampler already uses), then
+generate three period-apart candidate distances to resolve the angle-to-distance ambiguity before
+clamping each to the window and comparing true squared distance. Continuation regions before/after
+the authored route reuse the straight projection anchored at the route's endpoint pose.
+
+`errorMeters` on `RouteProjection` is the residual tangential component left over when the true
+closest point had to be clamped to a segment or window boundary — zero for an interior analytic
+solution. If that residual exceeds `searchRadiusMeters`, `worldToRoute` throws rather than returning
+a silently-clamped guess, per the plan's projection-failure contract.
 
 Add explicit conversion between route-space positions and Cartesian world points. Implement bounded,
 hint-assisted projection from a nearby world point back onto the route, returning distance along the
