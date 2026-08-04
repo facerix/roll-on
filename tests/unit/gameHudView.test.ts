@@ -23,9 +23,12 @@ class FakeElement {
   ariaLabel = '';
   ariaLive = '';
   ariaAtomic = '';
+  ariaHidden = '';
   role = '';
   max = 0;
   value = 0;
+  innerHTML = '';
+  readonly attributes = new Map<string, string>();
 
   constructor(tagName: string) {
     this.tagName = tagName.toUpperCase();
@@ -35,6 +38,10 @@ class FakeElement {
     this.children.push(child);
     return child;
   }
+
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+  }
 }
 
 class FakeDocument {
@@ -43,6 +50,10 @@ class FakeDocument {
   createElement(tagName: string): FakeElement {
     this.createCount += 1;
     return new FakeElement(tagName);
+  }
+
+  createElementNS(_namespace: string, tagName: string): FakeElement {
+    return this.createElement(tagName);
   }
 }
 
@@ -122,6 +133,11 @@ test('HUD wireframe is one labelled section with five semantic instrument wells'
     ['Fuel level', 'Cargo integrity', 'Route progress']
   );
 
+  const speedometer = field(root, 'speedometer');
+  assert.equal(speedometer.tagName, 'SVG');
+  assert.equal(speedometer.attributes.get('viewBox'), '0 0 104 68');
+  assert.equal(speedometer.ariaHidden, 'true');
+
   const liveRegions = walk(root).filter(element => element.ariaLive.length > 0);
   assert.equal(liveRegions.length, 2);
   assert.deepEqual(
@@ -164,6 +180,11 @@ test('HUD update mutates stable nodes and exposes every visual value as text', (
   assert.equal(field(root, 'fuel-level').value, 0.05);
   assert.equal(field(root, 'cargo-level').value, 0.25);
   assert.equal(field(root, 'route-progress').value, 1);
+  assert.equal(field(root, 'speedometer').style.properties.get('--roll-on-speed-angle'), '135deg');
+  assert.equal(
+    field(root, 'speedometer').style.properties.get('--roll-on-cruise-angle'),
+    '33.75deg'
+  );
   assert.equal(root.dataset.unitSystem, 'imperial');
   assert.equal(root.dataset.cargoSeverity, 'critical');
   assert.equal(root.dataset.fumes, 'true');

@@ -76,12 +76,13 @@ export const CreateSvg = (
   body: string,
   width: string | number,
   height: string | number,
-  classNames: string = ''
+  classNames: string = '',
+  viewBox: string = '0 0 24 24'
 ): SVGSVGElement => {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('width', String(width));
   svg.setAttribute('height', String(height));
-  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('viewBox', viewBox);
   if (classNames) svg.setAttribute('class', classNames);
   svg.innerHTML = body;
   return svg;

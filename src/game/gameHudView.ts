@@ -1,5 +1,10 @@
-import { h } from '/src/domUtils.js';
+import { CreateSvg, h } from '/src/domUtils.js';
 import type { GameHudSnapshot } from '/src/game/gameHud.js';
+import {
+  SPEEDOMETER_VIEW_BOX,
+  buildSpeedometerSvgBody,
+  mapSpeedLevelToDialAngleDegrees,
+} from '/src/game/speedometer.js';
 
 export interface GameHudView {
   readonly root: HTMLElement;
@@ -7,6 +12,15 @@ export interface GameHudView {
 }
 
 export function createGameHudView(): GameHudView {
+  const speedometer = CreateSvg(
+    buildSpeedometerSvgBody(),
+    104,
+    68,
+    'roll-on-speedometer',
+    SPEEDOMETER_VIEW_BOX
+  );
+  speedometer.dataset.field = 'speedometer';
+  speedometer.ariaHidden = 'true';
   const speedValue = value('speed', 'roll-on-hud-speed-value', '0');
   const speedUnit = value('speed-unit', 'roll-on-hud-speed-unit', 'MPH');
   const cruiseSpeed = value('cruise', 'roll-on-hud-compact-value', '0');
@@ -16,6 +30,7 @@ export function createGameHudView(): GameHudView {
     textContent: 'MPH',
   });
   const speedWell = instrumentWell('speed', 'SPEED', [
+    speedometer,
     h('div', { className: 'roll-on-hud-speed-primary' }, [speedValue, speedUnit]),
     h('div', { className: 'roll-on-hud-secondary-reading' }, [
       h('span', { className: 'roll-on-hud-sublabel', textContent: 'CRUISE' }),
@@ -138,6 +153,14 @@ export function createGameHudView(): GameHudView {
       cruiseSpeed.textContent = snapshot.cruiseSpeedText;
       cruiseSpeed.ariaLabel = `Cruise target ${snapshot.cruiseSpeedText} ${snapshot.speedUnitText}`;
       cruiseSpeedUnit.textContent = snapshot.speedUnitText;
+      speedometer.style.setProperty(
+        '--roll-on-speed-angle',
+        `${mapSpeedLevelToDialAngleDegrees(snapshot.speedLevel)}deg`
+      );
+      speedometer.style.setProperty(
+        '--roll-on-cruise-angle',
+        `${mapSpeedLevelToDialAngleDegrees(snapshot.cruiseSpeedLevel)}deg`
+      );
 
       fuelValue.textContent = snapshot.fuelPercentText;
       fuelValue.ariaLabel = `${snapshot.fuelStatusText} ${snapshot.fuelPercentText}`;
@@ -172,7 +195,7 @@ export function createGameHudView(): GameHudView {
   };
 }
 
-function instrumentWell(name: string, label: string, body: HTMLElement[]): HTMLDivElement {
+function instrumentWell(name: string, label: string, body: Node[]): HTMLDivElement {
   return h(
     'div',
     {

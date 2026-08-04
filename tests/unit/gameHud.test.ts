@@ -156,6 +156,20 @@ test('normalized levels clamp overspeed and route overshoot without changing dia
   assert.equal(snapshot.statusText, 'STAGE COMPLETE');
 });
 
+test('Fumes limits actual speed without rescaling the authored full-speed dial', () => {
+  const snapshot = buildGameHudSnapshot(
+    truck({ speedMetersPerSecond: 16.8 }),
+    DEFAULT_TRUCK_TUNING,
+    createFuelState({ level: 0.05 }),
+    undefined,
+    runStats({ cruiseTargetSpeedMetersPerSecond: 20 })
+  );
+
+  assert.equal(snapshot.isFuelInFumes, true);
+  assert.ok(Math.abs(snapshot.speedLevel - 0.42) < Number.EPSILON);
+  assert.equal(snapshot.cruiseSpeedLevel, 0.5);
+});
+
 test('dashboard distance comes from curved-route progress, not Cartesian world y', () => {
   const snapshot = buildGameHudSnapshot(
     truck({ position: { xMeters: 800, yMeters: -900 } }),

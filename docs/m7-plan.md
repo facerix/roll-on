@@ -289,7 +289,7 @@ score digits, `100%` cargo/fuel, Fumes, and terminal status.
 
 All instruments fit and remain legible at native resolution before art detail begins.
 
-### M7.3 — Implement the analog speed and cruise instrument
+### M7.3 — Implement the analog speed and cruise instrument ✅
 
 Add the segmented green/yellow/orange/red speed arc, tick marks, needle, current preferred speed
 unit, and cruise marker. Tune the angle range to the actual truck maximum so warning colors

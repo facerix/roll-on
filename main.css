@@ -201,13 +201,80 @@ body.is-playing #main-foot {
 }
 
 .roll-on-hud-speed .roll-on-hud-instrument-body {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) 15px;
-  align-items: center;
-  padding: 3px 5px;
+  position: relative;
+  padding: 0;
+}
+
+.roll-on-speedometer {
+  position: absolute;
+  inset: 0 auto auto 1px;
+  display: block;
+  width: 104px;
+  height: 68px;
+  overflow: visible;
+}
+
+.roll-on-speedometer-band {
+  fill: none;
+  stroke-width: 5px;
+}
+
+.roll-on-speedometer-band-cruise {
+  stroke: #62c77b;
+}
+
+.roll-on-speedometer-band-caution {
+  stroke: #d5ca5a;
+}
+
+.roll-on-speedometer-band-high {
+  stroke: #e58d3c;
+}
+
+.roll-on-speedometer-band-limit {
+  stroke: #e5564d;
+}
+
+.roll-on-speedometer-tick {
+  stroke: #d7e1df;
+  stroke-width: 1px;
+}
+
+.roll-on-speedometer-needle,
+.roll-on-speedometer-cruise-marker {
+  transform-origin: 52px 42px;
+  transform-box: view-box;
+}
+
+.roll-on-speedometer-needle {
+  transform: rotate(var(--roll-on-speed-angle, -135deg));
+  transition: transform 90ms steps(3, end);
+}
+
+.roll-on-speedometer-needle line {
+  stroke: #f4f0df;
+  stroke-width: 2px;
+}
+
+.roll-on-speedometer-needle circle {
+  fill: #d7e1df;
+  stroke: #050608;
+  stroke-width: 1px;
+}
+
+.roll-on-speedometer-cruise-marker {
+  transform: rotate(var(--roll-on-cruise-angle, -135deg));
+}
+
+.roll-on-speedometer-cruise-marker path {
+  fill: #7ed9f1;
+  stroke: #050608;
+  stroke-width: 1px;
 }
 
 .roll-on-hud-speed-primary {
+  position: absolute;
+  inset: 34px 6px auto;
   display: flex;
   align-items: baseline;
   justify-content: center;
@@ -219,7 +286,7 @@ body.is-playing #main-foot {
   min-width: 2ch;
   overflow: hidden;
   color: #e7ece9;
-  font-size: 34px;
+  font-size: 26px;
   line-height: 0.9;
   text-align: right;
   white-space: nowrap;
@@ -233,6 +300,8 @@ body.is-playing #main-foot {
 }
 
 .roll-on-hud-secondary-reading {
+  position: absolute;
+  inset: auto 5px 3px;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -449,6 +518,12 @@ body.is-playing #main-foot {
 .roll-on-hud-status[data-status='crashed'],
 .roll-on-hud-status[data-status='fumes'] {
   color: #ff8273;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roll-on-speedometer-needle {
+    transition: none;
+  }
 }
 
 .roll-on-run-terminal {

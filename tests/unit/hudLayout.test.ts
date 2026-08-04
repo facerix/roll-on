@@ -48,3 +48,13 @@ test('status and transient events stay in the dedicated bottom strip', () => {
   const event = rule('.roll-on-hud-event');
   assert.doesNotMatch(event, /bottom:\s*112px/);
 });
+
+test('speedometer motion is optional and keeps the authoritative final angle', () => {
+  const needle = rule('.roll-on-speedometer-needle');
+  assert.match(needle, /transform:\s*rotate\(var\(--roll-on-speed-angle, -135deg\)\)/);
+
+  assert.match(
+    css,
+    /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.roll-on-speedometer-needle\s*\{[^}]*transition:\s*none/
+  );
+});
