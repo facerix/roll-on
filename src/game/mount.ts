@@ -61,6 +61,8 @@ export interface MountedGame {
   readonly input: InputAdapter;
   /** Fixed logical-stage wrapper for HUD and other presentation overlays. */
   readonly stage: HTMLElement;
+  /** Enable or suspend keyboard/touch driving input without stopping rendering. */
+  setInteractionEnabled(enabled: boolean): void;
   /** Stop the loop, remove DOM nodes and listeners. Idempotent. */
   dispose(): void;
 }
@@ -188,10 +190,23 @@ export function mountGame(opts: MountOptions): MountedGame {
   canvas.focus();
 
   let disposed = false;
+  let interactionEnabled = true;
   return {
     canvas,
     input,
     stage,
+    setInteractionEnabled(enabled) {
+      if (disposed || enabled === interactionEnabled) return;
+      interactionEnabled = enabled;
+      touchPad?.toggleAttribute('hidden', !enabled);
+      canvas.tabIndex = enabled ? 0 : -1;
+      if (enabled) {
+        input.attach();
+        canvas.focus();
+      } else {
+        input.detach();
+      }
+    },
     dispose() {
       if (disposed) return;
       disposed = true;

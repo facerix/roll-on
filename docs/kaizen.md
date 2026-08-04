@@ -8,24 +8,13 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
 
 ## Open design questions
 
-- **Difficulty curve shape**: linear ramp vs. wave pattern (lulls between intensity spikes)? Resolve
-  from the M6.5 Stage 1 timeline playtest.
-- **Run length target**: M3 uses a prototype target of about 135 seconds at efficient cruise before
-  an empty tank. The final "good" Stage 1 run length is still open because enemy density, finish
-  distance, and scoring pressure arrive in later milestones. Revisit during Milestone 6.
-- **Permadeath vs. continues**: arcade tradition is continues with score reset penalty. Design doc
-  is silent. Resolve before the M6.5 completion lifecycle lands.
 - **Score formula precise weights**: §6 of the design doc gives the formula but no coefficients. M4
-  uses prototype weights (10 points/meter, 2,000 integrity multiplier, 250/takedown); tune during
-  the M6 finish-tally playtest.
+  uses prototype weights (10 points/meter, 2,000 integrity multiplier, and a 250-point penalty per
+  Road Rage collision); tune during the M6 finish-tally playtest.
 - **Touch control ergonomics**: the pad layout (steer arrows at left/right centre, brake+gas centred
-  along the bottom, horn in the bottom-left corner) is a first pass that has NOT been played on a
-  real device yet. Open: whether steering wants held arrows at all versus a drag-anywhere lane
-  slider, and whether the horn's corner placement survives contact with actual thumbs. Revisit after
-  the first phone playtest.
-- **Horn mechanics**: the `horn` action is bound (Space, plus a touch button) but does nothing.
-  Stubbed deliberately so the input surface is complete; decide what it does — scatter traffic?
-  bait patrol? — during M6.5, or explicitly defer it beyond the Stage 1 playable PoC.
+  along the bottom) is a first pass that has NOT been played on a real device yet. Open: whether
+  steering wants held arrows at all versus a drag-anywhere lane slider. Revisit after the first
+  phone playtest.
 
 ## Deferred technical work
 
@@ -67,6 +56,27 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
 - **`DataStore` schema churn**: deferred — during prototyping we accept tearing down localStorage and starting fresh whenever the shape changes. Revisit once gameplay stabilizes and real player data is at stake; at that point we want explicit version tags and crash-on-unknown-version (per directive: crashing > corruption).
 
 ## Resolved (move entries here when decided, with the decision)
+
+- **Horn visibility for the Stage 1 PoC** (2026-08-03): defer horn mechanics beyond M6 and do not
+  show a control that has no gameplay effect. The touch pad exposes steering, brake, and throttle
+  only. Preserve the abstract `horn` action and Space binding as an implementation seam for the
+  eventual limited-use lane-clearing weapon; neither is required to complete Stage 1.
+
+- **Road Rage scoring direction** (2026-08-03): plowing through commuter traffic is a collision
+  penalty, not a bonus. Continue tracking each qualifying collision and showing its Road Rage event,
+  but deduct the provisional 250-point amount per event and floor the live score at zero. The final
+  amount remains part of the M6 tally-weight playtest.
+
+- **Stage 1 length, difficulty, and failure policy** (2026-08-03): author a `2,200 m` Stage 1 that
+  targets an approximately 100-second competent clear without using time as simulation truth. Pace
+  it as distance-authored waves: onboarding, normal pressure, a patrol spike, a lull, denser mixed
+  pressure, a short recovery, and a final gauntlet. Ambient encounters are seeded and
+  distance-triggered; named encounters activate once and patrol waves have authored end distances.
+  Stage 1 is a single-credit run with no checkpoints or continues. Catastrophic crashes fail the
+  run. Empty fuel permits coasting and a dry-tank finish, but stopping empty before the line fails.
+  Failure offers a fresh retry rather than resuming mutated simulation state. Resolve a step's fuel
+  and contacts before its terminal transition; a finish crossing wins over a crash first caused on
+  that step while retaining the collision's final damage in the completion snapshot.
 
 - **Fixed pixel stage with responsive presentation** (2026-08-03): the complete game composition
   uses one `384 × 576` (`2:3`) logical stage and backing store. A responsive outer shell subtracts

@@ -8,7 +8,7 @@ import type {
   RectDrawable,
 } from '../../src/engine/renderer.ts';
 import { buildRoadCamera } from '../../src/game/roadCamera.ts';
-import { createRoad, DEFAULT_ROAD_TUNING } from '../../src/game/road.ts';
+import { createDefaultStageRoute, createRoad, DEFAULT_ROAD_TUNING } from '../../src/game/road.ts';
 import {
   buildRoadScene,
   COMMUTER_SPRITES,
@@ -109,6 +109,52 @@ test('lane marker drawables repeat from world cadence and shift with camera dist
   assert.ok(farMarkerYs.length > 3);
   assert.notDeepEqual(farMarkerYs, nearMarkerYs);
   assert.ok(farMarkerYs.some(y => nearMarkerYs.includes(y - 30)));
+});
+
+test('finish line is a checkered route-space band spanning the road at the authored distance', () => {
+  const route = createRoute({
+    origin: { xMeters: 0, yMeters: 0 },
+    headingRadians: 0,
+    segments: [{ kind: 'straight', lengthMeters: 100 }],
+    constraints: { maximumAbsoluteRoadOffsetMeters: 10, minimumBendRadiusMeters: 30 },
+  });
+  const road = createRoad(DEFAULT_ROAD_TUNING, route);
+  const truck = truckAt(40);
+  const camera = buildRoadCamera(truck.position, VIEWPORT, CAMERA_TUNING);
+  const scene = buildRoadScene({
+    road,
+    camera,
+    truck,
+    truckDimensions: TRUCK_DIMENSIONS,
+    finishDistanceMeters: 50,
+  });
+  const finishColors = new Set([
+    DEFAULT_ROAD_SCENE_TUNING.finishLineLightColor,
+    DEFAULT_ROAD_SCENE_TUNING.finishLineDarkColor,
+  ]);
+  const finish = polygons(scene.drawables).filter(drawable => finishColors.has(drawable.color));
+
+  assert.equal(
+    finish.length,
+    DEFAULT_ROAD_SCENE_TUNING.finishLineColumns * DEFAULT_ROAD_SCENE_TUNING.finishLineRows
+  );
+  assert.ok(
+    finish.some(drawable => drawable.color === DEFAULT_ROAD_SCENE_TUNING.finishLineLightColor)
+  );
+  assert.ok(
+    finish.some(drawable => drawable.color === DEFAULT_ROAD_SCENE_TUNING.finishLineDarkColor)
+  );
+
+  const points = finish.flatMap(drawable => drawable.points);
+  const xs = points.map(point => point.x);
+  const ys = points.map(point => point.y);
+  assert.equal(Math.min(...xs), camera.anchorX + road.leftRoadEdgeMeters * camera.pixelsPerMeter);
+  assert.equal(Math.max(...xs), camera.anchorX + road.rightRoadEdgeMeters * camera.pixelsPerMeter);
+  assert.equal(Math.min(...ys), camera.anchorY - 10 * camera.pixelsPerMeter);
+  assert.equal(
+    Math.max(...ys),
+    camera.anchorY - (10 - DEFAULT_ROAD_SCENE_TUNING.finishLineDepthMeters) * camera.pixelsPerMeter
+  );
 });
 
 test('parallax drawables shift with camera distance more slowly than lane markers', () => {
@@ -368,6 +414,36 @@ test('curved road sampling covers the whole rotated viewport around route focus'
   assert.ok(roadPolygons.some(polygon => polygon.points.some(point => point.y < 80)));
   assert.ok(
     roadPolygons.some(polygon => polygon.points.some(point => point.y > VIEWPORT.height - 80))
+  );
+});
+
+test('curved-road lane dividers populate the viewport top from route distance', () => {
+  const route = createDefaultStageRoute();
+  const road = createRoad(DEFAULT_ROAD_TUNING, route);
+  const focusDistanceAlongRouteMeters = 680;
+  const focus = routeToWorld(route, {
+    distanceAlongRouteMeters: focusDistanceAlongRouteMeters,
+    lateralOffsetMeters: 0,
+  });
+  const truck = createTruckState({
+    ...truckAt(0),
+    position: focus,
+  });
+  const camera = buildRoadCamera(focus, VIEWPORT, CAMERA_TUNING);
+  const markers = polygons(
+    buildRoadScene({
+      road,
+      camera,
+      truck,
+      truckDimensions: TRUCK_DIMENSIONS,
+      focusDistanceAlongRouteMeters,
+    }).drawables
+  ).filter(drawable => drawable.color === DEFAULT_ROAD_SCENE_TUNING.laneMarkerColor);
+  const firstMarkerY = Math.min(...markers.flatMap(marker => marker.points.map(point => point.y)));
+
+  assert.ok(
+    firstMarkerY < 80,
+    `expected a divider dash near the viewport top, first marker begins at y=${firstMarkerY}`
   );
 });
 

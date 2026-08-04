@@ -21,15 +21,16 @@ test('game HUD snapshot formats persistent driving values', () => {
     buildGameHudSnapshot(truck, DEFAULT_TRUCK_TUNING, createFuelState({ level: 0.42 }), undefined, {
       score: 12_345,
       takedowns: 4,
-      eventText: 'ROAD RAGE +250',
+      eventText: 'ROAD RAGE -250',
       routeDistanceMeters: 402.33,
       routeLengthMeters: 1_320,
       isStageComplete: false,
+      cruiseTargetSpeedMetersPerSecond: 25,
     }),
     {
       speedMphText: '70',
       speedMetersPerSecondText: '31.3 m/s',
-      topSpeedPercentText: '78%',
+      cruiseSpeedMphText: '56',
       cargoIntegrityText: '88%',
       fuelPercentText: '42%',
       fuelLevel: 0.42,
@@ -40,7 +41,7 @@ test('game HUD snapshot formats persistent driving values', () => {
       statusText: 'EVENT',
       scoreText: '12,345',
       takedownsText: '4',
-      eventText: 'ROAD RAGE +250',
+      eventText: 'ROAD RAGE -250',
     }
   );
 });
@@ -69,11 +70,12 @@ test('game HUD snapshot clamps display percentages without mutating state', () =
       routeDistanceMeters: 0,
       routeLengthMeters: 1,
       isStageComplete: false,
+      cruiseTargetSpeedMetersPerSecond: 0,
     }
   );
 
   assert.equal(snapshot.speedMphText, '0');
-  assert.equal(snapshot.topSpeedPercentText, '0%');
+  assert.equal(snapshot.cruiseSpeedMphText, '0');
   assert.equal(snapshot.cargoIntegrityText, '0%');
   assert.equal(snapshot.fuelPercentText, '5%');
   assert.equal(snapshot.isFuelInFumes, true);
@@ -104,6 +106,7 @@ test('game HUD status priority is deterministic for overlapping urgent condition
     eventText: 'PATROL RAM',
     routeDistanceMeters: 50,
     routeLengthMeters: 100,
+    cruiseTargetSpeedMetersPerSecond: 20,
   };
 
   assert.equal(
@@ -143,7 +146,35 @@ test('game HUD rejects corrupt route progress instead of guessing a display valu
         routeDistanceMeters: 0,
         routeLengthMeters: 0,
         isStageComplete: false,
+        cruiseTargetSpeedMetersPerSecond: 20,
       }),
     /routeLengthMeters must be positive/
+  );
+});
+
+test('game HUD rejects a cruise target outside the configured truck range', () => {
+  const truck = createTruckState({
+    position: { xMeters: 0, yMeters: 0 },
+    headingRadians: 0,
+    speedMetersPerSecond: 0,
+    yawRateRadiansPerSecond: 0,
+    trailerHeadingRadians: 0,
+    massKilograms: 36_287,
+    cargoIntegrity: 1,
+    status: 'driving',
+  });
+
+  assert.throws(
+    () =>
+      buildGameHudSnapshot(truck, DEFAULT_TRUCK_TUNING, createFuelState(), undefined, {
+        score: 0,
+        takedowns: 0,
+        eventText: '',
+        routeDistanceMeters: 0,
+        routeLengthMeters: 100,
+        isStageComplete: false,
+        cruiseTargetSpeedMetersPerSecond: 41,
+      }),
+    /cruiseTargetSpeedMetersPerSecond/
   );
 });

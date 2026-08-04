@@ -7,7 +7,7 @@
  *   |         |
  *   |←       →|   steer left / steer right, at thumb height
  *   |         |
- *   |[h][b][g]|   horn (secondary), brake, gas
+ *   |  [b][g] |   brake, gas
  *   |---------|
  *
  * It knows nothing about the game. It emits abstract `Action` names as DOM
@@ -34,7 +34,11 @@
 
 import { h, CreateSvg } from '/src/domUtils.js';
 import type { Action } from '/src/engine/input.js';
-import { TouchActionTracker, type ActionChange } from '/src/engine/touchActions.js';
+import {
+  TOUCH_PAD_ACTIONS,
+  TouchActionTracker,
+  type ActionChange,
+} from '/src/engine/touchActions.js';
 
 /** Detail payload on `action-down` / `action-up`. */
 export interface TouchPadActionDetail {
@@ -43,22 +47,22 @@ export interface TouchPadActionDetail {
 
 export type TouchPadActionEvent = CustomEvent<TouchPadActionDetail>;
 
-interface ControlSpec {
-  readonly action: Action;
+type TouchPadAction = (typeof TOUCH_PAD_ACTIONS)[number];
+
+interface ControlAppearance {
   /** Slot in the layout grid; drives placement, size and colour. */
-  readonly role: 'steer-left' | 'steer-right' | 'brake' | 'gas' | 'horn';
+  readonly role: 'steer-left' | 'steer-right' | 'brake' | 'gas';
   readonly label: string;
   /** Visible face: text for pedals, an arrow glyph for the steer controls. */
   readonly glyph: 'arrow-left' | 'arrow-right' | 'text';
 }
 
-const CONTROLS: readonly ControlSpec[] = [
-  { action: 'steerLeft', role: 'steer-left', label: 'Steer left', glyph: 'arrow-left' },
-  { action: 'steerRight', role: 'steer-right', label: 'Steer right', glyph: 'arrow-right' },
-  { action: 'horn', role: 'horn', label: 'Horn', glyph: 'text' },
-  { action: 'brake', role: 'brake', label: 'Brake', glyph: 'text' },
-  { action: 'throttle', role: 'gas', label: 'Gas', glyph: 'text' },
-];
+const CONTROL_APPEARANCE: Readonly<Record<TouchPadAction, ControlAppearance>> = Object.freeze({
+  steerLeft: { role: 'steer-left', label: 'Steer left', glyph: 'arrow-left' },
+  steerRight: { role: 'steer-right', label: 'Steer right', glyph: 'arrow-right' },
+  brake: { role: 'brake', label: 'Brake', glyph: 'text' },
+  throttle: { role: 'gas', label: 'Gas', glyph: 'text' },
+});
 
 // Chunky solid triangles rather than thin chevrons — reads at a glance in
 // peripheral vision, and suits the pixel-art aesthetic.
@@ -70,9 +74,9 @@ const CSS = `
   /* Edges keep clear of notches and home indicators. */
   --pad-edge-x: max(14px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
   --pad-edge-y: max(18px, env(safe-area-inset-bottom, 0px));
+  --pad-hud-clearance: 120px;
   --pad-steer-size: clamp(64px, 15vmin, 108px);
   --pad-pedal-size: clamp(72px, 17vmin, 120px);
-  --pad-horn-size: clamp(56px, 11vmin, 80px);
   --pad-ink: #f7ecd7;
   --pad-face: rgba(5, 6, 8, 0.46);
   --pad-corner: 16px;
@@ -93,6 +97,10 @@ const CSS = `
 
 :host([data-active='true']) {
   display: block;
+}
+
+:host([hidden]) {
+  display: none !important;
 }
 
 button {
@@ -171,12 +179,12 @@ button svg {
   right: var(--pad-edge-x);
 }
 
-/* Brake and gas sit as a centred pair along the bottom edge. Gas is on the
-   right because that is where a right thumb rests, matching a real pedal box
-   and every arcade cabinet we are borrowing from. */
+/* Brake and gas sit just above the bottom HUD. Gas is on the right because
+   that is where a right thumb rests, matching a real pedal box and every
+   arcade cabinet we are borrowing from. */
 [data-role='brake'],
 [data-role='gas'] {
-  bottom: var(--pad-edge-y);
+  bottom: calc(var(--pad-edge-y) + var(--pad-hud-clearance));
   width: var(--pad-pedal-size);
   height: var(--pad-pedal-size);
 }
@@ -189,17 +197,6 @@ button svg {
 [data-role='gas'] {
   left: calc(50% + 8px);
   color: #f6d96d;
-}
-
-/* Horn is deliberately secondary: smaller, cornered, out of the driving
-   thumbs' path. Placement is provisional pending horn mechanics. */
-[data-role='horn'] {
-  left: var(--pad-edge-x);
-  bottom: var(--pad-edge-y);
-  width: var(--pad-horn-size);
-  height: var(--pad-horn-size);
-  color: #e88a2a;
-  opacity: calc(var(--pad-idle-opacity) * 0.8);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -216,9 +213,9 @@ button svg {
 @media (max-height: 480px) {
   :host {
     --pad-edge-y: max(10px, env(safe-area-inset-bottom, 0px));
+    --pad-hud-clearance: 108px;
     --pad-pedal-size: clamp(60px, 22vmin, 92px);
     --pad-steer-size: clamp(56px, 20vmin, 88px);
-    --pad-horn-size: clamp(46px, 15vmin, 64px);
   }
 }
 `;
@@ -289,7 +286,8 @@ class TouchPad extends HTMLElement {
     this.setAttribute('role', 'group');
     this.setAttribute('aria-label', 'Touch driving controls');
 
-    for (const spec of CONTROLS) {
+    for (const action of TOUCH_PAD_ACTIONS) {
+      const spec = CONTROL_APPEARANCE[action];
       const face =
         spec.glyph === 'text'
           ? h('span', { className: 'label', textContent: spec.label })
@@ -303,12 +301,12 @@ class TouchPad extends HTMLElement {
           type: 'button',
           tabIndex: -1,
           ariaLabel: spec.label,
-          dataset: { role: spec.role, action: spec.action, pressed: 'false' },
+          dataset: { role: spec.role, action, pressed: 'false' },
         },
         [face]
       );
 
-      button.addEventListener('pointerdown', event => this.#onPointerDown(event, spec.action));
+      button.addEventListener('pointerdown', event => this.#onPointerDown(event, action));
       // With pointer capture set on pointerdown, the up/cancel for that
       // pointer is guaranteed to land on this button even if the finger has
       // slid off it. `lostpointercapture` is the backstop for the cases where
@@ -320,7 +318,7 @@ class TouchPad extends HTMLElement {
       // Suppress the synthetic click/contextmenu a long press produces.
       button.addEventListener('contextmenu', event => event.preventDefault());
 
-      this.#buttons.set(spec.action, button);
+      this.#buttons.set(action, button);
       shadow.appendChild(button);
     }
   }

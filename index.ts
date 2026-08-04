@@ -6,22 +6,53 @@ import { measureRoadViewport } from '/src/game/roadViewport.js';
 import { installTitleScreenStartHandlers } from '/src/game/titleScreen.js';
 
 function setupTitleScreen(): void {
-  const titleScreen = document.getElementById('title-screen');
-  if (!titleScreen) return;
+  let activeGame: ReturnType<typeof startRoadGame> | null = null;
+  let gameRoot: HTMLElement | null = null;
+  let disposeTitleHandlers: (() => void) | null = null;
 
-  installTitleScreenStartHandlers({
-    activationTarget: titleScreen,
-    keyboardTarget: window,
-    onStart: () => {
-      console.log('[RollOn] Starting game...');
-      titleScreen.remove();
-      document.body.classList.add('is-playing');
+  const startGame = (): void => {
+    disposeTitleHandlers?.();
+    disposeTitleHandlers = null;
+    document.getElementById('title-screen')?.remove();
+    activeGame?.dispose();
+    gameRoot?.remove();
 
-      const gameRoot = h('main', { id: 'game-root', className: 'roll-on-playfield' });
-      document.body.appendChild(gameRoot);
-      startRoadGame({ root: gameRoot, viewport: measureRoadViewport() });
-    },
-  });
+    console.log('[RollOn] Starting game...');
+    document.body.classList.add('is-playing');
+    gameRoot = h('main', { id: 'game-root', className: 'roll-on-playfield' });
+    document.body.appendChild(gameRoot);
+    activeGame = startRoadGame({
+      root: gameRoot,
+      viewport: measureRoadViewport(),
+      onRetry: startGame,
+      onExitToTitle: showTitleScreen,
+    });
+  };
+
+  function showTitleScreen(): void {
+    activeGame?.dispose();
+    activeGame = null;
+    gameRoot?.remove();
+    gameRoot = null;
+    document.body.classList.remove('is-playing');
+
+    const titleScreen =
+      document.getElementById('title-screen') ??
+      h('main', { id: 'title-screen', role: 'button', tabIndex: 0, ariaLabel: 'Start game' }, [
+        h('p', { id: 'start-hint', textContent: 'Press Start' }),
+      ]);
+    if (!titleScreen.isConnected) document.body.appendChild(titleScreen);
+
+    disposeTitleHandlers?.();
+    disposeTitleHandlers = installTitleScreenStartHandlers({
+      activationTarget: titleScreen,
+      keyboardTarget: window,
+      onStart: startGame,
+    });
+    titleScreen.focus();
+  }
+
+  showTitleScreen();
 }
 
 const whenLoaded = customElements.whenDefined('update-notification');

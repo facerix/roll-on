@@ -3,16 +3,20 @@ export interface ScoreInput {
   readonly cargoIntegrity: number;
   readonly integrityMultiplier: number;
   readonly takedownCount: number;
-  readonly pointsPerTakedown: number;
+  /** Non-negative score deduction for each Road Rage commuter collision. */
+  readonly takedownPenalty: number;
 }
 
 /** Milestone 4 score subset; diesel residuals and bonuses arrive with the stage tally. */
 export function calculateScore(input: ScoreInput): number {
   validateInput(input);
-  return Math.round(
-    input.baseDeliveredCargo +
-      input.cargoIntegrity * input.integrityMultiplier +
-      input.takedownCount * input.pointsPerTakedown
+  return Math.max(
+    0,
+    Math.round(
+      input.baseDeliveredCargo +
+        input.cargoIntegrity * input.integrityMultiplier -
+        input.takedownCount * input.takedownPenalty
+    )
   );
 }
 
@@ -24,7 +28,7 @@ function validateInput(input: ScoreInput): void {
   assertRange('cargoIntegrity', input.cargoIntegrity, 0, 1);
   assertNonNegative('integrityMultiplier', input.integrityMultiplier);
   assertNonNegativeInteger('takedownCount', input.takedownCount);
-  assertNonNegative('pointsPerTakedown', input.pointsPerTakedown);
+  assertNonNegative('takedownPenalty', input.takedownPenalty);
 }
 
 function assertNonNegative(label: string, value: number): void {

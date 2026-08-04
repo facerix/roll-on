@@ -100,20 +100,21 @@ Exit criterion: fuel pressure is the dominant tension during a run.
 - [x] **Commuter car** entity. ✓ Deterministic world-space traffic state with slow lane-locked
   cars, timed adjacent-lane changes, seeded spawning, and offscreen culling in
   `src/game/traffic.ts`.
-- [x] **Plow-over** for smaller vehicles. ✓ Overlapping commuters are removed, award a Road Rage
-  takedown and HUD callout, and nick Cargo Integrity.
+- [x] **Plow-over** for smaller vehicles. ✓ Overlapping commuters are removed, record a Road Rage
+  collision and HUD penalty callout, and nick Cargo Integrity.
 - [x] **Highway patrol cruiser**. ✓ Faster cruisers converge on the player's nearest lane, adjust
   speed to pace the trailer, and deliver cooldown-limited ramming damage. No weapons yet.
 - [x] **Cargo Integrity %**. ✓ Commuter and patrol hits degrade the existing truck integrity model;
   the HUD keeps the percentage visible alongside live traffic feedback.
-- [x] **Score model**. ✓ `src/game/score.ts` evaluates base + integrity×multiplier + takedowns.
+- [x] **Score model**. ✓ `src/game/score.ts` evaluates base + integrity×multiplier − Road Rage
+  collision penalties, floored at zero.
   During play, distance supplies provisional base points; diesel residuals, bonuses, and the final
   delivered-cargo tally remain Milestone 6 work.
   - *Test*: score formula evaluates correctly for given inputs.
 
 **Exit criterion met**: a 60-second run produces a live, comparable score from distance, retained
-cargo integrity, and Road Rage takedowns. Traffic simulation, collisions, rendering, HUD state, and
-score arithmetic are covered by deterministic unit tests.
+cargo integrity, and Road Rage collision penalties. Traffic simulation, collisions, rendering, HUD
+state, and score arithmetic are covered by deterministic unit tests.
 
 ### Milestone 4.1 — Limited rigid-body response
 
@@ -122,7 +123,8 @@ score arithmetic are covered by deterministic unit tests.
 - [x] **Arcade impulse solver**. ✓ Low-restitution, friction-limited impulses and mass-weighted
   positional correction keep bodies separated while preserving the truck's weight advantage.
 - [x] **Physical takedowns**. ✓ A sufficiently fast commuter impact pushes and spins a short-lived
-  disabled wreck before awarding Road Rage; low-speed contact separates without a false takedown.
+  disabled wreck before recording a Road Rage penalty; low-speed contact separates without a false
+  takedown.
 - [x] **Patrol standoff**. ✓ Cruiser AI paces behind the trailer's rear bumper instead of targeting
   a point inside it; ramming damage uses per-cruiser cooldowns.
 - [x] **Bounded patrol encounters**. ✓ Only one cruiser encounter may exist at a time. Patrol AI
@@ -187,7 +189,10 @@ contracts.
   controls cover every state from title through high scores without final cabinet-art work.
 - [ ] **Stage timeline**: authored encounter schedule, difficulty ramp, and finish trigger at the
   accepted route distance.
-- [ ] **Finish-line sequence**: explicit stage-complete lifecycle and score tally.
+- [x] **Finish and failure lifecycle**: a checkered route-space marker ends at 2,200 m; exact-once
+  completion and crash/out-of-fuel failure freeze gameplay, hide driving controls, and show semantic
+  terminal dialogs with fresh retry and title actions.
+- [ ] **Score tally**: extend the locked completion snapshot into the explainable final tally.
 
 **Deferred visualization and art:** M6 retains existing dev art and the orthographic debug view. The
 first post-M6 milestone owns the pseudo-3D projection, compatible vehicle art, horizon/roadside

@@ -4,7 +4,7 @@ import type { TruckState, TruckTuning } from '/src/game/truck.js';
 export interface GameHudSnapshot {
   readonly speedMphText: string;
   readonly speedMetersPerSecondText: string;
-  readonly topSpeedPercentText: string;
+  readonly cruiseSpeedMphText: string;
   readonly cargoIntegrityText: string;
   readonly fuelPercentText: string;
   readonly fuelLevel: number;
@@ -27,6 +27,8 @@ export interface GameHudRunStats {
   readonly routeLengthMeters: number;
   /** Reserved for the M6.5 lifecycle; it only affects presentation here. */
   readonly isStageComplete: boolean;
+  /** Always-on cruise setpoint controlled by the gas and brake actions. */
+  readonly cruiseTargetSpeedMetersPerSecond: number;
 }
 
 const METERS_PER_SECOND_TO_MPH = 2.2369362921;
@@ -44,6 +46,7 @@ export function buildGameHudSnapshot(
     routeDistanceMeters: 0,
     routeLengthMeters: 1,
     isStageComplete: false,
+    cruiseTargetSpeedMetersPerSecond: 0,
   }
 ): GameHudSnapshot {
   assertFinite('speedMetersPerSecond', truck.speedMetersPerSecond);
@@ -55,12 +58,12 @@ export function buildGameHudSnapshot(
   assertNonNegativeInteger('takedowns', runStats.takedowns);
   assertNonNegative('routeDistanceMeters', runStats.routeDistanceMeters);
   assertPositive('routeLengthMeters', runStats.routeLengthMeters);
-
-  const topSpeedPercent = clamp(
-    truck.speedMetersPerSecond / tuning.maxForwardSpeedMetersPerSecond,
-    0,
-    1
-  );
+  assertNonNegative('cruiseTargetSpeedMetersPerSecond', runStats.cruiseTargetSpeedMetersPerSecond);
+  if (runStats.cruiseTargetSpeedMetersPerSecond > tuning.maxForwardSpeedMetersPerSecond) {
+    throw new RangeError(
+      `cruiseTargetSpeedMetersPerSecond must not exceed ${tuning.maxForwardSpeedMetersPerSecond}, got ${runStats.cruiseTargetSpeedMetersPerSecond}`
+    );
+  }
   const cargoIntegrity = clamp(truck.cargoIntegrity, 0, 1);
   const fuelLevel = clamp(fuel.level, 0, 1);
   const fumes = fuelLevel <= (fuelTuning?.fumesThreshold ?? DEFAULT_FUMES_THRESHOLD);
@@ -69,7 +72,9 @@ export function buildGameHudSnapshot(
   return {
     speedMphText: String(Math.round(truck.speedMetersPerSecond * METERS_PER_SECOND_TO_MPH)),
     speedMetersPerSecondText: `${truck.speedMetersPerSecond.toFixed(1)} m/s`,
-    topSpeedPercentText: `${Math.round(topSpeedPercent * 100)}%`,
+    cruiseSpeedMphText: String(
+      Math.round(runStats.cruiseTargetSpeedMetersPerSecond * METERS_PER_SECOND_TO_MPH)
+    ),
     cargoIntegrityText: `${Math.round(cargoIntegrity * 100)}%`,
     fuelPercentText: `${Math.round(fuelLevel * 100)}%`,
     fuelLevel,

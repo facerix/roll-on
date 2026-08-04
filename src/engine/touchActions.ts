@@ -25,6 +25,14 @@
 
 import type { Action } from '/src/engine/input.js';
 
+/** Actions with implemented mechanics that the touch pad may expose. */
+export const TOUCH_PAD_ACTIONS = Object.freeze([
+  'steerLeft',
+  'steerRight',
+  'brake',
+  'throttle',
+] as const satisfies readonly Action[]);
+
 /** A logical hold/release edge for one action. */
 export interface ActionChange {
   readonly action: Action;

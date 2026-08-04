@@ -68,6 +68,8 @@ code must validate finite positive dimensions and fail loudly on invalid input.
 
 - The existing HUD remains development UI. Add or change only what is needed to understand and
   complete the Stage 1 loop: essential driving state, finish status, tally, and high-score flow.
+- The development HUD sits along the bottom of the fixed stage. Touch gas and brake controls remain
+  above it so neither layer obscures the other.
 - HUD data continues to come from `GameHudSnapshot`; styling must not create a second gameplay state.
 - Semantic labels and live status remain available to assistive technology even when the visual HUD
   is scaled with the pixel-art stage.
@@ -75,6 +77,17 @@ code must validate finite positive dimensions and fail loudly on invalid input.
   responsive shell. Safe-area handling must not move them outside the usable viewport.
 - Final cabinet composition, decorative instruments, and camera-specific HUD layout are deferred to
   the pseudo-3D art milestone.
+
+### Always-on cruise control
+
+- Stage 1 currently uses cruise control by default with no player-facing toggle. A later change may
+  make that mode controllable.
+- A fresh run begins with a `20 m/s` target (about `45 mph`). GAS and BRAKE adjust the retained
+  target at `10 m/s` per second while held instead of directly operating the drivetrain.
+- Releasing both pedals retains the target. The controller automatically applies throttle or brake
+  to pursue it, and the HUD displays the current target so the state is never hidden.
+- Steering remains direct. Fuel limits, collision speed loss, crash state, and empty-fuel behavior
+  remain authoritative downstream of cruise control.
 
 ## Boundaries
 
@@ -226,33 +239,101 @@ no production HUD-art criterion blocks the PoC.
 
 ## M6.5 — Deterministic Stage 1 timeline and finish
 
+**Status:** Finish/failure lifecycle and terminal presentation complete (2026-08-03); authored
+distance-based encounter scheduling remains.
+
 Define an authored Stage 1 length and deterministic encounter schedule. Make difficulty progression
 explicit rather than deriving it from wall-clock time or frame rate. Add the finish trigger and a
 stage-complete lifecycle that stops gameplay consequences before presenting the tally.
 
-Resolve the M6 design questions recorded in `docs/kaizen.md`: final run length, difficulty curve,
-continues/permadeath policy for Stage 1, horn behavior if it is required for completion, and final
-score weights.
+The accepted Stage 1 target is a `2,200 m` route that a competent player clears in approximately
+100 seconds. This is a play target, not a countdown: driving decisions, collisions, and fuel use may
+shorten or lengthen an individual run. Tune against the current fuel model without making elapsed
+wall-clock time a simulation input.
+
+Stage 1 uses a wave-shaped difficulty curve with authored route-distance bands:
+
+| Route distance | Intent |
+|---:|---|
+| `0–250 m` | Launch and basic commuter traffic |
+| `250–700 m` | Establish normal traffic pressure |
+| `700–950 m` | First patrol spike |
+| `950–1,200 m` | Deliberate lull |
+| `1,200–1,700 m` | Denser mixed pressure |
+| `1,700–1,900 m` | Short recovery |
+| `1,900–2,200 m` | Final gauntlet |
+
+Ambient encounter generation is seeded and advances from route-distance thresholds rather than
+elapsed-time intervals. Authored patrol waves also end at explicit route distances so a lingering
+cruiser cannot accidentally suppress a later encounter. Store activated encounter identities in
+stage state; reversing across a threshold must not retrigger one.
+
+Stage 1 is a single-credit run with no checkpoint or continue. A catastrophic crash fails the run.
+An empty tank does not fail immediately: the truck may coast across the finish, but stopping with an
+empty tank fails the run. Either failure offers an immediate fresh retry rather than resuming the
+failed simulation.
+
+The horn mechanic is deferred beyond M6 and is not required for completion. Hide its touch control
+until it has a gameplay effect; preserve the abstract input action for later implementation. Road
+Rage commuter collisions are penalties rather than bonuses: track each qualifying collision, show
+the event, deduct the provisional 250-point amount, and floor the live score at zero.
+
+Resolve the remaining M6 design question recorded in `docs/kaizen.md`: final score weights.
+
+The lifecycle contract is:
+
+```text
+running
+  |-- finish crossed ----------------> completed (immutable result snapshot)
+  |-- catastrophic crash ------------> failed
+  `-- empty tank and truck stopped ---> failed
+```
+
+Resolve one running step completely before choosing its terminal transition: apply that step's fuel,
+collisions, cargo damage, and takedowns, then test the truck's final resolved route position. A
+finish crossing wins over a crash first caused on that same step, while the collision's damage still
+appears in the completion snapshot. Fumes and an empty tank are score/status inputs rather than
+failures while the truck is still moving. Once completed or failed, later updates cannot change
+truck, traffic, fuel, damage, takedowns, or score inputs.
+
+The terminal states must be unmistakable in the development presentation. Render a checkered
+finish band from route geometry ending at the exact `2,200 m` trigger. On completion, place a
+prominent semantic `STAGE COMPLETE` dialog over the frozen stage. On failure, show `GAME OVER` with
+the cause `CRASHED` or `OUT OF FUEL`. Suspend keyboard/touch driving input, hide the touch pad, and
+offer keyboard- and touch-accessible actions to retry from fresh state or return to the title
+screen. M6.6 may extend the completion dialog into the tally; it must consume the locked terminal
+snapshot rather than resuming simulation.
 
 ### Tests first
 
 - Encounter and difficulty values at documented route distances are deterministic.
+- Every encounter activates at most once even if the truck reverses across its threshold.
 - Crossing the finish triggers completion exactly once, including a large fixed-step crossing.
+- The visible finish band spans the road in route space and ends at the simulation finish distance.
 - Completion freezes or transitions truck, traffic, fuel, damage, and scoring according to one
   explicit lifecycle contract.
-- Crash, fumes, and finish events on the same step resolve in a documented priority order.
+- A catastrophic crash fails once and retry constructs a fresh deterministic run rather than
+  resuming mutated state.
+- Empty fuel permits a coasting finish but fails once the truck stops before the line.
+- Crash, fumes, empty fuel, and finish events on the same step resolve in the documented priority
+  order and retain the final step's consequences in the terminal snapshot.
+- Completion and failure show distinct semantic terminal dialogs; driving input and touch controls
+  remain disabled behind them.
+- Retry creates fresh run state, while the title action tears down the game and restores one working
+  title-screen start path.
 - Replaying the same seed and control stream produces the same finish state and score inputs.
 
 ### Exit criterion
 
 A player can start Stage 1, experience its intended escalation, and reach one unambiguous completion
-state without an endless prototype loop.
+or failure state without an endless prototype loop; a failed run can restart cleanly.
 
 ## M6.6 — Final tally, persistence, and high scores
 
-Build the final score from delivered progress/cargo, retained integrity, fuel remaining, takedowns,
-and accepted bonuses. Extend `DataStore` with a versioned run record and explicit migration from the
-current `scores` shape. Unknown or corrupt versions fail loudly rather than being guessed.
+Build the final score from delivered progress/cargo, retained integrity, fuel remaining, Road Rage
+collision penalties, and accepted bonuses. Extend `DataStore` with a versioned run record and
+explicit migration from the current `scores` shape. Unknown or corrupt versions fail loudly rather
+than being guessed.
 
 Show the tally after completion, persist it once, and surface the ordered result in the high-score
 table. Define deterministic tie-breaking.

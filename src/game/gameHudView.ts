@@ -10,7 +10,7 @@ export function createGameHudView(): GameHudView {
   const speedValue = h('span', { className: 'roll-on-hud-speed-value', textContent: '0' });
   const speedUnit = h('span', { className: 'roll-on-hud-speed-unit', textContent: 'MPH' });
   const speedMetric = h('span', { className: 'roll-on-hud-subvalue', textContent: '0.0 m/s' });
-  const topSpeed = h('span', { className: 'roll-on-hud-value', textContent: '0%' });
+  const cruiseSpeed = h('span', { className: 'roll-on-hud-value', textContent: '0' });
   const cargo = h('span', { className: 'roll-on-hud-value', textContent: '100%' });
   const fuel = h('span', { className: 'roll-on-hud-value', textContent: '100%' });
   const fuelFill = h('span', { className: 'roll-on-hud-fuel-fill' });
@@ -39,8 +39,11 @@ export function createGameHudView(): GameHudView {
     ]),
     h('dl', { className: 'roll-on-hud-readouts' }, [
       h('div', { className: 'roll-on-hud-readout' }, [
-        h('dt', { textContent: 'Top' }),
-        h('dd', {}, [topSpeed]),
+        h('dt', { textContent: 'Cruise' }),
+        h('dd', {}, [
+          cruiseSpeed,
+          h('span', { className: 'roll-on-hud-unit', textContent: ' mph' }),
+        ]),
       ]),
       h('div', { className: 'roll-on-hud-readout' }, [
         h('dt', { textContent: 'Cargo' }),
@@ -76,7 +79,7 @@ export function createGameHudView(): GameHudView {
     update(snapshot) {
       speedValue.textContent = snapshot.speedMphText;
       speedMetric.textContent = snapshot.speedMetersPerSecondText;
-      topSpeed.textContent = snapshot.topSpeedPercentText;
+      cruiseSpeed.textContent = snapshot.cruiseSpeedMphText;
       cargo.textContent = snapshot.cargoIntegrityText;
       fuel.textContent = snapshot.fuelPercentText;
       fuelFill.style.transform = `scaleX(${snapshot.fuelLevel})`;

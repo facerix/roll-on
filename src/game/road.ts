@@ -75,7 +75,7 @@ export function createDefaultStageRoute(): Route {
       { kind: 'straight', lengthMeters: 320 },
       { kind: 'arc', lengthMeters: 180, curvaturePerMeter: 0.004 },
       { kind: 'arc', lengthMeters: 180, curvaturePerMeter: -0.004 },
-      { kind: 'straight', lengthMeters: 640 },
+      { kind: 'straight', lengthMeters: 1_520 },
     ],
     constraints: {
       maximumAbsoluteRoadOffsetMeters: 10,
