@@ -146,199 +146,309 @@ body.is-playing #main-foot {
   height: var(--roll-on-hud-height);
   z-index: 20;
   display: grid;
-  grid-template-columns: minmax(84px, 0.8fr) minmax(96px, 1fr) minmax(210px, 1.5fr) auto;
-  align-content: end;
-  align-items: end;
-  gap: 10px;
-  padding: 12px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom))
-    max(12px, env(safe-area-inset-left));
-  pointer-events: none;
-  color: #f7ecd7;
-  font-family: 'BigSquareDots', 'Courier New', Courier, monospace;
-  text-shadow: 0 2px 0 #050608;
-}
-
-.roll-on-hud::after {
-  content: '';
-  position: absolute;
-  inset: auto 0 0;
-  height: 112px;
-  z-index: -1;
-  background: linear-gradient(0deg, rgba(5, 6, 8, 0.9), rgba(5, 6, 8, 0));
-}
-
-.roll-on-hud-brand,
-.roll-on-hud-speed,
-.roll-on-hud-readouts,
-.roll-on-hud-status {
-  min-height: 44px;
-  border: 1px solid rgba(246, 217, 109, 0.52);
-  background: rgba(7, 10, 12, 0.72);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 0 20px rgba(232, 138, 42, 0.12);
-}
-
-.roll-on-hud-brand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 10px;
-  color: #e88a2a;
-  font-size: 1rem;
-}
-
-.roll-on-hud-speed {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-}
-
-.roll-on-hud-speed-value {
-  min-width: 2ch;
-  color: #f6d96d;
-  font-size: clamp(2.2rem, 7vh, 4.4rem);
-  line-height: 0.85;
-  font-variant-numeric: tabular-nums;
-}
-
-.roll-on-hud-speed-meta {
-  display: flex;
-  flex-direction: column;
+  grid-template-rows: 98px 20px;
   gap: 2px;
+  padding: 3px 6px;
+  overflow: hidden;
+  pointer-events: none;
+  background: #080b10;
+  color: #d7e1df;
+  font-family: 'BigSquareDots', 'Courier New', Courier, monospace;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
+  text-shadow: 0 1px 0 #020304;
 }
 
-.roll-on-hud-speed-unit {
-  color: #e88a2a;
-  font-size: 0.95rem;
-}
-
-.roll-on-hud-subvalue {
-  color: #c6d8d2;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.74rem;
-}
-
-.roll-on-hud-readouts {
+.roll-on-hud-instruments {
+  grid-row: 1;
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 0;
+  grid-template-columns: 108px 36px 62px 80px 78px;
+  gap: 2px;
+  min-width: 0;
+  min-height: 0;
   margin: 0;
   padding: 0;
 }
 
-.roll-on-hud-event {
-  position: absolute;
-  bottom: 112px;
-  left: 50%;
-  padding: 6px 10px;
-  transform: translateX(-50%) scale(0.9);
-  border: 1px solid #ff6b6b;
-  background: rgba(5, 6, 8, 0.82);
-  color: #f6d96d;
-  font-size: clamp(0.85rem, 2vw, 1.35rem);
-  opacity: 0;
-  transition:
-    opacity 80ms linear,
-    transform 80ms steps(2, end);
-}
-
-.roll-on-hud-event[data-visible='true'] {
-  transform: translateX(-50%) scale(1);
-  opacity: 1;
-}
-
-.roll-on-hud-readout {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+.roll-on-hud-instrument {
+  display: grid;
+  grid-template-rows: 13px minmax(0, 1fr);
   min-width: 0;
-  min-height: 44px;
-  padding: 5px 8px;
-  border-left: 1px solid rgba(246, 217, 109, 0.28);
-}
-
-.roll-on-hud-readout:first-child {
-  border-left: none;
-}
-
-.roll-on-hud-readout dt,
-.roll-on-hud-readout dd {
+  min-height: 0;
   margin: 0;
-}
-
-.roll-on-hud-readout dt {
-  color: #9fb3ad;
-  font-size: 0.65rem;
-  text-transform: uppercase;
-}
-
-.roll-on-hud-value {
-  color: #f7ecd7;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 1rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.roll-on-hud-unit {
-  color: #9fb3ad;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.58rem;
-}
-
-.roll-on-hud-fuel dd {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.roll-on-hud-fuel-gauge {
-  display: block;
-  width: 100%;
-  height: 4px;
   overflow: hidden;
-  border: 1px solid rgba(247, 236, 215, 0.42);
-  background: rgba(5, 6, 8, 0.7);
+  border: 1px solid #566872;
+  background: #101722;
 }
 
-.roll-on-hud-fuel-fill {
-  display: block;
-  width: 100%;
-  height: 100%;
-  transform: scaleX(1);
-  transform-origin: left center;
-  background: #97f0aa;
-}
-
-.roll-on-hud-fuel-gauge[data-fumes='true'] .roll-on-hud-fuel-fill {
-  background: #ff6b6b;
-  animation: roll-on-fumes-pulse 0.42s steps(2, end) infinite;
-}
-
-.roll-on-hud-status {
+.roll-on-hud-instrument-label {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 96px;
-  padding: 8px 10px;
-  color: #97f0aa;
-  font-size: 0.82rem;
+  min-width: 0;
+  margin: 0;
+  border-bottom: 1px solid #354650;
+  color: #91a9ab;
+  font-size: 7px;
+  letter-spacing: 0.08em;
 }
 
-.roll-on-hud-status[data-status='jackknifed'] {
-  color: #f6d96d;
+.roll-on-hud-instrument-body {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 3px;
 }
 
-.roll-on-hud-status[data-status='crashed'] {
-  color: #ff6b6b;
+.roll-on-hud-speed .roll-on-hud-instrument-body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 15px;
+  align-items: center;
+  padding: 3px 5px;
 }
 
+.roll-on-hud-speed-primary {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.roll-on-hud-speed-value {
+  min-width: 2ch;
+  overflow: hidden;
+  color: #e7ece9;
+  font-size: 34px;
+  line-height: 0.9;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.roll-on-hud-speed-unit {
+  margin-left: 3px;
+  color: #91a9ab;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.roll-on-hud-secondary-reading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px;
+  min-width: 0;
+}
+
+.roll-on-hud-sublabel {
+  color: #799092;
+  font-size: 6px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.roll-on-hud-compact-value,
+.roll-on-hud-compact-unit {
+  overflow: hidden;
+  color: #d7e1df;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.roll-on-hud-compact-unit {
+  color: #799092;
+  font-size: 6px;
+}
+
+.roll-on-hud-fuel .roll-on-hud-instrument-body {
+  display: grid;
+  grid-template-rows: 8px 1fr 8px 10px 8px;
+  justify-items: center;
+  padding: 1px 3px;
+}
+
+.roll-on-hud-scale-label,
+.roll-on-hud-gauge-state {
+  color: #799092;
+  font-size: 6px;
+  line-height: 8px;
+}
+
+.roll-on-hud-gauge-value {
+  max-width: 100%;
+  overflow: hidden;
+  color: #d7e1df;
+  font-size: 8px;
+  line-height: 10px;
+  white-space: nowrap;
+}
+
+.roll-on-hud-progress {
+  appearance: none;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #566872;
+  border-radius: 0;
+  background: #06090d;
+  color: #b6c8c6;
+}
+
+.roll-on-hud-progress::-webkit-progress-bar {
+  background: #06090d;
+}
+
+.roll-on-hud-progress::-webkit-progress-value {
+  background: #b6c8c6;
+}
+
+.roll-on-hud-progress::-moz-progress-bar {
+  background: #b6c8c6;
+}
+
+.roll-on-hud-progress-vertical {
+  width: 9px;
+  height: 40px;
+  writing-mode: vertical-lr;
+  direction: rtl;
+}
+
+.roll-on-hud-progress-horizontal {
+  width: 100%;
+  height: 7px;
+}
+
+.roll-on-hud-cargo .roll-on-hud-instrument-body {
+  display: grid;
+  grid-template-rows: 1fr 9px 10px 8px;
+  gap: 1px;
+  justify-items: center;
+  padding: 3px 5px;
+}
+
+.roll-on-hud-cargo-placeholder {
+  color: #91a9ab;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.roll-on-hud-run .roll-on-hud-instrument-body,
+.roll-on-hud-route .roll-on-hud-instrument-body {
+  display: grid;
+  align-content: space-around;
+  gap: 2px;
+  padding: 3px 5px;
+}
+
+.roll-on-hud-labelled-reading {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.roll-on-hud-run-time {
+  overflow: hidden;
+  color: #d7e1df;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.roll-on-hud-score-value {
+  overflow: hidden;
+  color: #e7ece9;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.roll-on-hud-route-value,
+.roll-on-hud-route-percent {
+  overflow: hidden;
+  color: #d7e1df;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.roll-on-hud-route-progress {
+  position: relative;
+  min-width: 0;
+}
+
+.roll-on-hud-route-percent {
+  position: absolute;
+  inset: 0;
+  color: #e7ece9;
+  font-size: 6px;
+  line-height: 7px;
+  text-align: center;
+  text-shadow: 0 1px 0 #020304;
+}
+
+.roll-on-hud-messages {
+  position: relative;
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) 54px;
+  align-items: center;
+  height: 20px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #566872;
+  background: #101722;
+}
+
+.roll-on-hud-stage,
+.roll-on-hud-status,
+.roll-on-hud-rage,
+.roll-on-hud-rage-value {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 7px;
+  white-space: nowrap;
+}
+
+.roll-on-hud-stage {
+  padding-left: 5px;
+  color: #91a9ab;
+}
+
+.roll-on-hud-status {
+  color: #b6c8c6;
+  text-align: center;
+}
+
+.roll-on-hud-rage {
+  display: flex;
+  justify-content: flex-end;
+  gap: 3px;
+  padding-right: 5px;
+}
+
+.roll-on-hud-rage-value {
+  color: #d7e1df;
+}
+
+.roll-on-hud-event {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #101722;
+  color: #e7ece9;
+  font-size: 8px;
+  opacity: 0;
+  white-space: nowrap;
+}
+
+.roll-on-hud-event[data-visible='true'] {
+  opacity: 1;
+}
+
+.roll-on-hud-status[data-status='jackknifed'],
+.roll-on-hud-status[data-status='crashed'],
 .roll-on-hud-status[data-status='fumes'] {
-  color: #ff6b6b;
-  animation: roll-on-fumes-pulse 0.42s steps(2, end) infinite;
+  color: #ff8273;
 }
 
 .roll-on-run-terminal {
@@ -417,64 +527,6 @@ body.is-playing #main-foot {
 .roll-on-run-terminal .roll-on-run-terminal-primary {
   border-color: #f6d96d;
   color: #f6d96d;
-}
-
-@keyframes roll-on-fumes-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.42;
-  }
-}
-
-.roll-on-game-stage {
-  .roll-on-hud {
-    grid-template-columns: minmax(88px, auto) 1fr;
-    gap: 8px;
-  }
-
-  .roll-on-hud-brand {
-    display: none;
-  }
-
-  .roll-on-hud-speed {
-    grid-row: span 2;
-  }
-
-  .roll-on-hud-readouts {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-column: 2;
-  }
-
-  .roll-on-hud-status {
-    position: absolute;
-    bottom: 84px;
-    left: 8px;
-    right: auto;
-    min-width: 0;
-    min-height: 0;
-    padding: 4px 6px;
-    border-color: rgba(246, 217, 109, 0.32);
-    background: rgba(7, 10, 12, 0.62);
-    font-size: 0.62rem;
-  }
-
-  .roll-on-hud-readout {
-    min-height: 34px;
-    padding: 4px 5px;
-  }
-
-  .roll-on-hud-readout dt {
-    font-size: 0.56rem;
-  }
-
-  .roll-on-hud-value,
-  .roll-on-hud-status {
-    font-size: 0.72rem;
-  }
 }
 
 .btn,

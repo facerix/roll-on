@@ -5,6 +5,7 @@ export type GameHudUnitSystem = 'imperial' | 'metric';
 export type CargoIntegritySeverity = 'intact' | 'damaged' | 'critical';
 
 export interface GameHudSnapshot {
+  readonly unitSystem: GameHudUnitSystem;
   readonly speedText: string;
   readonly speedUnitText: 'MPH' | 'KM/H';
   readonly speedMetersPerSecondText: string;
@@ -117,6 +118,7 @@ export function buildGameHudSnapshot(
   const fumes = isFuelInFumes(fuel, fuelTuning);
 
   return {
+    unitSystem: runStats.unitSystem,
     speedText: formatSpeed(truck.speedMetersPerSecond, runStats.unitSystem),
     speedUnitText: runStats.unitSystem === 'imperial' ? 'MPH' : 'KM/H',
     speedMetersPerSecondText: `${truck.speedMetersPerSecond.toFixed(1)} m/s`,

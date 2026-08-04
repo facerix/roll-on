@@ -138,6 +138,9 @@ At native size:
 - represent cruise target as a dial marker plus a small numeric setpoint, not as a competing primary
   instrument.
 
+Cargo severity is presentation-only and does not change continuous cargo damage or scoring:
+`intact` begins at `60%`, `damaged` is above `25%` and below `60%`, and `critical` is `25%` or less.
+
 ## Data contract changes
 
 Extend `GameHudSnapshot` with numeric presentation inputs rather than overloading formatted text:
@@ -241,7 +244,7 @@ Every slice begins with failing tests around pure data or geometry and ends with
 checkpoint at native and scaled sizes. Do not start final skin art before the monochrome instrument
 wireframe proves that all truthful data fits the bay.
 
-### M7.1 — Lock truthful HUD inputs and instrument math
+### M7.1 — Lock truthful HUD inputs and instrument math ✅
 
 Add numeric normalized values and new formatted run fields to the snapshot contract. Introduce pure
 helpers for speed-to-angle mapping, elapsed-time formatting, remaining-distance formatting, and
@@ -262,7 +265,7 @@ severity bands.
 The snapshot contains every truthful input needed by the concept-inspired dashboard, with no view
 logic parsing strings or reading external stores.
 
-### M7.2 — Build the semantic native-resolution wireframe
+### M7.2 — Build the semantic native-resolution wireframe ✅
 
 Replace the development grid with the five-region dashboard composition. Use flat monochrome wells,
 real labels, worst-case values, and no decorative skin. Retain the current status/event priority.

@@ -54,6 +54,7 @@ test('game HUD snapshot exposes formatted values and bounded instrument inputs',
       runStats()
     ),
     {
+      unitSystem: 'imperial',
       speedText: '70',
       speedUnitText: 'MPH',
       speedMetersPerSecondText: '31.3 m/s',
