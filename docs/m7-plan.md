@@ -12,7 +12,7 @@ cluster inspired by the concept:
 - a large segmented analog speedometer with a live needle and retained cruise target;
 - vertical fuel pressure with explicit Fumes treatment;
 - cargo integrity represented by an icon, bar, percentage, and damage state;
-- elapsed run time, live score, and persisted best score;
+- elapsed run time and live score;
 - distance traveled, distance remaining, and route progress;
 - a cabinet-like bezel, inset instrument wells, pixel typography, restrained scanlines, and small
   hardware details;
@@ -98,7 +98,13 @@ The concept is visual direction, not a source of fictional game state:
 - do not display fake credits or a functional “INSERT COIN” prompt;
 - preserve the retained cruise setpoint, because it is a player-controlled value;
 - keep Road Rage and urgent status discoverable even though they are not prominent in the concept;
-- show persisted best score only when the score store has initialized successfully.
+- keep speed and route-distance units consistent with the supplied user preference.
+
+Milestone 7 accepts an explicit `imperial` or `metric` unit preference at the orchestration
+boundary. The preference changes both speed (`MPH` or `km/h`) and route distance (`mi` or `km`).
+Stage 1 defaults to `imperial` so conversion and formatting are exercised immediately. The
+preferences modal and persistence are deferred to the next milestone; the HUD must not read
+browser locale or storage directly.
 
 If a visual label has no truthful backing state, omit or repurpose it rather than inserting a
 placeholder that looks authoritative.
@@ -109,10 +115,10 @@ Use the following as a starting grid, not as an excuse to skip native-resolution
 
 | Region | Approximate width | Contents |
 |---|---:|---|
-| Speed well | `110 px` | segmented arc, needle, current MPH, cruise marker |
+| Speed well | `110 px` | segmented arc, needle, current speed and unit, cruise marker |
 | Fuel column | `34 px` | E/F scale, vertical fill, percentage, Fumes state |
 | Cargo well | `62 px` | crate icon, integrity bar, percentage |
-| Run well | `82 px` | elapsed time, score, best-score label |
+| Run well | `82 px` | elapsed time and score |
 | Route well | `76 px` | remaining distance, progress bar, traveled distance |
 | Shared gaps/frame | `20 px` | separators, bevels, screws, outer skin |
 
@@ -127,7 +133,7 @@ At native size:
 - use no more than two compact label sizes;
 - prefer short labels such as `FUEL`, `CARGO`, `TIME`, `SCORE`, `LEFT`, and `RUN`;
 - align numeric glyphs with tabular figures where the font supports them;
-- remove the development-only metric speed from the production face while keeping it available in
+- show only the preferred speed unit on the production face while retaining meters per second in
   `?debug` telemetry;
 - represent cruise target as a dial marker plus a small numeric setpoint, not as a competing primary
   instrument.
@@ -139,7 +145,8 @@ Extend `GameHudSnapshot` with numeric presentation inputs rather than overloadin
 ```ts
 interface GameHudSnapshot {
   // Existing formatted values remain where useful.
-  readonly speedMphText: string;
+  readonly speedText: string;
+  readonly speedUnitText: string;
   readonly scoreText: string;
   readonly statusText: string;
   readonly eventText: string;
@@ -153,8 +160,8 @@ interface GameHudSnapshot {
 
   // New formatted run values.
   readonly elapsedTimeText: string;
+  readonly distanceTraveledText: string;
   readonly distanceRemainingText: string;
-  readonly bestScoreText: string | null;
   readonly stageText: string;
 }
 ```
@@ -163,19 +170,18 @@ Exact names may change during failing-test design, but these distinctions must r
 
 - normalized levels are numeric and range-validated;
 - display strings are formatted once in the pure snapshot builder;
-- optional unavailable values are explicit `null`, never a fabricated zero;
+- unit selection is an explicit validated input, never inferred from locale or display text;
 - route distance comes from route-space progress, not Cartesian `truck.position.yMeters`;
 - the view never computes remaining distance from rendered percentages.
 
-Extend `GameHudRunStats` with elapsed run seconds, best score, and stage identity. Orchestration owns
-these inputs:
+Extend `GameHudRunStats` with elapsed run seconds, stage identity, and unit preference.
+Orchestration owns these inputs:
 
 - `roadGame.ts` advances elapsed run time from accepted fixed simulation steps only while the run is
   active;
 - elapsed time is presentation and tally evidence, never a physics or difficulty input;
-- the score/persistence layer derives the best score after `DataStore` initialization and passes it
-  inward;
-- `gameHud.ts` must not import `DataStore`;
+- Stage 1 supplies `imperial` until the next milestone adds the preferences modal and persistence;
+- `gameHud.ts` must not read locale, preferences storage, or `DataStore`;
 - the terminal snapshot retains elapsed time if the final tally or saved score displays it.
 
 Before implementation, reconcile the existing `distanceText` use of `truck.position.yMeters` with
@@ -209,7 +215,7 @@ needle does not replace the numeric speed text.
 - Segmented SVG speedometer, live needle, and cruise marker.
 - Vertical fuel gauge and explicit Fumes presentation.
 - Cargo icon, integrity bar, percentage, and damage states.
-- Elapsed time, score, best score, route traveled/remaining, and progress presentation.
+- Elapsed time, score, route traveled/remaining, and progress presentation.
 - Cabinet bezel, instrument wells, separators, screws, pixel-art highlights, and restrained
   scanlines.
 - Status/event strip integrated with the cabinet composition.
@@ -245,9 +251,9 @@ severity bands.
 
 - Zero, cruise, maximum, and clamped overspeed map to deterministic dial angles.
 - Speed, cruise, cargo, fuel, and route normalized values remain in `[0, 1]`.
-- Elapsed time formats correctly across seconds, minutes, and hour rollover.
+- Elapsed time formats as `MM:SS` with leading zeroes and permits minutes beyond `59`.
 - Remaining distance reaches zero at or beyond the finish without becoming negative.
-- Best score distinguishes unavailable state from a real score of zero.
+- Imperial and metric preferences convert both speed and distance from the same SI source values.
 - Invalid, negative, non-finite, or internally inconsistent run inputs fail loudly.
 - Curved-route progress and dashboard distance use route-space truth.
 
@@ -266,7 +272,7 @@ real labels, worst-case values, and no decorative skin. Retain the current statu
 - The HUD remains fixed to the `126 px` bay and the road/HUD boundary remains exact.
 - Every visual instrument has a semantic label and text equivalent.
 - View updates mutate existing nodes rather than recreating the dashboard each frame.
-- Unavailable best score has an explicit presentation rather than `0` or `NaN`.
+- The supplied unit preference is reflected consistently in speed and route readouts.
 - Long but valid score, time, and distance strings fit the accepted bounds or use a deliberate
   compact format.
 
@@ -282,9 +288,9 @@ All instruments fit and remain legible at native resolution before art detail be
 
 ### M7.3 — Implement the analog speed and cruise instrument
 
-Add the segmented green/yellow/orange/red speed arc, tick marks, needle, current MPH, and cruise
-marker. Tune the angle range to the actual truck maximum so warning colors correspond to real speed
-ratios.
+Add the segmented green/yellow/orange/red speed arc, tick marks, needle, current preferred speed
+unit, and cruise marker. Tune the angle range to the actual truck maximum so warning colors
+correspond to real speed ratios.
 
 #### Tests first
 
@@ -326,17 +332,16 @@ Fuel pressure and cargo damage are immediately distinguishable without relying o
 
 ### M7.5 — Implement run, score, and route instruments
 
-Add elapsed run time, live score, best score, traveled distance, remaining distance, and vertical or
-horizontal route progress. Preserve Road Rage count in the status strip or a compact secondary
-badge.
+Add elapsed run time, live score, traveled distance, remaining distance, and vertical or horizontal
+route progress. Preserve Road Rage count in the status strip or a compact secondary badge.
 
 #### Tests first
 
 - Elapsed time advances only during active accepted run steps and freezes at terminal state.
-- Score and best-score formatting handles the accepted storage range without layout ambiguity.
+- Score formatting handles the accepted range without layout ambiguity.
 - Remaining plus traveled distance agrees with the authored route length within rounding policy.
 - Completion displays zero remaining and full progress exactly once.
-- Retry resets run-local time and distance while retaining persisted best score.
+- Retry resets run-local time and distance while retaining the supplied unit preference.
 
 #### Browser checkpoint
 
@@ -438,7 +443,7 @@ Browser verification must include:
 - rest, cruise, maximum speed, braking, collision speed loss, and Fumes;
 - full/critical/empty fuel and full/damaged/critical cargo;
 - normal event, Road Rage event, patrol ram, jackknife, crash, completion, and retry;
-- maximum accepted time, distance, score, and best-score strings;
+- maximum accepted time, distance, and score strings in both unit systems;
 - keyboard and touch input clearance;
 - reduced motion, forced colors, font-load failure, and decorative-skin failure;
 - offline reload with every new asset served from the expected service-worker cache;
@@ -469,7 +474,7 @@ Browser verification must include:
 
 - [ ] HUD truth comes exclusively from validated snapshot/run inputs.
 - [ ] Road canvas and HUD bay retain an exact non-overlapping boundary.
-- [ ] Analog speed, cruise, fuel, cargo, time, score, best score, and route instruments are live.
+- [ ] Analog speed, cruise, fuel, cargo, time, score, and route instruments are live.
 - [ ] Current values remain legible at the smallest accepted display.
 - [ ] Status and event priority remains deterministic.
 - [ ] No fictional credits, level, speed, score, or continue state appears authoritative.

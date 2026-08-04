@@ -11,6 +11,7 @@ export function createGameHudView(): GameHudView {
   const speedUnit = h('span', { className: 'roll-on-hud-speed-unit', textContent: 'MPH' });
   const speedMetric = h('span', { className: 'roll-on-hud-subvalue', textContent: '0.0 m/s' });
   const cruiseSpeed = h('span', { className: 'roll-on-hud-value', textContent: '0' });
+  const cruiseSpeedUnit = h('span', { className: 'roll-on-hud-unit', textContent: ' mph' });
   const cargo = h('span', { className: 'roll-on-hud-value', textContent: '100%' });
   const fuel = h('span', { className: 'roll-on-hud-value', textContent: '100%' });
   const fuelFill = h('span', { className: 'roll-on-hud-fuel-fill' });
@@ -40,10 +41,7 @@ export function createGameHudView(): GameHudView {
     h('dl', { className: 'roll-on-hud-readouts' }, [
       h('div', { className: 'roll-on-hud-readout' }, [
         h('dt', { textContent: 'Cruise' }),
-        h('dd', {}, [
-          cruiseSpeed,
-          h('span', { className: 'roll-on-hud-unit', textContent: ' mph' }),
-        ]),
+        h('dd', {}, [cruiseSpeed, cruiseSpeedUnit]),
       ]),
       h('div', { className: 'roll-on-hud-readout' }, [
         h('dt', { textContent: 'Cargo' }),
@@ -77,14 +75,16 @@ export function createGameHudView(): GameHudView {
   return {
     root,
     update(snapshot) {
-      speedValue.textContent = snapshot.speedMphText;
+      speedValue.textContent = snapshot.speedText;
+      speedUnit.textContent = snapshot.speedUnitText;
       speedMetric.textContent = snapshot.speedMetersPerSecondText;
-      cruiseSpeed.textContent = snapshot.cruiseSpeedMphText;
+      cruiseSpeed.textContent = snapshot.cruiseSpeedText;
+      cruiseSpeedUnit.textContent = ` ${snapshot.speedUnitText}`;
       cargo.textContent = snapshot.cargoIntegrityText;
       fuel.textContent = snapshot.fuelPercentText;
       fuelFill.style.transform = `scaleX(${snapshot.fuelLevel})`;
       fuelGauge.dataset.fumes = String(snapshot.isFuelInFumes);
-      distance.textContent = snapshot.distanceText;
+      distance.textContent = snapshot.distanceTraveledText;
       routeProgress.textContent = snapshot.routeProgressText;
       score.textContent = snapshot.scoreText;
       takedowns.textContent = snapshot.takedownsText;

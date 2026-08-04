@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   STAGE_1_FINISH_DISTANCE_METERS,
+  advanceElapsedRunSeconds,
   buildRunTerminalPresentation,
   createStageRunState,
   stepStageRun,
@@ -15,6 +16,7 @@ function frame(overrides: Partial<StageRunFrame> = {}): StageRunFrame {
     speedMetersPerSecond: 20,
     fuelLevel: 0.75,
     cargoIntegrity: 0.9,
+    elapsedRunSeconds: 12.5,
     score: 2_500,
     roadRageCount: 1,
     truckStatus: 'driving',
@@ -131,6 +133,25 @@ test('a fresh retry has no terminal state from the failed run', () => {
     failureReason: null,
     terminalSnapshot: null,
   });
+});
+
+test('elapsed run time advances from accepted active steps and freezes after termination', () => {
+  const running = createStageRunState();
+  const elapsed = advanceElapsedRunSeconds(12.5, 1 / 60, running);
+  assert.equal(elapsed, 12.5 + 1 / 60);
+
+  const completed = stepStageRun(running, {
+    previousRouteDistanceMeters: STAGE_1_FINISH_DISTANCE_METERS - 1,
+    frame: frame({
+      routeDistanceMeters: STAGE_1_FINISH_DISTANCE_METERS,
+      elapsedRunSeconds: elapsed,
+    }),
+  });
+  assert.equal(advanceElapsedRunSeconds(elapsed, 1 / 60, completed), elapsed);
+  assert.equal(completed.terminalSnapshot?.elapsedRunSeconds, elapsed);
+
+  assert.throws(() => advanceElapsedRunSeconds(-1, 1 / 60, running), /elapsedRunSeconds/);
+  assert.throws(() => advanceElapsedRunSeconds(0, Number.NaN, running), /dtSeconds/);
 });
 
 test('stage lifecycle rejects corrupt running-frame values', () => {
