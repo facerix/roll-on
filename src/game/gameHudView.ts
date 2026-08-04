@@ -66,11 +66,7 @@ export function createGameHudView(): GameHudView {
     value: 1,
   });
   const cargoWell = instrumentWell('cargo', 'CARGO', [
-    h('span', {
-      className: 'roll-on-hud-cargo-placeholder',
-      ariaHidden: 'true',
-      textContent: '▣',
-    }),
+    h('span', { className: 'roll-on-hud-cargo-icon', ariaHidden: 'true' }),
     cargoLevel,
     cargoValue,
     cargoStatus,

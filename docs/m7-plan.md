@@ -311,7 +311,7 @@ needle, cruise marker, and actual truck behavior must agree without lag that cha
 
 Speed is the dominant instrument and can be read peripherally at the smallest supported display.
 
-### M7.4 — Implement fuel and cargo pressure instruments
+### M7.4 — Implement fuel and cargo pressure instruments ✅
 
 Turn fuel into a vertical E/F gauge with percentage and Fumes warning. Give cargo a crate icon,
 horizontal integrity bar, percentage, and severity treatment. Use stepped pixel fills rather than
@@ -333,7 +333,7 @@ color, text, bar length, and status agree and that no animated warning makes the
 
 Fuel pressure and cargo damage are immediately distinguishable without relying on color alone.
 
-### M7.5 — Implement run, score, and route instruments
+### M7.5 — Implement run, score, and route instruments ✅
 
 Add elapsed run time, live score, traveled distance, remaining distance, and vertical or horizontal
 route progress. Preserve Road Rage count in the status strip or a compact secondary badge.
@@ -356,7 +356,7 @@ same terminal evidence used by the tally and persisted record.
 The dashboard explains where the player is, how long the run has taken, and how the run compares
 without introducing a second score or progress truth.
 
-### M7.6 — Apply the cabinet skin and pixel-art detail
+### M7.6 — Apply the cabinet skin and pixel-art detail ✅
 
 Add the outer metal silhouette, inset shadows, separators, screws, restrained highlights, cargo
 crate art, and scanline texture. Work at native scale and inspect every change at `1×` before judging

@@ -151,7 +151,9 @@ body.is-playing #main-foot {
   padding: 3px 6px;
   overflow: hidden;
   pointer-events: none;
-  background: #080b10;
+  isolation: isolate;
+  background:
+    linear-gradient(180deg, #1a252d 0 2px, transparent 2px calc(100% - 3px), #030508 100%), #080b10;
   color: #d7e1df;
   font-family: 'BigSquareDots', 'Courier New', Courier, monospace;
   font-variant-numeric: tabular-nums;
@@ -159,8 +161,48 @@ body.is-playing #main-foot {
   text-shadow: 0 1px 0 #020304;
 }
 
+.roll-on-hud::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  opacity: 0.16;
+  background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(169, 196, 193, 0.3) 2px 3px);
+}
+
+.roll-on-hud::after {
+  position: absolute;
+  z-index: 2;
+  inset: 4px 7px;
+  pointer-events: none;
+  content: '';
+  background:
+    radial-gradient(circle at 2px 2px, #d9dfd5 0 1px, #263841 1px 2px, transparent 2px),
+    radial-gradient(
+      circle at calc(100% - 2px) 2px,
+      #d9dfd5 0 1px,
+      #263841 1px 2px,
+      transparent 2px
+    ),
+    radial-gradient(
+      circle at 2px calc(100% - 2px),
+      #d9dfd5 0 1px,
+      #263841 1px 2px,
+      transparent 2px
+    ),
+    radial-gradient(
+      circle at calc(100% - 2px) calc(100% - 2px),
+      #d9dfd5 0 1px,
+      #263841 1px 2px,
+      transparent 2px
+    );
+}
+
 .roll-on-hud-instruments {
   grid-row: 1;
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: 108px 36px 62px 80px 78px;
   gap: 2px;
@@ -178,7 +220,10 @@ body.is-playing #main-foot {
   margin: 0;
   overflow: hidden;
   border: 1px solid #566872;
-  background: #101722;
+  background: linear-gradient(135deg, #1a2630, #101722 45%, #0a1018);
+  box-shadow:
+    inset 1px 1px 0 #314550,
+    inset -1px -1px 0 #050709;
 }
 
 .roll-on-hud-instrument-label {
@@ -374,6 +419,32 @@ body.is-playing #main-foot {
   background: #b6c8c6;
 }
 
+.roll-on-hud-fuel .roll-on-hud-progress::-webkit-progress-value {
+  background: #62c77b;
+}
+
+.roll-on-hud-fuel .roll-on-hud-progress::-moz-progress-bar {
+  background: #62c77b;
+}
+
+.roll-on-hud-fuel[data-state='fumes'] .roll-on-hud-gauge-state {
+  color: #ff8273;
+  animation: roll-on-hud-warning-pulse 900ms steps(2, end) infinite;
+}
+
+.roll-on-hud-fuel[data-state='fumes'] .roll-on-hud-progress {
+  border-color: #ff8273;
+  color: #ff8273;
+}
+
+.roll-on-hud-fuel[data-state='fumes'] .roll-on-hud-progress::-webkit-progress-value {
+  background: #ff8273;
+}
+
+.roll-on-hud-fuel[data-state='fumes'] .roll-on-hud-progress::-moz-progress-bar {
+  background: #ff8273;
+}
+
 .roll-on-hud-progress-vertical {
   width: 9px;
   height: 40px;
@@ -394,11 +465,66 @@ body.is-playing #main-foot {
   padding: 3px 5px;
 }
 
-.roll-on-hud-cargo-placeholder {
-  color: #91a9ab;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 28px;
-  line-height: 1;
+.roll-on-hud-cargo-icon {
+  position: relative;
+  display: block;
+  width: 25px;
+  height: 17px;
+  border: 2px solid #91a9ab;
+  background: #17242a;
+}
+
+.roll-on-hud-cargo-icon::before,
+.roll-on-hud-cargo-icon::after {
+  position: absolute;
+  inset: 7px -2px;
+  display: block;
+  height: 2px;
+  background: #91a9ab;
+  content: '';
+}
+
+.roll-on-hud-cargo-icon::before {
+  transform: rotate(34deg);
+}
+
+.roll-on-hud-cargo-icon::after {
+  transform: rotate(-34deg);
+}
+
+.roll-on-hud-cargo[data-state='damaged'] .roll-on-hud-gauge-state {
+  color: #e58d3c;
+}
+
+.roll-on-hud-cargo[data-state='critical'] .roll-on-hud-gauge-state {
+  color: #ff8273;
+  animation: roll-on-hud-warning-pulse 900ms steps(2, end) infinite;
+}
+
+.roll-on-hud-cargo[data-state='damaged'] .roll-on-hud-progress {
+  border-color: #e58d3c;
+  color: #e58d3c;
+}
+
+.roll-on-hud-cargo[data-state='critical'] .roll-on-hud-progress {
+  border-color: #ff8273;
+  color: #ff8273;
+}
+
+.roll-on-hud-cargo[data-state='damaged'] .roll-on-hud-progress::-webkit-progress-value {
+  background: #e58d3c;
+}
+
+.roll-on-hud-cargo[data-state='critical'] .roll-on-hud-progress::-webkit-progress-value {
+  background: #ff8273;
+}
+
+.roll-on-hud-cargo[data-state='damaged'] .roll-on-hud-progress::-moz-progress-bar {
+  background: #e58d3c;
+}
+
+.roll-on-hud-cargo[data-state='critical'] .roll-on-hud-progress::-moz-progress-bar {
+  background: #ff8273;
 }
 
 .roll-on-hud-run .roll-on-hud-instrument-body,
@@ -455,6 +581,7 @@ body.is-playing #main-foot {
 .roll-on-hud-messages {
   position: relative;
   grid-row: 2;
+  z-index: 1;
   display: grid;
   grid-template-columns: 54px minmax(0, 1fr) 54px;
   align-items: center;
@@ -523,6 +650,38 @@ body.is-playing #main-foot {
 @media (prefers-reduced-motion: reduce) {
   .roll-on-speedometer-needle {
     transition: none;
+  }
+
+  .roll-on-hud-fuel[data-state='fumes'] .roll-on-hud-gauge-state {
+    animation: none;
+  }
+
+  .roll-on-hud-cargo[data-state='critical'] .roll-on-hud-gauge-state {
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .roll-on-hud::before,
+  .roll-on-hud::after {
+    display: none;
+  }
+
+  .roll-on-hud-progress {
+    forced-color-adjust: auto;
+    border-color: CanvasText;
+  }
+
+  .roll-on-hud-fuel[data-state='fumes'] .roll-on-hud-gauge-state::after,
+  .roll-on-hud-cargo[data-state='damaged'] .roll-on-hud-gauge-state::after,
+  .roll-on-hud-cargo[data-state='critical'] .roll-on-hud-gauge-state::after {
+    content: '!';
+  }
+}
+
+@keyframes roll-on-hud-warning-pulse {
+  50% {
+    opacity: 0.5;
   }
 }
 

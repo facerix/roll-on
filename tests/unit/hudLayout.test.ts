@@ -58,3 +58,45 @@ test('speedometer motion is optional and keeps the authoritative final angle', (
     /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.roll-on-speedometer-needle\s*\{[^}]*transition:\s*none/
   );
 });
+
+test('fuel fumes and cargo damage retain explicit non-color gauge treatments', () => {
+  const fumesState = rule(".roll-on-hud-fuel[data-state='fumes'] .roll-on-hud-gauge-state");
+  assert.match(fumesState, /color:\s*#ff8273/);
+  assert.match(fumesState, /animation:\s*roll-on-hud-warning-pulse/);
+
+  const damagedCargo = rule(".roll-on-hud-cargo[data-state='damaged'] .roll-on-hud-gauge-state");
+  assert.match(damagedCargo, /color:\s*#e58d3c/);
+
+  const criticalCargo = rule(".roll-on-hud-cargo[data-state='critical'] .roll-on-hud-gauge-state");
+  assert.match(criticalCargo, /color:\s*#ff8273/);
+
+  assert.match(
+    css,
+    /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.roll-on-hud-fuel\[data-state='fumes'\] \.roll-on-hud-gauge-state\s*\{[^}]*animation:\s*none/
+  );
+  assert.match(
+    css,
+    /@media\s*\(forced-colors:\s*active\)[\s\S]*?\.roll-on-hud-progress\s*\{[^}]*forced-color-adjust:\s*auto/
+  );
+});
+
+test('cabinet detail is a CSS-only decorative layer that forced colors can suppress', () => {
+  const cabinet = rule('.roll-on-hud');
+  assert.match(cabinet, /isolation:\s*isolate/);
+
+  const scanlines = rule('.roll-on-hud::before');
+  assert.match(scanlines, /pointer-events:\s*none/);
+  assert.match(scanlines, /repeating-linear-gradient/);
+
+  const hardware = rule('.roll-on-hud::after');
+  assert.match(hardware, /pointer-events:\s*none/);
+  assert.match(hardware, /radial-gradient/);
+
+  const well = rule('.roll-on-hud-instrument');
+  assert.match(well, /box-shadow:\s*inset/);
+
+  assert.match(
+    css,
+    /@media\s*\(forced-colors:\s*active\)[\s\S]*?\.roll-on-hud::before,[\s\S]*?\.roll-on-hud::after\s*\{[^}]*display:\s*none/
+  );
+});

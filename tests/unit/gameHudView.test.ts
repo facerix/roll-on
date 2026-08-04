@@ -138,6 +138,10 @@ test('HUD wireframe is one labelled section with five semantic instrument wells'
   assert.equal(speedometer.attributes.get('viewBox'), '0 0 104 68');
   assert.equal(speedometer.ariaHidden, 'true');
 
+  const cargoIcons = withClass(root, 'roll-on-hud-cargo-icon');
+  assert.equal(cargoIcons.length, 1);
+  assert.equal(cargoIcons[0]!.ariaHidden, 'true');
+
   const liveRegions = walk(root).filter(element => element.ariaLive.length > 0);
   assert.equal(liveRegions.length, 2);
   assert.deepEqual(
