@@ -200,7 +200,7 @@ the only gameplay truth. Orthographic mode remains available for geometry diagno
 art does not begin until the projection contract and representative straight/curve compositions pass
 their browser checkpoint.
 
-## M6.4 — Playable HUD and responsive controls
+## M6.4 — Playable HUD and responsive controls ✅
 
 Keep the current HUD and touch controls functional within the fixed stage. Add only the information
 and states required to play the complete Stage 1 loop: speed, fuel, cargo integrity, route progress,

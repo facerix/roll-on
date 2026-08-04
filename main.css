@@ -365,8 +365,9 @@ body.is-playing #main-foot {
 
   .roll-on-hud-status {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: 84px;
+    left: 8px;
+    right: auto;
     min-width: 0;
     min-height: 0;
     padding: 4px 6px;

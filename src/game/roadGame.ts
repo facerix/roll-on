@@ -214,6 +214,9 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         score: buildCurrentScore(),
         takedowns: trafficState.takedowns,
         eventText: trafficEventText,
+        routeDistanceMeters: drivingState.routePosition.distanceAlongRouteMeters,
+        routeLengthMeters: road.route.totalLengthMeters,
+        isStageComplete: false,
       })
     );
   }

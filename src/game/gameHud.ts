@@ -11,6 +11,7 @@ export interface GameHudSnapshot {
   readonly isFuelInFumes: boolean;
   readonly fuelStatusText: string;
   readonly distanceText: string;
+  readonly routeProgressText: string;
   readonly statusText: string;
   readonly scoreText: string;
   readonly takedownsText: string;
@@ -21,6 +22,11 @@ export interface GameHudRunStats {
   readonly score: number;
   readonly takedowns: number;
   readonly eventText: string;
+  /** Route-space progress, never inferred from Cartesian world coordinates. */
+  readonly routeDistanceMeters: number;
+  readonly routeLengthMeters: number;
+  /** Reserved for the M6.5 lifecycle; it only affects presentation here. */
+  readonly isStageComplete: boolean;
 }
 
 const METERS_PER_SECOND_TO_MPH = 2.2369362921;
@@ -31,7 +37,14 @@ export function buildGameHudSnapshot(
   tuning: TruckTuning,
   fuel: FuelState,
   fuelTuning?: FuelTuning,
-  runStats: GameHudRunStats = { score: 0, takedowns: 0, eventText: '' }
+  runStats: GameHudRunStats = {
+    score: 0,
+    takedowns: 0,
+    eventText: '',
+    routeDistanceMeters: 0,
+    routeLengthMeters: 1,
+    isStageComplete: false,
+  }
 ): GameHudSnapshot {
   assertFinite('speedMetersPerSecond', truck.speedMetersPerSecond);
   assertFinite('position.yMeters', truck.position.yMeters);
@@ -40,6 +53,8 @@ export function buildGameHudSnapshot(
   assertPositive('maxForwardSpeedMetersPerSecond', tuning.maxForwardSpeedMetersPerSecond);
   assertNonNegativeInteger('score', runStats.score);
   assertNonNegativeInteger('takedowns', runStats.takedowns);
+  assertNonNegative('routeDistanceMeters', runStats.routeDistanceMeters);
+  assertPositive('routeLengthMeters', runStats.routeLengthMeters);
 
   const topSpeedPercent = clamp(
     truck.speedMetersPerSecond / tuning.maxForwardSpeedMetersPerSecond,
@@ -49,6 +64,7 @@ export function buildGameHudSnapshot(
   const cargoIntegrity = clamp(truck.cargoIntegrity, 0, 1);
   const fuelLevel = clamp(fuel.level, 0, 1);
   const fumes = fuelLevel <= (fuelTuning?.fumesThreshold ?? DEFAULT_FUMES_THRESHOLD);
+  const routeProgress = clamp(runStats.routeDistanceMeters / runStats.routeLengthMeters, 0, 1);
 
   return {
     speedMphText: String(Math.round(truck.speedMetersPerSecond * METERS_PER_SECOND_TO_MPH)),
@@ -60,11 +76,27 @@ export function buildGameHudSnapshot(
     isFuelInFumes: fumes,
     fuelStatusText: fumes ? 'FUMES' : 'FUEL',
     distanceText: `${Math.max(0, Math.round(truck.position.yMeters))} m`,
-    statusText: truck.status.toUpperCase(),
+    routeProgressText: `${Math.round(routeProgress * 100)}%`,
+    statusText: resolveStatusText(truck, fumes, runStats),
     scoreText: runStats.score.toLocaleString('en-US'),
     takedownsText: String(runStats.takedowns),
     eventText: runStats.eventText,
   };
+}
+
+/**
+ * One visible status prevents competing alerts from hiding each other. The
+ * stage lifecycle wins, then terminal truck state, recoverable control state,
+ * fuel, and finally a transient event. The event text remains separately
+ * visible for its detail.
+ */
+function resolveStatusText(truck: TruckState, fumes: boolean, runStats: GameHudRunStats): string {
+  if (runStats.isStageComplete) return 'STAGE COMPLETE';
+  if (truck.status === 'crashed') return 'CRASHED';
+  if (truck.status === 'jackknifed') return 'JACKKNIFED';
+  if (fumes) return 'FUMES';
+  if (runStats.eventText.length > 0) return 'EVENT';
+  return 'DRIVING';
 }
 
 function assertFinite(label: string, value: number): void {
@@ -83,6 +115,11 @@ function assertPositive(label: string, value: number): void {
 function assertNonNegativeInteger(label: string, value: number): void {
   assertFinite(label, value);
   if (!Number.isInteger(value)) throw new TypeError(`${label} must be an integer, got ${value}`);
+  if (value < 0) throw new RangeError(`${label} must be non-negative, got ${value}`);
+}
+
+function assertNonNegative(label: string, value: number): void {
+  assertFinite(label, value);
   if (value < 0) throw new RangeError(`${label} must be non-negative, got ${value}`);
 }
 
