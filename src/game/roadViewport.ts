@@ -1,8 +1,7 @@
 import type { Road } from '/src/game/road.js';
 import type { RoadCameraTuning, RoadViewport } from '/src/game/roadCamera.js';
+import { STAGE_HEIGHT_PIXELS, STAGE_WIDTH_PIXELS } from '/src/game/stageLayout.js';
 
-const MIN_VIEWPORT_WIDTH = 320;
-const MIN_VIEWPORT_HEIGHT = 480;
 const ROAD_WIDTH_PADDING = 1.35;
 const VISIBLE_HEIGHT_METERS = 30;
 const MIN_PIXELS_PER_METER = 8;
@@ -11,8 +10,8 @@ const TRUCK_ANCHOR_HEIGHT_RATIO = 0.58;
 
 export function measureRoadViewport(): RoadViewport {
   return {
-    width: Math.max(MIN_VIEWPORT_WIDTH, Math.round(window.innerWidth)),
-    height: Math.max(MIN_VIEWPORT_HEIGHT, Math.round(window.innerHeight)),
+    width: STAGE_WIDTH_PIXELS,
+    height: STAGE_HEIGHT_PIXELS,
   };
 }
 

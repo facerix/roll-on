@@ -130,18 +130,13 @@ body.is-playing #main-foot {
     #050608;
 }
 
-.roll-on-playfield .roll-on-game-container {
+.roll-on-playfield .roll-on-game-shell {
   position: absolute !important;
   inset: 0;
-  display: block !important;
-  width: 100%;
-  height: 100%;
 }
 
 .roll-on-playfield .roll-on-canvas {
   display: block;
-  width: 100% !important;
-  height: 100% !important;
   background: #050608;
 }
 
@@ -151,9 +146,10 @@ body.is-playing #main-foot {
   z-index: 20;
   display: grid;
   grid-template-columns: minmax(84px, 0.8fr) minmax(96px, 1fr) minmax(210px, 1.5fr) auto;
-  align-items: start;
+  align-content: end;
+  align-items: end;
   gap: 10px;
-  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 12px
+  padding: 12px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom))
     max(12px, env(safe-area-inset-left));
   pointer-events: none;
   color: #f7ecd7;
@@ -164,10 +160,10 @@ body.is-playing #main-foot {
 .roll-on-hud::after {
   content: '';
   position: absolute;
-  inset: 0 0 auto;
-  height: 96px;
+  inset: auto 0 0;
+  height: 112px;
   z-index: -1;
-  background: linear-gradient(180deg, rgba(5, 6, 8, 0.86), rgba(5, 6, 8, 0));
+  background: linear-gradient(0deg, rgba(5, 6, 8, 0.9), rgba(5, 6, 8, 0));
 }
 
 .roll-on-hud-brand,
@@ -235,7 +231,7 @@ body.is-playing #main-foot {
 
 .roll-on-hud-event {
   position: absolute;
-  top: 112px;
+  bottom: 112px;
   left: 50%;
   padding: 6px 10px;
   transform: translateX(-50%) scale(0.9);
@@ -284,6 +280,12 @@ body.is-playing #main-foot {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 1rem;
   font-variant-numeric: tabular-nums;
+}
+
+.roll-on-hud-unit {
+  color: #9fb3ad;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.58rem;
 }
 
 .roll-on-hud-fuel dd {
@@ -338,6 +340,84 @@ body.is-playing #main-foot {
   animation: roll-on-fumes-pulse 0.42s steps(2, end) infinite;
 }
 
+.roll-on-run-terminal {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(5, 6, 8, 0.82);
+  color: #f7ecd7;
+  font-family: 'BigSquareDots', 'Courier New', Courier, monospace;
+  text-align: center;
+  text-shadow: 0 3px 0 #050608;
+}
+
+.roll-on-run-terminal[hidden] {
+  display: none;
+}
+
+.roll-on-run-terminal::before {
+  content: '';
+  position: absolute;
+  inset: 112px 24px;
+  z-index: -1;
+  border: 4px double #ff6b6b;
+  background: rgba(12, 12, 46, 0.94);
+  box-shadow: 0 0 30px rgba(255, 95, 31, 0.34);
+}
+
+.roll-on-run-terminal[data-phase='completed']::before {
+  border-color: #97f0aa;
+  box-shadow: 0 0 30px rgba(151, 240, 170, 0.3);
+}
+
+.roll-on-run-terminal-kicker {
+  margin: 0 0 12px;
+  color: #e88a2a;
+  font-size: 0.9rem;
+  letter-spacing: 0.2em;
+}
+
+.roll-on-run-terminal h2 {
+  margin: 0;
+  color: #ff6b6b;
+  font-size: 2.2rem;
+  line-height: 1.1;
+}
+
+.roll-on-run-terminal[data-phase='completed'] h2 {
+  color: #97f0aa;
+}
+
+.roll-on-run-terminal-detail {
+  margin: 16px 0 28px;
+  color: #f6d96d;
+  font-size: 1rem;
+}
+
+.roll-on-run-terminal-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.roll-on-run-terminal .roll-on-run-terminal-action {
+  min-height: 42px;
+  border: 2px solid #e88a2a;
+  border-radius: 0;
+  background: #050608;
+  color: #f7ecd7;
+  font: inherit;
+}
+
+.roll-on-run-terminal .roll-on-run-terminal-primary {
+  border-color: #f6d96d;
+  color: #f6d96d;
+}
+
 @keyframes roll-on-fumes-pulse {
   0%,
   100% {
@@ -349,7 +429,7 @@ body.is-playing #main-foot {
   }
 }
 
-@media (max-width: 640px) {
+.roll-on-game-stage {
   .roll-on-hud {
     grid-template-columns: minmax(88px, auto) 1fr;
     gap: 8px;
@@ -369,9 +449,16 @@ body.is-playing #main-foot {
   }
 
   .roll-on-hud-status {
-    grid-column: 2;
+    position: absolute;
+    bottom: 84px;
+    left: 8px;
+    right: auto;
     min-width: 0;
-    min-height: 34px;
+    min-height: 0;
+    padding: 4px 6px;
+    border-color: rgba(246, 217, 109, 0.32);
+    background: rgba(7, 10, 12, 0.62);
+    font-size: 0.62rem;
   }
 
   .roll-on-hud-readout {

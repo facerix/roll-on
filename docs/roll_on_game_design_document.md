@@ -17,7 +17,7 @@ Controlling an 80,000-pound rig introduces unique tactical challenges that separ
 * **The "Jackknife" Risk:** Aggressive steering or braking at extreme speeds causes the trailer to swing outward. 
     * *Defensive Use:* Players can intentionally "fishtail" to swipe trailing enemies off the asphalt.
     * *Failure State:* Overcorrecting or hitting a barrier while jackknifing triggers an immediate catastrophic crash.
-* **Momentum & Ramming:** The truck has a slow initial acceleration curve but immense top-speed momentum. Smaller commuter vehicles that attempt to brake-check the player are automatically plowed over, yielding a "Road Rage" score bonus.
+* **Momentum & Ramming:** The truck has a slow initial acceleration curve but immense top-speed momentum. Smaller commuter vehicles that attempt to brake-check the player can be plowed over, but doing so incurs a "Road Rage" score penalty for reckless cargo handling.
 * **Cargo Integrity %:** Acts as the primary scoring health bar. Every collision, bullet impact, or hard environmental bump degrades the Cargo Integrity percentage. Arriving at the destination with 100% integrity yields a massive score multiplier.
 
 ---
@@ -63,5 +63,5 @@ Upon crossing a stage finish line, the view shifts to a dramatic, side-profile p
 
 * **The Visuals:** The yellow Kenworth pulls under a flashing neon sign at "The Last Chance Diesel." Brakes hiss, smoke pours from the stacks, and an animated pit crew swaps tires and hooks up high-velocity fuel lines.
 * **Score Tally Flow (with rhythmic mechanical clacking sound effects):**
-    $$	ext{Total Score} = 	ext{Base Delivered Cargo} + (	ext{Cargo Integrity \%} 	imes 	ext{Multiplier}) + 	ext{Diesel Residuals} + 	ext{Takedowns} + 	ext{Bonuses}$$
+    $$\\text{Total Score} = \\text{Base Delivered Cargo} + (\\text{Cargo Integrity \\%} \\times \\text{Multiplier}) + \\text{Diesel Residuals} - \\text{Road Rage Penalties} + \\text{Bonuses}$$
 * **The Shop Window:** A 30-second ticking timer displays a grid of repairs and upgrades managed via joystick selection before the driver slams a coffee cup down, shifts gears, and screeches back onto the dark highway for the next stage.

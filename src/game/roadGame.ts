@@ -1,5 +1,10 @@
 import { buildGameHudSnapshot } from '/src/game/gameHud.js';
 import { createGameHudView } from '/src/game/gameHudView.js';
+import {
+  createCruiseControlState,
+  stepCruiseControl,
+  type CruiseControlState,
+} from '/src/game/cruiseControl.js';
 import { createFuelState, DEFAULT_FUEL_TUNING, isFuelInFumes } from '/src/game/fuel.js';
 import { stepDriving, ZERO_FUEL_BURN, type DrivingState } from '/src/game/drivingUpdate.js';
 import { mountGame } from '/src/game/mount.js';
@@ -10,7 +15,7 @@ import {
   stepRoadCameraRotation,
   type RoadViewport,
 } from '/src/game/roadCamera.js';
-import { sampleRoute } from '/src/game/route.js';
+import { sampleRoute, worldToRoute } from '/src/game/route.js';
 import type { RoadBarrierImpact } from '/src/game/roadCollision.js';
 import {
   buildRoadScene,
@@ -19,6 +24,13 @@ import {
 } from '/src/game/roadScene.js';
 import { buildRoadCameraTuning } from '/src/game/roadViewport.js';
 import { calculateScore } from '/src/game/score.js';
+import { createRunTerminalView } from '/src/game/runTerminalView.js';
+import {
+  STAGE_1_FINISH_DISTANCE_METERS,
+  buildRunTerminalPresentation,
+  createStageRunState,
+  stepStageRun,
+} from '/src/game/stageRun.js';
 import { createTrafficState, stepTraffic, type TrafficState } from '/src/game/traffic.js';
 import { createTruckState, DEFAULT_TRUCK_TUNING, type TruckControls } from '/src/game/truck.js';
 import { buildTruckTelemetry, formatTruckTelemetry } from '/src/game/truckTelemetry.js';
@@ -27,7 +39,7 @@ const BARRIER_FLASH_DURATION_SECONDS = 0.18;
 const BARRIER_FLASH_COLOR = '#ff5f1f';
 const TRAFFIC_EVENT_DURATION_SECONDS = 0.9;
 const INTEGRITY_SCORE_MULTIPLIER = 2_000;
-const POINTS_PER_TAKEDOWN = 250;
+const ROAD_RAGE_PENALTY = 250;
 const BASE_POINTS_PER_METER = 10;
 
 export interface RoadGame {
@@ -37,10 +49,17 @@ export interface RoadGame {
 export interface StartRoadGameOptions {
   readonly root: HTMLElement;
   readonly viewport: RoadViewport;
+  readonly onRetry: () => void;
+  readonly onExitToTitle: () => void;
 }
 
 export function startRoadGame(options: StartRoadGameOptions): RoadGame {
   const road = createRoad(DEFAULT_ROAD_TUNING, createDefaultStageRoute());
+  if (road.route.totalLengthMeters !== STAGE_1_FINISH_DISTANCE_METERS) {
+    throw new Error(
+      `Stage 1 route and finish must agree, got ${road.route.totalLengthMeters} and ${STAGE_1_FINISH_DISTANCE_METERS}`
+    );
+  }
   const cameraTuning = buildRoadCameraTuning(road, options.viewport);
   const truckDimensions: RoadSceneTruckDimensions = {
     cabWidthMeters: 2.6,
@@ -56,19 +75,31 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
   let trafficEventSeconds = 0;
   let trafficEventText = '';
   let cameraRotationRadians = 0;
+  let stageRun = createStageRunState();
+  let cruiseControl: CruiseControlState = createCruiseControlState();
   const worldFixedCamera = isWorldFixedCamera();
   const debugMode = isDebugMode();
   const hud = createGameHudView();
+  const terminal = createRunTerminalView({
+    onRetry: options.onRetry,
+    onExitToTitle: options.onExitToTitle,
+  });
   updateHud();
 
   const mountedGame = mountGame({
     root: options.root,
-    width: options.viewport.width,
-    height: options.viewport.height,
     update: (dt, input) => {
-      const controls: TruckControls = {
-        throttle: input.isActive('throttle') ? 1 : 0,
+      if (stageRun.phase !== 'running') return;
+      const previousRouteDistanceMeters = drivingState.routePosition.distanceAlongRouteMeters;
+      const cruiseStep = stepCruiseControl(cruiseControl, {
+        gas: input.isActive('throttle') ? 1 : 0,
         brake: input.isActive('brake') ? 1 : 0,
+        currentSpeedMetersPerSecond: drivingState.truck.speedMetersPerSecond,
+        dtSeconds: dt,
+      });
+      cruiseControl = cruiseStep.state;
+      const controls: TruckControls = {
+        ...cruiseStep.controls,
         steering: (input.isActive('steerRight') ? 1 : 0) - (input.isActive('steerLeft') ? 1 : 0),
       };
       const result = stepDriving({
@@ -79,15 +110,6 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         truckDimensions,
       });
       drivingState = result.state;
-      if (!worldFixedCamera) {
-        cameraRotationRadians = stepRoadCameraRotation(
-          cameraRotationRadians,
-          sampleRoute(road.route, drivingState.routePosition.distanceAlongRouteMeters)
-            .headingRadians,
-          dt,
-          cameraTuning.orientationResponsePerSecond ?? 4
-        );
-      }
       const trafficResult = stepTraffic({
         state: trafficState,
         truck: drivingState.truck,
@@ -97,12 +119,32 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         dtSeconds: dt,
       });
       trafficState = trafficResult.state;
-      drivingState = { ...drivingState, truck: trafficResult.truck };
+      const finalRouteProjection = worldToRoute(road.route, trafficResult.truck.position, {
+        hintDistanceAlongRouteMeters: drivingState.routePosition.distanceAlongRouteMeters,
+        searchRadiusMeters: 100,
+      });
+      drivingState = {
+        ...drivingState,
+        truck: trafficResult.truck,
+        routePosition: {
+          distanceAlongRouteMeters: finalRouteProjection.distanceAlongRouteMeters,
+          lateralOffsetMeters: finalRouteProjection.lateralOffsetMeters,
+        },
+      };
+      if (!worldFixedCamera) {
+        cameraRotationRadians = stepRoadCameraRotation(
+          cameraRotationRadians,
+          sampleRoute(road.route, drivingState.routePosition.distanceAlongRouteMeters)
+            .headingRadians,
+          dt,
+          cameraTuning.orientationResponsePerSecond ?? 4
+        );
+      }
       const trafficEvent = trafficResult.events.at(-1);
       if (trafficEvent) {
         trafficEventSeconds = TRAFFIC_EVENT_DURATION_SECONDS;
         trafficEventText =
-          trafficEvent.kind === 'road-rage' ? `ROAD RAGE +${POINTS_PER_TAKEDOWN}` : 'PATROL RAM';
+          trafficEvent.kind === 'road-rage' ? `ROAD RAGE -${ROAD_RAGE_PENALTY}` : 'PATROL RAM';
       } else {
         trafficEventSeconds = Math.max(0, trafficEventSeconds - dt);
         if (trafficEventSeconds === 0) trafficEventText = '';
@@ -113,7 +155,26 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       } else {
         barrierFlashSeconds = Math.max(0, barrierFlashSeconds - dt);
       }
+
+      const nextStageRun = stepStageRun(stageRun, {
+        previousRouteDistanceMeters,
+        frame: {
+          routeDistanceMeters: drivingState.routePosition.distanceAlongRouteMeters,
+          speedMetersPerSecond: drivingState.truck.speedMetersPerSecond,
+          fuelLevel: drivingState.fuel.level,
+          cargoIntegrity: drivingState.truck.cargoIntegrity,
+          score: buildCurrentScore(),
+          roadRageCount: trafficState.takedowns,
+          truckStatus: drivingState.truck.status,
+        },
+      });
+      const didTerminate = nextStageRun !== stageRun;
+      stageRun = nextStageRun;
       updateHud();
+      if (didTerminate) {
+        mountedGame.setInteractionEnabled(false);
+        terminal.show(buildRunTerminalPresentation(stageRun));
+      }
     },
     debugLines: () => {
       const camera = buildRoadCamera(
@@ -153,7 +214,9 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
             : 'none'
         } cooldown ${drivingState.barrierContactState.cooldownRemainingSeconds.toFixed(2)} s`,
         `traffic: ${trafficState.vehicles.length} active, ${trafficState.takedowns} takedowns`,
+        `cruise: ${cruiseControl.targetSpeedMetersPerSecond.toFixed(1)} m/s`,
         `score: ${buildCurrentScore()}`,
+        `stage: ${stageRun.phase}${stageRun.failureReason ? ` (${stageRun.failureReason})` : ''}`,
       ];
     },
     buildScene: () => {
@@ -186,15 +249,18 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
           barrierColor:
             barrierFlashSeconds > 0 ? BARRIER_FLASH_COLOR : DEFAULT_ROAD_SCENE_TUNING.barrierColor,
         },
+        finishDistanceMeters: STAGE_1_FINISH_DISTANCE_METERS,
       });
     },
   });
-  options.root.appendChild(hud.root);
+  mountedGame.stage.appendChild(hud.root);
+  mountedGame.stage.appendChild(terminal.root);
 
   return {
     dispose() {
       mountedGame.dispose();
       hud.root.remove();
+      terminal.dispose();
     },
   };
 
@@ -206,7 +272,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       cargoIntegrity: drivingState.truck.cargoIntegrity,
       integrityMultiplier: INTEGRITY_SCORE_MULTIPLIER,
       takedownCount: trafficState.takedowns,
-      pointsPerTakedown: POINTS_PER_TAKEDOWN,
+      takedownPenalty: ROAD_RAGE_PENALTY,
     });
   }
 
@@ -216,6 +282,10 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         score: buildCurrentScore(),
         takedowns: trafficState.takedowns,
         eventText: trafficEventText,
+        routeDistanceMeters: drivingState.routePosition.distanceAlongRouteMeters,
+        routeLengthMeters: STAGE_1_FINISH_DISTANCE_METERS,
+        isStageComplete: stageRun.phase === 'completed',
+        cruiseTargetSpeedMetersPerSecond: cruiseControl.targetSpeedMetersPerSecond,
       })
     );
   }

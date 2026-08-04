@@ -2,11 +2,17 @@
 
 Living implementation plan. Pairs with `roll_on_game_design_document.md` (the *what*) and `kaizen.md` (deferred/open items).
 
-**Guiding choices** (decided 2026-05-24):
+**Guiding choices** (decided 2026-05-24; presentation updated 2026-08-03):
 - **Sequencing**: vertical slice first — prove driving feel before layering content.
 - **Renderer**: Canvas 2D now, behind a thin `Renderer` interface so a WebGL backend can slot in during the polish pass.
-- **Art**: programmer-art placeholders (solid rects, simple pixel shapes) until mechanics feel right.
-- **MVP scope**: Stage 1 (Interstate 80) playable end-to-end. No shop, no weapons, no other stages.
+- **Presentation**: one fixed `384 × 576` (`2:3`) logical game stage, responsively scaled and
+  letterboxed without cropping, stretching, or changing gameplay field of view.
+- **Camera**: M6 uses the road-following orthographic view as development and geometry-debug
+  presentation. Proper pseudo-3D is the first post-M6 visualization milestone and retains an
+  orthographic debug mode.
+- **Art**: programmer-art placeholders remain through M6. Production art begins only after the
+  pseudo-3D projection and representative compositions are accepted.
+- **PoC scope**: Stage 1 (Interstate 80) playable end-to-end. No shop, no weapons, no other stages.
 - **Discipline**: TDD. Every system lands with failing-first tests that exercise its pure logic.
 
 ---
@@ -18,7 +24,7 @@ Goal: the page mounts a canvas, a fixed-timestep loop ticks, and we can render a
 - [x] **Fixed-step game loop** (`src/engine/loop.ts`). ✓ Fixed-timestep accumulator pattern. `step(realDt)` is the synchronous testable seam; `start()`/`stop()` wires rAF for production. Spiral-of-death cap with discard-on-overflow. Crashes on non-finite/negative dt. Covered by `tests/unit/loop.test.ts`.
 - [x] **Renderer seam** (`src/engine/renderer.ts`). ✓ `Renderer` interface + `Canvas2DRenderer` impl. `Scene` is plain data (clear color, viewport, ordered drawables). One drawable variant today (`RectDrawable`); sprites/lines/text added as needed. Pixel-art crispness: `imageSmoothingEnabled = false`. Crashes on bad viewport dims. Covered by `tests/unit/renderer.test.ts` against a hand-rolled fake 2D context.
 - [x] **Input adapter** (`src/engine/input.ts`). ✓ Abstract actions (`throttle`, `brake`, `steerLeft`, `steerRight`, `horn`). `isActive` / `wasPressed` / `wasReleased` with per-frame latches; key-repeat ignored; window blur releases held actions; bound keys get `preventDefault`. Covered by `tests/unit/input.test.ts`.
-- [x] **Game mount module** (`src/game/mount.ts`). ✓ `mountGame({root, width, height, update, buildScene})` → `{canvas, input, dispose()}`. Owns the canvas (light DOM), DPR sizing with media-query reactivity, wires loop + renderer + input. Canvas is `tabindex=0` and focused on mount.
+- [x] **Game mount module** (`src/game/mount.ts`). ✓ `mountGame({root, width, height, update, buildScene})` → `{canvas, input, dispose()}`. Owns the canvas (light DOM), DPR sizing with media-query reactivity, wires loop + renderer + input. Canvas is `tabindex=0` and focused on mount. M6 replaces the prototype DPR sizing policy with the accepted fixed-stage backing store.
 - [x] **FPS / debug HUD** (`src/engine/fpsMeter.ts`). ✓ EMA-smoothed FPS, light-DOM overlay positioned over the canvas, enabled by `?debug` in the URL (or `debug: true` option). Covered by `tests/unit/fpsMeter.test.ts`.
 
 **Exit criterion met**: `index.ts` runs a smoke-test game — a yellow rect driven by arrow keys / WASD against a navy clear color. Visual confirmation that loop + renderer + input + mount communicate. Torn out and replaced with the real truck in M1.
@@ -59,7 +65,9 @@ Exit criterion: a developer can play the truck on a blank canvas and a teammate 
 
 ## Milestone 2 — Scrolling road + camera
 
-View is top-down 2D (decision recorded in `kaizen.md`). World coords are `(x = lane offset, y = distance)`. World scrolls in +y; the truck is anchored at a fixed screen-y. Sprites do not scale with distance.
+This milestone uses the diagnostic top-down presentation recorded in `kaizen.md`. World coords are
+`(x = lane offset, y = distance)`. World scrolls in +y; the truck is anchored at a fixed screen-y.
+M6 retains this simulation and uses its orthographic presentation as the development/debug view.
 
 See `docs/m2-plan.md` for the sub-milestone implementation plan.
 
@@ -92,20 +100,21 @@ Exit criterion: fuel pressure is the dominant tension during a run.
 - [x] **Commuter car** entity. ✓ Deterministic world-space traffic state with slow lane-locked
   cars, timed adjacent-lane changes, seeded spawning, and offscreen culling in
   `src/game/traffic.ts`.
-- [x] **Plow-over** for smaller vehicles. ✓ Overlapping commuters are removed, award a Road Rage
-  takedown and HUD callout, and nick Cargo Integrity.
+- [x] **Plow-over** for smaller vehicles. ✓ Overlapping commuters are removed, record a Road Rage
+  collision and HUD penalty callout, and nick Cargo Integrity.
 - [x] **Highway patrol cruiser**. ✓ Faster cruisers converge on the player's nearest lane, adjust
   speed to pace the trailer, and deliver cooldown-limited ramming damage. No weapons yet.
 - [x] **Cargo Integrity %**. ✓ Commuter and patrol hits degrade the existing truck integrity model;
   the HUD keeps the percentage visible alongside live traffic feedback.
-- [x] **Score model**. ✓ `src/game/score.ts` evaluates base + integrity×multiplier + takedowns.
+- [x] **Score model**. ✓ `src/game/score.ts` evaluates base + integrity×multiplier − Road Rage
+  collision penalties, floored at zero.
   During play, distance supplies provisional base points; diesel residuals, bonuses, and the final
-  delivered-cargo tally remain Milestone 5 work.
+  delivered-cargo tally remain Milestone 6 work.
   - *Test*: score formula evaluates correctly for given inputs.
 
 **Exit criterion met**: a 60-second run produces a live, comparable score from distance, retained
-cargo integrity, and Road Rage takedowns. Traffic simulation, collisions, rendering, HUD state, and
-score arithmetic are covered by deterministic unit tests.
+cargo integrity, and Road Rage collision penalties. Traffic simulation, collisions, rendering, HUD
+state, and score arithmetic are covered by deterministic unit tests.
 
 ### Milestone 4.1 — Limited rigid-body response
 
@@ -114,7 +123,8 @@ score arithmetic are covered by deterministic unit tests.
 - [x] **Arcade impulse solver**. ✓ Low-restitution, friction-limited impulses and mass-weighted
   positional correction keep bodies separated while preserving the truck's weight advantage.
 - [x] **Physical takedowns**. ✓ A sufficiently fast commuter impact pushes and spins a short-lived
-  disabled wreck before awarding Road Rage; low-speed contact separates without a false takedown.
+  disabled wreck before recording a Road Rage penalty; low-speed contact separates without a false
+  takedown.
 - [x] **Patrol standoff**. ✓ Cruiser AI paces behind the trailer's rear bumper instead of targeting
   a point inside it; ramming damage uses per-cruiser cooldowns.
 - [x] **Bounded patrol encounters**. ✓ Only one cruiser encounter may exist at a time. Patrol AI
@@ -165,27 +175,49 @@ with route, rendered road edge, and collision boundary in agreement through both
 
 ---
 
-## Milestone 6 — Stage 1 end-to-end
+## Milestone 6 — Complete Stage 1 playable PoC
 
 *Was Milestone 5 before the winding-road foundation was inserted ahead of it (2026-07-26).*
 
-- [ ] **Stage timeline**: enemy spawn schedule, difficulty ramp, finish-line trigger after N world-units.
-- [ ] **Finish-line sequence**: simple "stage complete" overlay, score tally (no fancy cinematic yet).
-- [ ] **Persistence**: extend `DataStore` schema for runs (date, score, integrity, fuel-remaining, takedowns). Migration from current `scores` shape.
+See `docs/m6-plan.md` for the slice-by-slice implementation plan and accepted presentation
+contracts.
+
+- [x] **Fixed responsive stage**: one `384 × 576` backing store and game composition, scaled to fit
+  and letterboxed across phone/desktop viewports without crop, stretch, DPR-dependent geometry, or
+  wider-screen gameplay advantage.
+- [ ] **Playable HUD and controls**: development readouts, semantic status, and safe responsive touch
+  controls cover every state from title through high scores without final cabinet-art work.
+- [ ] **Stage timeline**: authored encounter schedule, difficulty ramp, and finish trigger at the
+  accepted route distance.
+- [x] **Finish and failure lifecycle**: a checkered route-space marker ends at 2,200 m; exact-once
+  completion and crash/out-of-fuel failure freeze gameplay, hide driving controls, and show semantic
+  terminal dialogs with fresh retry and title actions.
+- [ ] **Score tally**: extend the locked completion snapshot into the explainable final tally.
+
+**Deferred visualization and art:** M6 retains existing dev art and the orthographic debug view. The
+first post-M6 milestone owns the pseudo-3D projection, compatible vehicle art, horizon/roadside
+composition, road treatment, effects, and final camera-aware HUD as one system.
+- [ ] **Persistence**: extend `DataStore` schema for versioned runs (date, score, integrity,
+  fuel-remaining, takedowns). Migration from current `scores` shape.
   - *Test*: migration is idempotent; old shape upgrades cleanly.
 - [ ] **High-score table** wired to the existing screen.
+- [ ] **Responsive browser matrix**: title → play → finish → tally → scores on representative phone
+  and desktop viewports with identical gameplay geometry.
 
-Exit criterion: someone can hit "Play" → drive Stage 1 → see a score → see it on the high-score list. MVP done.
+Exit criterion: someone can hit "Play" on phone or desktop → drive the same complete Stage 1 in the
+fixed pixel composition → see a score → see it on the high-score list. The playable PoC is complete;
+production visualization and art are not.
 
 ---
 
-## After MVP (rough order, not committed)
+## After the Stage 1 playable PoC (rough order, not committed)
 
+- Proper pseudo-3D highway visualization, compatible heading-bucket vehicle art, the Stage 1
+  desert-sunset visual language, effects, and final camera-aware HUD composition.
 - Fuel tanker slipstream draft mechanic.
 - Weapons: Cowcatcher → Air Horn → Cargo Dropper → Smokestack Flamethrowers (in that order — defensive before offensive).
 - Pit Stop intermission shop + currency.
 - Stages 2–5 (Construction → PNW → Desert → Mega-Pileup).
 - Audio (WebAudio engine rumble synced to speed, music tracks, voice warnings).
-- Visual polish pass — possibly the WebGL backend swap for CRT/scanline/bloom shaders.
-- Gamepad + touch input.
-- Aesthetic art pass replacing programmer art.
+- Optional WebGL polish pass for measured CRT/scanline/bloom needs that exceed Canvas 2D.
+- Gamepad support and post-M6 touch-control refinement.

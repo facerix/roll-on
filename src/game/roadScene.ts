@@ -37,6 +37,11 @@ export interface RoadSceneTuning {
   readonly barrierColor: string;
   readonly laneMarkerColor: string;
   readonly laneMarkerWidthMeters: number;
+  readonly finishLineLightColor: string;
+  readonly finishLineDarkColor: string;
+  readonly finishLineDepthMeters: number;
+  readonly finishLineColumns: number;
+  readonly finishLineRows: number;
   readonly parallaxLayers: readonly ParallaxLayerTuning[];
   readonly commuterColor: string;
   readonly patrolColor: string;
@@ -83,6 +88,8 @@ export interface BuildRoadSceneOptions {
   readonly debugWindow?: RoadDistanceWindow;
   /** Route-space distance at the camera focus; supplied by simulation state. */
   readonly focusDistanceAlongRouteMeters?: number;
+  /** Route-space finish trigger; the visible band ends exactly at this distance. */
+  readonly finishDistanceMeters?: number;
 }
 
 export const DEFAULT_PARALLAX_LAYERS: readonly ParallaxLayerTuning[] = Object.freeze([
@@ -111,6 +118,11 @@ export const DEFAULT_ROAD_SCENE_TUNING: RoadSceneTuning = Object.freeze({
   barrierColor: '#d8d2c4',
   laneMarkerColor: '#f6d96d',
   laneMarkerWidthMeters: 0.18,
+  finishLineLightColor: '#f7ecd7',
+  finishLineDarkColor: '#050608',
+  finishLineDepthMeters: 2,
+  finishLineColumns: 8,
+  finishLineRows: 2,
   parallaxLayers: DEFAULT_PARALLAX_LAYERS,
   commuterColor: '#4fd1c5',
   patrolColor: '#e9f4ff',
@@ -182,6 +194,9 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
   const tuning = options.tuning ?? DEFAULT_ROAD_SCENE_TUNING;
   validateTruckDimensions(options.truckDimensions);
   assertPositive('laneMarkerWidthMeters', tuning.laneMarkerWidthMeters);
+  assertPositive('finishLineDepthMeters', tuning.finishLineDepthMeters);
+  assertPositiveInteger('finishLineColumns', tuning.finishLineColumns);
+  assertPositiveInteger('finishLineRows', tuning.finishLineRows);
   assertPositive('commuterWidthMeters', tuning.commuterWidthMeters);
   assertPositive('commuterLengthMeters', tuning.commuterLengthMeters);
   assertPositive('patrolWidthMeters', tuning.patrolWidthMeters);
@@ -246,6 +261,17 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
     }
   }
 
+  if (options.finishDistanceMeters !== undefined) {
+    drawables.push(
+      ...buildFinishLineDrawables(
+        options.road,
+        options.camera,
+        options.finishDistanceMeters,
+        tuning
+      )
+    );
+  }
+
   for (const vehicle of options.traffic ?? []) {
     if (vehicle.kind !== 'commuter' && vehicle.kind !== 'patrol') {
       throw new TypeError(`Unknown traffic vehicle kind: ${String(vehicle.kind)}`);
@@ -287,6 +313,67 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
     height: options.camera.viewportHeight,
     drawables,
   };
+}
+
+function buildFinishLineDrawables(
+  road: Road,
+  camera: RoadCamera,
+  finishDistanceMeters: number,
+  tuning: RoadSceneTuning
+): readonly Drawable[] {
+  assertFinite('finishDistanceMeters', finishDistanceMeters);
+  if (finishDistanceMeters < 0 || finishDistanceMeters > road.route.totalLengthMeters) {
+    throw new RangeError(
+      `finishDistanceMeters must be within [0, ${road.route.totalLengthMeters}], got ${finishDistanceMeters}`
+    );
+  }
+  if (finishDistanceMeters < tuning.finishLineDepthMeters) {
+    throw new RangeError(
+      `finishDistanceMeters must be at least finishLineDepthMeters, got ${finishDistanceMeters} < ${tuning.finishLineDepthMeters}`
+    );
+  }
+
+  const drawables: Drawable[] = [];
+  const columnWidthMeters =
+    (road.rightRoadEdgeMeters - road.leftRoadEdgeMeters) / tuning.finishLineColumns;
+  const rowDepthMeters = tuning.finishLineDepthMeters / tuning.finishLineRows;
+  const bandStartMeters = finishDistanceMeters - tuning.finishLineDepthMeters;
+
+  for (let row = 0; row < tuning.finishLineRows; row += 1) {
+    const startDistanceMeters = bandStartMeters + row * rowDepthMeters;
+    const endDistanceMeters = startDistanceMeters + rowDepthMeters;
+    for (let column = 0; column < tuning.finishLineColumns; column += 1) {
+      const leftLateralMeters = road.leftRoadEdgeMeters + column * columnWidthMeters;
+      const rightLateralMeters = leftLateralMeters + columnWidthMeters;
+      const startLeft = routeToWorld(road.route, {
+        distanceAlongRouteMeters: startDistanceMeters,
+        lateralOffsetMeters: leftLateralMeters,
+      });
+      const startRight = routeToWorld(road.route, {
+        distanceAlongRouteMeters: startDistanceMeters,
+        lateralOffsetMeters: rightLateralMeters,
+      });
+      const endLeft = routeToWorld(road.route, {
+        distanceAlongRouteMeters: endDistanceMeters,
+        lateralOffsetMeters: leftLateralMeters,
+      });
+      const endRight = routeToWorld(road.route, {
+        distanceAlongRouteMeters: endDistanceMeters,
+        lateralOffsetMeters: rightLateralMeters,
+      });
+      drawables.push(
+        crossSectionQuad(
+          camera,
+          startLeft,
+          startRight,
+          endRight,
+          endLeft,
+          (row + column) % 2 === 0 ? tuning.finishLineLightColor : tuning.finishLineDarkColor
+        )
+      );
+    }
+  }
+  return drawables;
 }
 
 export function commuterSpriteForId(id: number): (typeof COMMUTER_SPRITES)[number] {
@@ -373,7 +460,7 @@ function buildCurvedRoadDrawables(
     );
   }
 
-  for (const marker of visibleLaneMarkerSpans(road, camera)) {
+  for (const marker of visibleLaneMarkerSpans(road, camera, focusDistanceAlongRouteMeters)) {
     const halfWidth = tuning.laneMarkerWidthMeters / 2;
     const startLeft = routeToWorld(road.route, {
       distanceAlongRouteMeters: marker.startDistanceMeters,
@@ -623,6 +710,11 @@ function validateHitchOffset(
 function assertPositive(label: string, value: number): void {
   assertFinite(label, value);
   if (value <= 0) throw new RangeError(`${label} must be positive, got ${value}`);
+}
+
+function assertPositiveInteger(label: string, value: number): void {
+  assertPositive(label, value);
+  if (!Number.isInteger(value)) throw new TypeError(`${label} must be an integer, got ${value}`);
 }
 
 function assertNonNegative(label: string, value: number): void {

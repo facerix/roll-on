@@ -264,7 +264,13 @@ const ServiceWorkerCore = {
     await self.clients.claim();
   },
 
-  async handleFetch(request, cacheNames, logPrefix = '[SW]', useNetworkFirstForHTML = false) {
+  async handleFetch(
+    request,
+    cacheNames,
+    logPrefix = '[SW]',
+    useNetworkFirstForHTML = false,
+    useNetworkFirstForRefreshable = false
+  ) {
     if (request.method !== 'GET') {
       return fetch(request);
     }
@@ -276,7 +282,10 @@ const ServiceWorkerCore = {
       cacheName = cacheNames.name;
     }
 
-    if (useNetworkFirstForHTML && this.isHTMLResource(request)) {
+    if (
+      (useNetworkFirstForRefreshable && this.isRefreshableResource(request)) ||
+      (useNetworkFirstForHTML && this.isHTMLResource(request))
+    ) {
       return this.networkFirst(request, cacheName, logPrefix);
     }
 

@@ -2,7 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createRoad, DEFAULT_ROAD_TUNING } from '../../src/game/road.ts';
-import { buildRoadCameraTuning } from '../../src/game/roadViewport.ts';
+import { buildRoadCameraTuning, measureRoadViewport } from '../../src/game/roadViewport.ts';
+import { STAGE_HEIGHT_PIXELS, STAGE_WIDTH_PIXELS } from '../../src/game/stageLayout.ts';
+
+test('road viewport always uses the fixed stage rather than browser dimensions', () => {
+  assert.deepEqual(measureRoadViewport(), {
+    width: STAGE_WIDTH_PIXELS,
+    height: STAGE_HEIGHT_PIXELS,
+  });
+});
 
 test('camera tuning centers the road and anchors the truck below the midpoint', () => {
   const road = createRoad(DEFAULT_ROAD_TUNING);

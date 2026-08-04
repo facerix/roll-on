@@ -77,7 +77,7 @@ function runSeededWindingRoute(seed: number): {
 
 test('the default authored route is a long, deterministic shallow S-curve', () => {
   const route = createDefaultStageRoute();
-  assert.equal(route.totalLengthMeters, 1320);
+  assert.equal(route.totalLengthMeters, 2_200);
   assert.equal(sampleRoute(route, 320).curvaturePerMeter, 0.004);
   assert.equal(sampleRoute(route, 500).curvaturePerMeter, -0.004);
   assert.equal(sampleRoute(route, 680).curvaturePerMeter, 0);

@@ -84,7 +84,7 @@ test('truck world state is expressed as Cartesian world points', () => {
   assert.deepEqual(Object.keys(hitZone.segment.end).sort(), ['xMeters', 'yMeters']);
 });
 
-test('truck footprint boxes are Cartesian axis-aligned bounds', () => {
+test('truck footprint boxes retain Cartesian orientation', () => {
   const truck = createTruckState({
     position: { xMeters: 0, yMeters: 0 },
     headingRadians: 0,
@@ -104,10 +104,10 @@ test('truck footprint boxes are Cartesian axis-aligned bounds', () => {
   });
 
   assert.deepEqual(Object.keys(cab).sort(), [
-    'maxXMeters',
-    'maxYMeters',
-    'minXMeters',
-    'minYMeters',
+    'center',
+    'headingRadians',
+    'lengthMeters',
+    'widthMeters',
   ]);
 });
 

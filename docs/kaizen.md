@@ -8,52 +8,92 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
 
 ## Open design questions
 
-- **Difficulty curve shape**: linear ramp vs. wave pattern (lulls between intensity spikes)? Decide once Milestone 4 is playable enough to feel.
-- **Run length target**: M3 uses a prototype target of about 135 seconds at efficient cruise before
-  an empty tank. The final "good" Stage 1 run length is still open because enemy density, finish
-  distance, and scoring pressure arrive in later milestones. Revisit during Milestone 6.
-- **Permadeath vs. continues**: arcade tradition is continues with score reset penalty. Design doc is silent. Decide before Milestone 6.
 - **Score formula precise weights**: §6 of the design doc gives the formula but no coefficients. M4
-  uses prototype weights (10 points/meter, 2,000 integrity multiplier, 250/takedown); tune during
-  the M6 finish-tally playtest.
+  uses prototype weights (10 points/meter, 2,000 integrity multiplier, and a 250-point penalty per
+  Road Rage collision); tune during the M6 finish-tally playtest.
 - **Touch control ergonomics**: the pad layout (steer arrows at left/right centre, brake+gas centred
-  along the bottom, horn in the bottom-left corner) is a first pass that has NOT been played on a
-  real device yet. Open: whether steering wants held arrows at all versus a drag-anywhere lane
-  slider, and whether the horn's corner placement survives contact with actual thumbs. Revisit after
-  the first phone playtest.
-- **Horn mechanics**: the `horn` action is bound (Space, plus a touch button) but does nothing.
-  Stubbed deliberately so the input surface is complete; decide what it does — scatter traffic?
-  bait patrol? — during Milestone 6.
+  along the bottom) is a first pass that has NOT been played on a real device yet. Open: whether
+  steering wants held arrows at all versus a drag-anywhere lane slider. Revisit after the first
+  phone playtest.
 
 ## Deferred technical work
 
-- **WebGL renderer backend**: Canvas 2D chosen for the slice. Revisit when we want shader-based post-processing (CRT, scanlines, bloom, palette cycling, Fumes-state flicker as a uniform rather than per-frame compositing). Hard requirement: the `Renderer` seam in Milestone 0 must keep this swap cheap.
+- **WebGL renderer backend**: M6 uses Canvas 2D for the fixed stage and development presentation.
+  Revisit during the post-M6 pseudo-3D visualization only when measured frame time, memory, or more
+  than roughly 200 LOC of effect-specific compositing demonstrates a need for shader-based CRT,
+  scanlines, bloom, palette cycling, or Fumes flicker. Hard requirement: the `Renderer` seam keeps
+  the swap bounded.
 - **Audio engine**: WebAudio for engine rumble (continuous, speed-modulated pitch). Don't build until the truck feel is locked — audio tuning depends on physics tuning. SFX placeholder via short WebAudio synth blips during Milestones 1–4.
 - **Gamepad API support**: arcade game wants a gamepad. Keyboard-only is fine for prototyping; wire gamepad before any public playtest.
-- **Asset pipeline**: no bundler today. When we adopt real pixel art, decide whether we need a sprite-atlas build step or whether individual PNGs are fine for our sprite count.
+- **Asset pipeline**: M6 retains existing development assets through the current copy/cache paths.
+  Revisit an atlas build step during post-M6 pseudo-3D art development only after measured asset
+  count, request behavior, or draw overhead justifies it.
 - **Replay / determinism**: fixed-step loop in Milestone 0 keeps replays *possible*. Actual replay recording and ghost-runs deferred. (RNG seeding is resolved — see below.)
-- **Service worker caching of game assets**: existing `sw-core.js` caches the shell; once we have art/audio, decide cache strategy (precache vs. runtime, versioning).
+- **Service worker caching of game assets**: resolve the static-art cache policy when the post-M6
+  Stage 1 production asset set lands; new art must not be online-only by accident.
 
 ## Minor follow-ups
 
 - **Dual rAF loops in the smoke build**: `FixedStepLoop` runs its own rAF for game ticks; `mountGame` runs a separate rAF for the FPS meter (because the loop doesn't currently surface real-dt to its caller). Two ~60Hz callbacks where one would do. Cheap but redundant. Fix path: add an `onTick(realDt)` hook to `FixedStepLoop`, route the FPS meter through it, and drop the mount's rAF.
 - **Lint rule banning `Math.random()` in game code**: pending. Game code must pull from `Rng` (passed in by construction) for determinism. One stray `Math.random()` silently breaks replay. Add as an oxlint rule or a grep-based test when convenient.
-- **devicePixelRatio handling**: `Canvas2DRenderer` assumes its context is already sized correctly for DPR. The mount module (M0 item 4) owns canvas sizing. When we wire it up, decide between "internal resolution = CSS px × DPR" (crisp on retina, more pixels to fill) and "internal resolution = fixed virtual pixels with CSS upscale" (true retro vibe, possibly mandatory once we want the CRT look).
 - **Canvas context-loss recovery**: `imageSmoothingEnabled` is set once at construction. Browsers can reset context state on `webglcontextlost`/-equivalents; for Canvas 2D this is rare but possible. Revisit if we see smoothing creep back on.
 - **Development service-worker module skew**: the M4 browser pass caught one startup where the
   stale-while-refresh strategy served a cached `gameHud.ts` build beside a fresh `gameHudView.ts`
   build. A reload used the refreshed cache and clean runs were stable, but dev should never execute
   a mixed module graph. Revisit by making refreshable development resources network-first (with
-  cache fallback) or versioning each watch build as one atomic cache generation. **Now due**: this
-  was filed as "revisit before M5", and M5 (winding roads) has begun without it being addressed.
+  cache fallback) or versioning each watch build as one atomic cache generation. **M6 closeout**:
+  resolve this before the end-to-end browser matrix; stale/fresh module mixtures invalidate
+  playtest evidence.
 
 ## Risks to monitor
 
 - **Vertical-slice trap**: the slice might feel fun-enough to start adding content too early. Discipline: don't start Stage 2 until Stage 1 ships *and* one outside person plays it.
 - **Aesthetic ambition vs. Canvas 2D ceiling**: the design doc's neon/CRT look may push Canvas 2D past comfortable. If we find ourselves writing more than ~200 LOC of compositing tricks for one effect, that's the signal to do the WebGL swap.
+- **Fractional display scaling**: the `384 × 576` source grid is fixed, but responsive fit sometimes
+  requires fractional CSS scaling or downscaling. `image-rendering: pixelated` avoids linear blur,
+  but some devices may show uneven physical pixel widths. Verify representative DPR/viewport pairs
+  during M6.1 before considering a second fixed resolution profile.
 - **`DataStore` schema churn**: deferred — during prototyping we accept tearing down localStorage and starting fresh whenever the shape changes. Revisit once gameplay stabilizes and real player data is at stake; at that point we want explicit version tags and crash-on-unknown-version (per directive: crashing > corruption).
 
 ## Resolved (move entries here when decided, with the decision)
+
+- **Horn visibility for the Stage 1 PoC** (2026-08-03): defer horn mechanics beyond M6 and do not
+  show a control that has no gameplay effect. The touch pad exposes steering, brake, and throttle
+  only. Preserve the abstract `horn` action and Space binding as an implementation seam for the
+  eventual limited-use lane-clearing weapon; neither is required to complete Stage 1.
+
+- **Road Rage scoring direction** (2026-08-03): plowing through commuter traffic is a collision
+  penalty, not a bonus. Continue tracking each qualifying collision and showing its Road Rage event,
+  but deduct the provisional 250-point amount per event and floor the live score at zero. The final
+  amount remains part of the M6 tally-weight playtest.
+
+- **Stage 1 length, difficulty, and failure policy** (2026-08-03): author a `2,200 m` Stage 1 that
+  targets an approximately 100-second competent clear without using time as simulation truth. Pace
+  it as distance-authored waves: onboarding, normal pressure, a patrol spike, a lull, denser mixed
+  pressure, a short recovery, and a final gauntlet. Ambient encounters are seeded and
+  distance-triggered; named encounters activate once and patrol waves have authored end distances.
+  Stage 1 is a single-credit run with no checkpoints or continues. Catastrophic crashes fail the
+  run. Empty fuel permits coasting and a dry-tank finish, but stopping empty before the line fails.
+  Failure offers a fresh retry rather than resuming mutated simulation state. Resolve a step's fuel
+  and contacts before its terminal transition; a finish crossing wins over a crash first caused on
+  that step while retaining the collision's final damage in the completion snapshot.
+
+- **Fixed pixel stage with responsive presentation** (2026-08-03): the complete game composition
+  uses one `384 × 576` (`2:3`) logical stage and backing store. A responsive outer shell subtracts
+  safe-area insets, aspect-fits, centers, and letterboxes the stage without cropping or stretching.
+  Browser width, height, orientation, and DPR may change display scale only; they do not change
+  scene dimensions, camera field of view, spawn/cull windows, or visible world. Integer scaling is
+  preferred when practical, while fractional scaling/downscaling is accepted at the final CSS
+  boundary for device coverage. Wide-screen side rails may provide decorative or duplicated
+  information but no exclusive gameplay advantage. A separate landscape profile requires later
+  device-test evidence.
+
+- **Stage 1 camera sequencing** (2026-08-03): retain the M5 Cartesian simulation and use the
+  road-following orthographic view as M6 development/geometry-debug presentation. The M6 depth
+  experiment was rejected because a tapered road conflicts visibly with freely rotatable top-down
+  vehicle art. Do not polish that hybrid or produce richer orthographic art. Immediately after the
+  complete Stage 1 playable PoC, develop the proper pseudo-3D projection together with track-aligned
+  or heading-bucket vehicle art, shared horizon/roadside composition, and a camera-aware HUD.
 
 - **Milestone 5 numbering** (2026-07-26): the winding-road foundation took the M5 slot and the
   original "Stage 1 end-to-end" entry moved to M6. Route geometry is prerequisite work for Stage 1
@@ -75,7 +115,10 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
   and trailer placeholders. `Canvas2DRenderer.draw` now has multiple discriminated-union arms and a
   `never` default assertion, so future drawable variants fail typechecking until handled.
 
-- **Camera / view: top-down 2D** (2026-05-24): World coords are `(lane offset, distance)`. World scrolls down, truck anchored vertically. Chase-cam pseudo-3D rejected — not on cost alone but because the design doc's headline mechanics (jackknife arc, fishtail swipe, side flamethrowers, rear cargo dropper, tanker drafting) all *require* surround visibility and a legible trailer angle, both of which chase-cam hides. The RoadBlasters tie in the design doc is about combat density + fuel-timer dread, not about camera. **Deferred to the art pass**: whether sprites are drawn flat-top-down or tilted 3/4. That's a pure art decision; the engine is unaffected.
+- **Camera / view: diagnostic top-down 2D** (2026-05-24, refined 2026-08-03): World coordinates and
+  the trustworthy geometry/debug presentation remain top-down. This does not constrain the final
+  gameplay camera; the post-M6 pseudo-3D milestone must preserve or deliberately redesign the
+  readability of surround mechanics and trailer articulation.
 
 - **Game surface is not a web component** (2026-05-24): The canvas lives in light DOM, owned by `src/game/mount.ts` (`mountGame(rootEl)` / `disposeGame()`). Web components are reserved for self-contained, style-isolated chrome — modals, the future pit-stop shop overlay, high-score table, etc. Rule of thumb: reach for a web component when style isolation or reusable encapsulation is buying us something. Don't wrap the game surface in one just because it's UI; Shadow DOM around a `<canvas>` introduces focus/event/HUD-overlay friction with no offsetting benefit.
 

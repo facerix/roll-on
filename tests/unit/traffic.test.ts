@@ -289,7 +289,7 @@ test('rigid-body response separates overlap and transfers less velocity to a hea
   assert.ok(result.normalImpulse > 0);
 });
 
-test('plowing over a commuter leaves a short-lived pushed wreck and awards Road Rage once', () => {
+test('plowing over a commuter leaves a short-lived pushed wreck and records Road Rage once', () => {
   const commuter = createTrafficVehicle({
     id: 4,
     kind: 'commuter',
