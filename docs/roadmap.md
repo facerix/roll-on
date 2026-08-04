@@ -7,10 +7,12 @@ Living implementation plan. Pairs with `roll_on_game_design_document.md` (the *w
 - **Renderer**: Canvas 2D now, behind a thin `Renderer` interface so a WebGL backend can slot in during the polish pass.
 - **Presentation**: one fixed `384 × 576` (`2:3`) logical game stage, responsively scaled and
   letterboxed without cropping, stretching, or changing gameplay field of view.
-- **Camera**: top-down simulation with a bounded hybrid depth projection for the Stage 1
-  presentation; retain orthographic world-fixed debug mode and nearby surround visibility.
-- **Art**: programmer-art placeholders until the M6 Stage 1 visual-language slice replaces them.
-- **MVP scope**: Stage 1 (Interstate 80) playable end-to-end. No shop, no weapons, no other stages.
+- **Camera**: M6 uses the road-following orthographic view as development and geometry-debug
+  presentation. Proper pseudo-3D is the first post-M6 visualization milestone and retains an
+  orthographic debug mode.
+- **Art**: programmer-art placeholders remain through M6. Production art begins only after the
+  pseudo-3D projection and representative compositions are accepted.
+- **PoC scope**: Stage 1 (Interstate 80) playable end-to-end. No shop, no weapons, no other stages.
 - **Discipline**: TDD. Every system lands with failing-first tests that exercise its pure logic.
 
 ---
@@ -65,7 +67,7 @@ Exit criterion: a developer can play the truck on a blank canvas and a teammate 
 
 This milestone uses the diagnostic top-down presentation recorded in `kaizen.md`. World coords are
 `(x = lane offset, y = distance)`. World scrolls in +y; the truck is anchored at a fixed screen-y.
-M6 retains this simulation and debug view while adding presentation-only depth scaling.
+M6 retains this simulation and uses its orthographic presentation as the development/debug view.
 
 See `docs/m2-plan.md` for the sub-milestone implementation plan.
 
@@ -171,25 +173,25 @@ with route, rendered road edge, and collision boundary in agreement through both
 
 ---
 
-## Milestone 6 — Stage 1 vertical slice and presentation
+## Milestone 6 — Complete Stage 1 playable PoC
 
 *Was Milestone 5 before the winding-road foundation was inserted ahead of it (2026-07-26).*
 
 See `docs/m6-plan.md` for the slice-by-slice implementation plan and accepted presentation
 contracts.
 
-- [ ] **Fixed responsive stage**: one `384 × 576` backing store and game composition, scaled to fit
+- [x] **Fixed responsive stage**: one `384 × 576` backing store and game composition, scaled to fit
   and letterboxed across phone/desktop viewports without crop, stretch, DPR-dependent geometry, or
   wider-screen gameplay advantage.
-- [ ] **Hybrid depth presentation**: taper/compress the far road and depth-scale traffic/scenery
-  without changing M5 world/route simulation; retain orthographic world-fixed debug mode.
-- [ ] **Stage 1 visual language**: desert-sunset palette, layered scenery, road treatment, shadows,
-  basic particles, and pixel-art vehicle treatment approaching the accepted concept.
-- [ ] **Arcade dashboard and controls**: top score strip, bottom cabinet HUD, semantic status, and
-  safe responsive touch controls driven by existing HUD/input state.
+- [ ] **Playable HUD and controls**: development readouts, semantic status, and safe responsive touch
+  controls cover every state from title through high scores without final cabinet-art work.
 - [ ] **Stage timeline**: authored encounter schedule, difficulty ramp, and finish trigger at the
   accepted route distance.
 - [ ] **Finish-line sequence**: explicit stage-complete lifecycle and score tally.
+
+**Deferred visualization and art:** M6 retains existing dev art and the orthographic debug view. The
+first post-M6 milestone owns the pseudo-3D projection, compatible vehicle art, horizon/roadside
+composition, road treatment, effects, and final camera-aware HUD as one system.
 - [ ] **Persistence**: extend `DataStore` schema for versioned runs (date, score, integrity,
   fuel-remaining, takedowns). Migration from current `scores` shape.
   - *Test*: migration is idempotent; old shape upgrades cleanly.
@@ -198,12 +200,15 @@ contracts.
   and desktop viewports with identical gameplay geometry.
 
 Exit criterion: someone can hit "Play" on phone or desktop → drive the same complete Stage 1 in the
-fixed pixel composition → see a score → see it on the high-score list. MVP done.
+fixed pixel composition → see a score → see it on the high-score list. The playable PoC is complete;
+production visualization and art are not.
 
 ---
 
-## After MVP (rough order, not committed)
+## After the Stage 1 playable PoC (rough order, not committed)
 
+- Proper pseudo-3D highway visualization, compatible heading-bucket vehicle art, the Stage 1
+  desert-sunset visual language, effects, and final camera-aware HUD composition.
 - Fuel tanker slipstream draft mechanic.
 - Weapons: Cowcatcher → Air Horn → Cargo Dropper → Smokestack Flamethrowers (in that order — defensive before offensive).
 - Pit Stop intermission shop + currency.
@@ -211,4 +216,3 @@ fixed pixel composition → see a score → see it on the high-score list. MVP d
 - Audio (WebAudio engine rumble synced to speed, music tracks, voice warnings).
 - Optional WebGL polish pass for measured CRT/scanline/bloom needs that exceed Canvas 2D.
 - Gamepad support and post-M6 touch-control refinement.
-- Final heading-bucket vehicle art and effects beyond the M6 Stage 1 visual baseline.

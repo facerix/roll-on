@@ -25,22 +25,23 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
   the first phone playtest.
 - **Horn mechanics**: the `horn` action is bound (Space, plus a touch button) but does nothing.
   Stubbed deliberately so the input surface is complete; decide what it does — scatter traffic?
-  bait patrol? — during M6.5, or explicitly defer it beyond the Stage 1 MVP.
+  bait patrol? — during M6.5, or explicitly defer it beyond the Stage 1 playable PoC.
 
 ## Deferred technical work
 
-- **WebGL renderer backend**: M6 uses Canvas 2D for the fixed stage, depth presentation, Stage 1 art,
-  and basic effects. Revisit only when measured frame time, memory, or more than roughly 200 LOC of
-  effect-specific compositing demonstrates a need for shader-based CRT, scanlines, bloom, palette
-  cycling, or Fumes flicker. Hard requirement: the `Renderer` seam keeps the swap bounded.
+- **WebGL renderer backend**: M6 uses Canvas 2D for the fixed stage and development presentation.
+  Revisit during the post-M6 pseudo-3D visualization only when measured frame time, memory, or more
+  than roughly 200 LOC of effect-specific compositing demonstrates a need for shader-based CRT,
+  scanlines, bloom, palette cycling, or Fumes flicker. Hard requirement: the `Renderer` seam keeps
+  the swap bounded.
 - **Audio engine**: WebAudio for engine rumble (continuous, speed-modulated pitch). Don't build until the truck feel is locked — audio tuning depends on physics tuning. SFX placeholder via short WebAudio synth blips during Milestones 1–4.
 - **Gamepad API support**: arcade game wants a gamepad. Keyboard-only is fine for prototyping; wire gamepad before any public playtest.
-- **Asset pipeline**: M6 starts with individual PNGs through the existing copy/cache paths. Revisit
-  an atlas build step only after measured asset count, request behavior, or draw overhead justifies
-  it during M6.3.
+- **Asset pipeline**: M6 retains existing development assets through the current copy/cache paths.
+  Revisit an atlas build step during post-M6 pseudo-3D art development only after measured asset
+  count, request behavior, or draw overhead justifies it.
 - **Replay / determinism**: fixed-step loop in Milestone 0 keeps replays *possible*. Actual replay recording and ghost-runs deferred. (RNG seeding is resolved — see below.)
-- **Service worker caching of game assets**: resolve the static-art cache policy during M6.3 as the
-  Stage 1 asset set lands; new art must not be online-only by accident.
+- **Service worker caching of game assets**: resolve the static-art cache policy when the post-M6
+  Stage 1 production asset set lands; new art must not be online-only by accident.
 
 ## Minor follow-ups
 
@@ -51,8 +52,8 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
   stale-while-refresh strategy served a cached `gameHud.ts` build beside a fresh `gameHudView.ts`
   build. A reload used the refreshed cache and clean runs were stable, but dev should never execute
   a mixed module graph. Revisit by making refreshable development resources network-first (with
-  cache fallback) or versioning each watch build as one atomic cache generation. **M6 preflight**:
-  resolve this before visual iteration; stale/fresh module mixtures invalidate screenshot and
+  cache fallback) or versioning each watch build as one atomic cache generation. **M6 closeout**:
+  resolve this before the end-to-end browser matrix; stale/fresh module mixtures invalidate
   playtest evidence.
 
 ## Risks to monitor
@@ -77,14 +78,12 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
   information but no exclusive gameplay advantage. A separate landscape profile requires later
   device-test evidence.
 
-- **Camera/view presentation revision** (2026-08-03): retain the M5 Cartesian top-down simulation,
-  route truth, nearby surround visibility, and world-fixed orthographic debug mode. M6 may add a
-  bounded presentation-only depth function that compresses/tapers the far road and scales distant
-  scenery/traffic. This is not the rejected chase camera: the truck/trailer articulation, fishtail
-  arc, drafting space, side weapons, and rear cargo area remain readable. Projected geometry never
-  becomes collision, AI, spawn, cull, or progress truth. Initial production sprites remain freely
-  rotatable top-down silhouettes with richer shading; literal rear-view/heading-bucket art remains
-  deferred.
+- **Stage 1 camera sequencing** (2026-08-03): retain the M5 Cartesian simulation and use the
+  road-following orthographic view as M6 development/geometry-debug presentation. The M6 depth
+  experiment was rejected because a tapered road conflicts visibly with freely rotatable top-down
+  vehicle art. Do not polish that hybrid or produce richer orthographic art. Immediately after the
+  complete Stage 1 playable PoC, develop the proper pseudo-3D projection together with track-aligned
+  or heading-bucket vehicle art, shared horizon/roadside composition, and a camera-aware HUD.
 
 - **Milestone 5 numbering** (2026-07-26): the winding-road foundation took the M5 slot and the
   original "Stage 1 end-to-end" entry moved to M6. Route geometry is prerequisite work for Stage 1
@@ -106,10 +105,10 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
   and trailer placeholders. `Canvas2DRenderer.draw` now has multiple discriminated-union arms and a
   `never` default assertion, so future drawable variants fail typechecking until handled.
 
-- **Camera / view: diagnostic top-down 2D** (2026-05-24, refined 2026-08-03): World coordinates
-  and the trustworthy geometry/debug presentation remain top-down. Chase-cam pseudo-3D remains
-  rejected because it hides surround mechanics and trailer articulation. The later M6 decision
-  above permits bounded depth in the presentation layer without reversing those constraints.
+- **Camera / view: diagnostic top-down 2D** (2026-05-24, refined 2026-08-03): World coordinates and
+  the trustworthy geometry/debug presentation remain top-down. This does not constrain the final
+  gameplay camera; the post-M6 pseudo-3D milestone must preserve or deliberately redesign the
+  readability of surround mechanics and trailer articulation.
 
 - **Game surface is not a web component** (2026-05-24): The canvas lives in light DOM, owned by `src/game/mount.ts` (`mountGame(rootEl)` / `disposeGame()`). Web components are reserved for self-contained, style-isolated chrome — modals, the future pit-stop shop overlay, high-score table, etc. Rule of thumb: reach for a web component when style isolation or reusable encapsulation is buying us something. Don't wrap the game surface in one just because it's UI; Shadow DOM around a `<canvas>` introduces focus/event/HUD-overlay friction with no offsetting benefit.
 
