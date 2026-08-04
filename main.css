@@ -142,7 +142,8 @@ body.is-playing #main-foot {
 
 .roll-on-hud {
   position: absolute;
-  inset: 0;
+  inset: auto 0 0;
+  height: var(--roll-on-hud-height);
   z-index: 20;
   display: grid;
   grid-template-columns: minmax(84px, 0.8fr) minmax(96px, 1fr) minmax(210px, 1.5fr) auto;

@@ -4,6 +4,10 @@
  */
 export const STAGE_WIDTH_PIXELS = 384;
 export const STAGE_HEIGHT_PIXELS = 576;
+/** Dedicated dashboard space at the bottom of the fixed stage. */
+export const HUD_HEIGHT_PIXELS = 126;
+/** Canvas height above the HUD; gameplay is never rendered behind the dashboard. */
+export const ROAD_VIEWPORT_HEIGHT_PIXELS = STAGE_HEIGHT_PIXELS - HUD_HEIGHT_PIXELS;
 
 export interface StageViewport {
   readonly width: number;

@@ -30,6 +30,8 @@ import { InputAdapter } from '/src/engine/input.js';
 import { FpsMeter } from '/src/engine/fpsMeter.js';
 import { runGameUpdate } from '/src/game/update.js';
 import {
+  HUD_HEIGHT_PIXELS,
+  ROAD_VIEWPORT_HEIGHT_PIXELS,
   STAGE_HEIGHT_PIXELS,
   STAGE_WIDTH_PIXELS,
   calculateStageLayout,
@@ -79,7 +81,7 @@ function isDebugFromUrl(): boolean {
 export function mountGame(opts: MountOptions): MountedGame {
   const canvas = h('canvas', {
     width: STAGE_WIDTH_PIXELS,
-    height: STAGE_HEIGHT_PIXELS,
+    height: ROAD_VIEWPORT_HEIGHT_PIXELS,
     className: 'roll-on-canvas',
     tabIndex: 0, // canvas needs tabindex to receive focus; arcade key capture wants focus
   });
@@ -126,7 +128,7 @@ export function mountGame(opts: MountOptions): MountedGame {
     'div',
     {
       className: 'roll-on-game-stage',
-      style: `position:absolute;width:${STAGE_WIDTH_PIXELS}px;height:${STAGE_HEIGHT_PIXELS}px;transform-origin:top left;`,
+      style: `position:absolute;width:${STAGE_WIDTH_PIXELS}px;height:${STAGE_HEIGHT_PIXELS}px;--roll-on-hud-height:${HUD_HEIGHT_PIXELS}px;transform-origin:top left;`,
     },
     overlays
   );

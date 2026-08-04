@@ -68,8 +68,9 @@ code must validate finite positive dimensions and fail loudly on invalid input.
 
 - The existing HUD remains development UI. Add or change only what is needed to understand and
   complete the Stage 1 loop: essential driving state, finish status, tally, and high-score flow.
-- The development HUD sits along the bottom of the fixed stage. Touch gas and brake controls remain
-  above it so neither layer obscures the other.
+- The development HUD sits in a reserved bay along the bottom of the fixed stage. The road viewport
+  ends at the bay's top edge, and touch gas and brake controls remain above it, so gameplay and
+  controls are never rendered behind the dashboard.
 - HUD data continues to come from `GameHudSnapshot`; styling must not create a second gameplay state.
 - Semantic labels and live status remain available to assistive technology even when the visual HUD
   is scaled with the pixel-art stage.
