@@ -5,6 +5,7 @@
   interpolate-size: allow-keywords;
 
   --accent-color: #e88a2a;
+  --hud-color: #a5f6fb; /* was #d7e1df */
 }
 
 html {
@@ -154,49 +155,54 @@ body.is-playing #main-foot {
   isolation: isolate;
   background:
     linear-gradient(180deg, #1a252d 0 2px, transparent 2px calc(100% - 3px), #030508 100%), #080b10;
-  color: #d7e1df;
+  color: var(--hud-color);
   font-family: 'BigSquareDots', 'Courier New', Courier, monospace;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   text-shadow: 0 1px 0 #020304;
-}
 
-.roll-on-hud::before {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  pointer-events: none;
-  content: '';
-  opacity: 0.16;
-  background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(169, 196, 193, 0.3) 2px 3px);
-}
-
-.roll-on-hud::after {
-  position: absolute;
-  z-index: 2;
-  inset: 4px 7px;
-  pointer-events: none;
-  content: '';
-  background:
-    radial-gradient(circle at 2px 2px, #d9dfd5 0 1px, #263841 1px 2px, transparent 2px),
-    radial-gradient(
-      circle at calc(100% - 2px) 2px,
-      #d9dfd5 0 1px,
-      #263841 1px 2px,
-      transparent 2px
-    ),
-    radial-gradient(
-      circle at 2px calc(100% - 2px),
-      #d9dfd5 0 1px,
-      #263841 1px 2px,
-      transparent 2px
-    ),
-    radial-gradient(
-      circle at calc(100% - 2px) calc(100% - 2px),
-      #d9dfd5 0 1px,
-      #263841 1px 2px,
-      transparent 2px
+  /* CRT scanlines */
+  &::before {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    pointer-events: none;
+    content: '';
+    opacity: 0.16;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent 0 2px,
+      rgba(169, 196, 193, 0.3) 2px 3px
     );
+  }
+
+  /* cabinet screws, one per corner */
+  &::after {
+    position: absolute;
+    z-index: 2;
+    inset: 4px 7px;
+    pointer-events: none;
+    content: '';
+    background-image:
+      url('/images/hud/cabinet-screw.png'), url('/images/hud/cabinet-screw.png'),
+      url('/images/hud/cabinet-screw.png'), url('/images/hud/cabinet-screw.png');
+    background-position:
+      left top,
+      right top,
+      left bottom,
+      right bottom;
+    background-repeat: no-repeat;
+    background-size: 8px 8px;
+    image-rendering: pixelated;
+  }
+
+  /* both layers are decoration; the OS palette supplies its own chrome */
+  @media (forced-colors: active) {
+    &::before,
+    &::after {
+      display: none;
+    }
+  }
 }
 
 .roll-on-hud-instruments {
@@ -219,11 +225,18 @@ body.is-playing #main-foot {
   min-height: 0;
   margin: 0;
   overflow: hidden;
-  border: 1px solid #566872;
+  border: 2px solid transparent;
+  border-image: url('/images/hud/instrument-bezel.png') 4 / 2px stretch;
   background: linear-gradient(135deg, #1a2630, #101722 45%, #0a1018);
+  image-rendering: pixelated;
   box-shadow:
     inset 1px 1px 0 #314550,
     inset -1px -1px 0 #050709;
+
+  @media (forced-colors: active) {
+    border: 1px solid CanvasText;
+    border-image: none;
+  }
 }
 
 .roll-on-hud-instrument-label {
@@ -248,6 +261,23 @@ body.is-playing #main-foot {
 .roll-on-hud-speed .roll-on-hud-instrument-body {
   position: relative;
   padding: 0;
+}
+
+.roll-on-hud-run {
+  text-align: center;
+
+  .roll-on-hud-sublabel {
+    font-size: 8px;
+  }
+
+  .roll-on-hud-run-time,
+  .roll-on-hud-score-value {
+    overflow: hidden;
+    color: var(--hud-color);
+    font-family: 'DSEG7', monospace;
+    font-size: 11px;
+    white-space: nowrap;
+  }
 }
 
 .roll-on-speedometer {
@@ -281,7 +311,7 @@ body.is-playing #main-foot {
 }
 
 .roll-on-speedometer-tick {
-  stroke: #d7e1df;
+  stroke: var(--hud-color);
   stroke-width: 1px;
 }
 
@@ -294,27 +324,32 @@ body.is-playing #main-foot {
 .roll-on-speedometer-needle {
   transform: rotate(var(--roll-on-speed-angle, -135deg));
   transition: transform 90ms steps(3, end);
-}
 
-.roll-on-speedometer-needle line {
-  stroke: #f4f0df;
-  stroke-width: 2px;
-}
+  & line {
+    stroke: #f4f0df;
+    stroke-width: 2px;
+  }
 
-.roll-on-speedometer-needle circle {
-  fill: #d7e1df;
-  stroke: #050608;
-  stroke-width: 1px;
+  & circle {
+    fill: var(--hud-color);
+    stroke: #050608;
+    stroke-width: 1px;
+  }
+
+  /* the transform is the authoritative angle; only the tween is optional */
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
 .roll-on-speedometer-cruise-marker {
   transform: rotate(var(--roll-on-cruise-angle, -135deg));
-}
 
-.roll-on-speedometer-cruise-marker path {
-  fill: #7ed9f1;
-  stroke: #050608;
-  stroke-width: 1px;
+  & path {
+    fill: #7ed9f1;
+    stroke: #050608;
+    stroke-width: 1px;
+  }
 }
 
 .roll-on-hud-speed-primary {
@@ -364,7 +399,7 @@ body.is-playing #main-foot {
 .roll-on-hud-compact-value,
 .roll-on-hud-compact-unit {
   overflow: hidden;
-  color: #d7e1df;
+  color: var(--hud-color);
   font-size: 8px;
   white-space: nowrap;
 }
@@ -372,13 +407,6 @@ body.is-playing #main-foot {
 .roll-on-hud-compact-unit {
   color: #799092;
   font-size: 6px;
-}
-
-.roll-on-hud-fuel .roll-on-hud-instrument-body {
-  display: grid;
-  grid-template-rows: 8px 1fr 8px 10px 8px;
-  justify-items: center;
-  padding: 1px 3px;
 }
 
 .roll-on-hud-scale-label,
@@ -391,7 +419,7 @@ body.is-playing #main-foot {
 .roll-on-hud-gauge-value {
   max-width: 100%;
   overflow: hidden;
-  color: #d7e1df;
+  color: var(--hud-color);
   font-size: 8px;
   line-height: 10px;
   white-space: nowrap;
@@ -405,44 +433,23 @@ body.is-playing #main-foot {
   border-radius: 0;
   background: #06090d;
   color: #b6c8c6;
-}
 
-.roll-on-hud-progress::-webkit-progress-bar {
-  background: #06090d;
-}
+  &::-webkit-progress-bar {
+    background: #06090d;
+  }
 
-.roll-on-hud-progress::-webkit-progress-value {
-  background: #b6c8c6;
-}
+  &::-webkit-progress-value {
+    background: #b6c8c6;
+  }
 
-.roll-on-hud-progress::-moz-progress-bar {
-  background: #b6c8c6;
-}
+  &::-moz-progress-bar {
+    background: #b6c8c6;
+  }
 
-.roll-on-hud-fuel .roll-on-hud-progress::-webkit-progress-value {
-  background: #62c77b;
-}
-
-.roll-on-hud-fuel .roll-on-hud-progress::-moz-progress-bar {
-  background: #62c77b;
-}
-
-.roll-on-hud-fuel[data-state='fumes'] .roll-on-hud-gauge-state {
-  color: #ff8273;
-  animation: roll-on-hud-warning-pulse 900ms steps(2, end) infinite;
-}
-
-.roll-on-hud-fuel[data-state='fumes'] .roll-on-hud-progress {
-  border-color: #ff8273;
-  color: #ff8273;
-}
-
-.roll-on-hud-fuel[data-state='fumes'] .roll-on-hud-progress::-webkit-progress-value {
-  background: #ff8273;
-}
-
-.roll-on-hud-fuel[data-state='fumes'] .roll-on-hud-progress::-moz-progress-bar {
-  background: #ff8273;
+  @media (forced-colors: active) {
+    forced-color-adjust: auto;
+    border-color: CanvasText;
+  }
 }
 
 .roll-on-hud-progress-vertical {
@@ -457,74 +464,128 @@ body.is-playing #main-foot {
   height: 7px;
 }
 
-.roll-on-hud-cargo .roll-on-hud-instrument-body {
-  display: grid;
-  grid-template-rows: 1fr 9px 10px 8px;
-  gap: 1px;
-  justify-items: center;
-  padding: 3px 5px;
+.roll-on-hud-fuel {
+  & .roll-on-hud-instrument-body {
+    display: grid;
+    grid-template-rows: 8px 1fr 8px 10px 8px;
+    justify-items: center;
+    padding: 1px 3px;
+  }
+
+  & .roll-on-hud-progress {
+    &::-webkit-progress-value {
+      background: #62c77b;
+    }
+
+    &::-moz-progress-bar {
+      background: #62c77b;
+    }
+  }
+
+  &[data-state='fumes'] {
+    & .roll-on-hud-gauge-state {
+      color: #ff8273;
+      animation: roll-on-hud-warning-pulse 900ms steps(2, end) infinite;
+
+      @media (prefers-reduced-motion: reduce) {
+        animation: none;
+      }
+
+      /* colour alone carries the warning otherwise */
+      @media (forced-colors: active) {
+        &::after {
+          content: '!';
+        }
+      }
+    }
+
+    & .roll-on-hud-progress {
+      border-color: #ff8273;
+      color: #ff8273;
+
+      &::-webkit-progress-value {
+        background: #ff8273;
+      }
+
+      &::-moz-progress-bar {
+        background: #ff8273;
+      }
+    }
+  }
 }
 
+.roll-on-hud-cargo {
+  & .roll-on-hud-instrument-body {
+    display: grid;
+    grid-template-rows: 1fr 9px 10px 8px;
+    gap: 1px;
+    justify-items: center;
+    padding: 3px 5px;
+  }
+
+  &[data-state='damaged'] {
+    & .roll-on-hud-gauge-state {
+      color: #e58d3c;
+
+      @media (forced-colors: active) {
+        &::after {
+          content: '!';
+        }
+      }
+    }
+
+    & .roll-on-hud-progress {
+      border-color: #e58d3c;
+      color: #e58d3c;
+
+      &::-webkit-progress-value {
+        background: #e58d3c;
+      }
+
+      &::-moz-progress-bar {
+        background: #e58d3c;
+      }
+    }
+  }
+
+  &[data-state='critical'] {
+    & .roll-on-hud-gauge-state {
+      color: #ff8273;
+      animation: roll-on-hud-warning-pulse 900ms steps(2, end) infinite;
+
+      @media (prefers-reduced-motion: reduce) {
+        animation: none;
+      }
+
+      @media (forced-colors: active) {
+        &::after {
+          content: '!';
+        }
+      }
+    }
+
+    & .roll-on-hud-progress {
+      border-color: #ff8273;
+      color: #ff8273;
+
+      &::-webkit-progress-value {
+        background: #ff8273;
+      }
+
+      &::-moz-progress-bar {
+        background: #ff8273;
+      }
+    }
+  }
+}
+
+/* sibling of the gauge, not a descendant selector — keep it flat */
 .roll-on-hud-cargo-icon {
-  position: relative;
   display: block;
-  width: 25px;
-  height: 17px;
-  border: 2px solid #91a9ab;
-  background: #17242a;
-}
-
-.roll-on-hud-cargo-icon::before,
-.roll-on-hud-cargo-icon::after {
-  position: absolute;
-  inset: 7px -2px;
-  display: block;
-  height: 2px;
-  background: #91a9ab;
-  content: '';
-}
-
-.roll-on-hud-cargo-icon::before {
-  transform: rotate(34deg);
-}
-
-.roll-on-hud-cargo-icon::after {
-  transform: rotate(-34deg);
-}
-
-.roll-on-hud-cargo[data-state='damaged'] .roll-on-hud-gauge-state {
-  color: #e58d3c;
-}
-
-.roll-on-hud-cargo[data-state='critical'] .roll-on-hud-gauge-state {
-  color: #ff8273;
-  animation: roll-on-hud-warning-pulse 900ms steps(2, end) infinite;
-}
-
-.roll-on-hud-cargo[data-state='damaged'] .roll-on-hud-progress {
-  border-color: #e58d3c;
-  color: #e58d3c;
-}
-
-.roll-on-hud-cargo[data-state='critical'] .roll-on-hud-progress {
-  border-color: #ff8273;
-  color: #ff8273;
-}
-
-.roll-on-hud-cargo[data-state='damaged'] .roll-on-hud-progress::-webkit-progress-value {
-  background: #e58d3c;
-}
-
-.roll-on-hud-cargo[data-state='critical'] .roll-on-hud-progress::-webkit-progress-value {
-  background: #ff8273;
-}
-
-.roll-on-hud-cargo[data-state='damaged'] .roll-on-hud-progress::-moz-progress-bar {
-  background: #e58d3c;
-}
-
-.roll-on-hud-cargo[data-state='critical'] .roll-on-hud-progress::-moz-progress-bar {
-  background: #ff8273;
+  width: 32px;
+  height: 36px;
+  background: transparent url('/images/hud/cargo-crate.png') center / contain no-repeat;
+  image-rendering: pixelated;
 }
 
 .roll-on-hud-run .roll-on-hud-instrument-body,
@@ -541,41 +602,31 @@ body.is-playing #main-foot {
   gap: 2px;
 }
 
-.roll-on-hud-run-time {
-  overflow: hidden;
-  color: #d7e1df;
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.roll-on-hud-score-value {
-  overflow: hidden;
-  color: #e7ece9;
-  font-size: 9px;
-  white-space: nowrap;
-}
-
-.roll-on-hud-route-value,
-.roll-on-hud-route-percent {
-  overflow: hidden;
-  color: #d7e1df;
-  font-size: 8px;
-  white-space: nowrap;
-}
-
-.roll-on-hud-route-progress {
-  position: relative;
-  min-width: 0;
-}
-
-.roll-on-hud-route-percent {
-  position: absolute;
-  inset: 0;
-  color: #e7ece9;
-  font-size: 6px;
-  line-height: 7px;
+.roll-on-hud-route {
   text-align: center;
-  text-shadow: 0 1px 0 #020304;
+
+  .roll-on-hud-route-value,
+  .roll-on-hud-route-percent {
+    overflow: hidden;
+    color: var(--hud-color);
+    font-size: 8px;
+    white-space: nowrap;
+  }
+
+  .roll-on-hud-route-progress {
+    position: relative;
+    min-width: 0;
+  }
+
+  .roll-on-hud-route-percent {
+    position: absolute;
+    inset: 0;
+    color: #e7ece9;
+    font-size: 6px;
+    line-height: 7px;
+    text-align: center;
+    text-shadow: 0 1px 0 #020304;
+  }
 }
 
 .roll-on-hud-messages {
@@ -610,6 +661,12 @@ body.is-playing #main-foot {
 .roll-on-hud-status {
   color: #b6c8c6;
   text-align: center;
+
+  &[data-status='jackknifed'],
+  &[data-status='crashed'],
+  &[data-status='fumes'] {
+    color: #ff8273;
+  }
 }
 
 .roll-on-hud-rage {
@@ -620,7 +677,7 @@ body.is-playing #main-foot {
 }
 
 .roll-on-hud-rage-value {
-  color: #d7e1df;
+  color: var(--hud-color);
 }
 
 .roll-on-hud-event {
@@ -635,47 +692,9 @@ body.is-playing #main-foot {
   font-size: 8px;
   opacity: 0;
   white-space: nowrap;
-}
 
-.roll-on-hud-event[data-visible='true'] {
-  opacity: 1;
-}
-
-.roll-on-hud-status[data-status='jackknifed'],
-.roll-on-hud-status[data-status='crashed'],
-.roll-on-hud-status[data-status='fumes'] {
-  color: #ff8273;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .roll-on-speedometer-needle {
-    transition: none;
-  }
-
-  .roll-on-hud-fuel[data-state='fumes'] .roll-on-hud-gauge-state {
-    animation: none;
-  }
-
-  .roll-on-hud-cargo[data-state='critical'] .roll-on-hud-gauge-state {
-    animation: none;
-  }
-}
-
-@media (forced-colors: active) {
-  .roll-on-hud::before,
-  .roll-on-hud::after {
-    display: none;
-  }
-
-  .roll-on-hud-progress {
-    forced-color-adjust: auto;
-    border-color: CanvasText;
-  }
-
-  .roll-on-hud-fuel[data-state='fumes'] .roll-on-hud-gauge-state::after,
-  .roll-on-hud-cargo[data-state='damaged'] .roll-on-hud-gauge-state::after,
-  .roll-on-hud-cargo[data-state='critical'] .roll-on-hud-gauge-state::after {
-    content: '!';
+  &[data-visible='true'] {
+    opacity: 1;
   }
 }
 

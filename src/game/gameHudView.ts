@@ -75,7 +75,7 @@ export function createGameHudView(): GameHudView {
   const elapsedTime = value('time', 'roll-on-hud-run-time', '00:00');
   const score = value('score', 'roll-on-hud-score-value', '0');
   const runWell = instrumentWell('run', 'RUN', [
-    labelledReading('TIME', elapsedTime),
+    labelledReading('TIME ELAPSED', elapsedTime),
     labelledReading('SCORE', score),
   ]);
 
@@ -90,7 +90,7 @@ export function createGameHudView(): GameHudView {
   const routeProgressText = value('route-progress-text', 'roll-on-hud-route-percent', '0%');
   const distanceTraveled = value('distance-traveled', 'roll-on-hud-route-value', '0.0 mi');
   const routeWell = instrumentWell('route', 'ROUTE', [
-    labelledReading('LEFT', distanceRemaining),
+    labelledReading('REMAINING', distanceRemaining),
     h('div', { className: 'roll-on-hud-route-progress' }, [routeProgress, routeProgressText]),
     labelledReading('TRAVELED', distanceTraveled),
   ]);

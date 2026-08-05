@@ -39,6 +39,9 @@ const CacheConfig = {
       '/icons/icon512_rounded.png',
       '/icons/icon-192x192.png',
       '/images/title.jpg',
+      '/images/hud/cabinet-screw.png',
+      '/images/hud/cargo-crate.png',
+      '/images/hud/instrument-bezel.png',
       '/images/vehicles/commuter-blue.png',
       '/images/vehicles/commuter-green.png',
       '/images/vehicles/commuter-red.png',
@@ -48,6 +51,8 @@ const CacheConfig = {
       '/images/vehicles/truck-trailer-white.png',
       '/fonts/bigsquaredots/stylesheet.css',
       '/fonts/bigsquaredots/BigSquareDots.woff2',
+      '/fonts/DSEG7/stylesheet.css',
+      '/fonts/DSEG7/DSEG7Classic-Regular.woff2',
     ];
   },
 };
