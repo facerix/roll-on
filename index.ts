@@ -1,4 +1,6 @@
 import '/components/UpdateNotification.js';
+import '/components/DispatchScreen.js';
+import type { DispatchSelectEventDetail } from '/components/DispatchScreen.js';
 import { serviceWorkerManager } from '/src/ServiceWorkerManager.js';
 import { h } from '/src/domUtils.js';
 import { startRoadGame } from '/src/game/roadGame.js';
@@ -6,14 +8,27 @@ import { measureRoadViewport } from '/src/game/roadViewport.js';
 import { installTitleScreenStartHandlers } from '/src/game/titleScreen.js';
 
 function setupTitleScreen(): void {
+  const dispatchScreenElement = document.querySelector('dispatch-screen');
+  if (!dispatchScreenElement) throw new Error('missing required dispatch-screen element');
+  const dispatchScreen = dispatchScreenElement;
+
   let activeGame: ReturnType<typeof startRoadGame> | null = null;
   let gameRoot: HTMLElement | null = null;
   let disposeTitleHandlers: (() => void) | null = null;
 
-  const startGame = (): void => {
+  const clearTitleScreen = (): void => {
     disposeTitleHandlers?.();
     disposeTitleHandlers = null;
     document.getElementById('title-screen')?.remove();
+  };
+
+  const clearDispatchScreen = (): void => {
+    dispatchScreen.hide();
+  };
+
+  const startGame = (): void => {
+    clearTitleScreen();
+    clearDispatchScreen();
     activeGame?.dispose();
     gameRoot?.remove();
 
@@ -29,12 +44,18 @@ function setupTitleScreen(): void {
     });
   };
 
+  function showDispatchScreen(): void {
+    clearTitleScreen();
+    dispatchScreen.show();
+  }
+
   function showTitleScreen(): void {
     activeGame?.dispose();
     activeGame = null;
     gameRoot?.remove();
     gameRoot = null;
     document.body.classList.remove('is-playing');
+    clearDispatchScreen();
 
     const titleScreen =
       document.getElementById('title-screen') ??
@@ -47,10 +68,21 @@ function setupTitleScreen(): void {
     disposeTitleHandlers = installTitleScreenStartHandlers({
       activationTarget: titleScreen,
       keyboardTarget: window,
-      onStart: startGame,
+      onStart: showDispatchScreen,
     });
     titleScreen.focus();
   }
+
+  dispatchScreen.addEventListener('dispatch-select', event => {
+    const { mode } = (event as CustomEvent<DispatchSelectEventDetail>).detail;
+    if (mode === 'campaign') {
+      startGame();
+      return;
+    }
+    // ENDLESS BLACKTOP has no route generator or session wiring yet (M8.3).
+    console.log(`[RollOn] Dispatch mode not implemented yet: ${mode}`);
+  });
+  dispatchScreen.addEventListener('dispatch-back', showTitleScreen);
 
   showTitleScreen();
 }

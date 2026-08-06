@@ -230,6 +230,27 @@ stage loop, exact-once failure, carryover snapshots, the provisional additive `2
 named stage subsystem seeds. `tests/unit/gameSession.test.ts` covers that contract. The project gate
 passes with `336` tests plus format, lint, typecheck, and build.
 
+### Dispatch navigation checkpoint — 2026-08-05
+
+A `DISPATCH` screen now sits between the title screen and gameplay. `src/game/dispatchScreen.ts` owns
+the DOM-free selection state machine — highlight position, wrap-around arrow navigation,
+`Enter`/`Space` confirmation, per-option click and hover, and `Escape` back to the title — while
+`components/DispatchScreen.ts` owns the persistent DOM, Shadow DOM presentation, focus lifecycle,
+and composed `dispatch-select` / `dispatch-back` events. Its warm Campaign and cool Challenge tiles
+use persistent gradient frames with focused and hovered neon glows. `index.ts` shows or hides the
+single component instance and reacts to those events rather than rebuilding the screen.
+
+`COAST TO COAST` starts the existing Stage 1 flow unchanged. `ENDLESS BLACKTOP` is selectable but
+intentionally inert until the seeded generator lands.
+
+Known deferred work created by this slice:
+
+- Dispatch does not yet construct a `GameSession`; `startRoadGame()` still builds the fixed route
+  internally. Session injection remains item 5 below.
+- The web component has no automated DOM-level coverage; the pure handler contract remains covered
+  by `tests/unit/dispatchScreen.test.ts`, while component lifecycle and presentation are verified in
+  a real browser.
+
 Resume with the seeded route-phrase generator, test-first, consuming
 `ChallengeStageIdentity.routeSource.seed`. Remaining M8.3 work, in dependency order:
 
