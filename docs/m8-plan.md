@@ -130,10 +130,43 @@ runs are still required before accepting the playable checkpoint or tuning secti
 
 ## M8.3 — Fixed routes versus seeded generation
 
-Treat route generation as a decision experiment, not a foregone implementation. Build the smallest
-pure seeded generator needed to produce several valid `2,200 m` candidate routes from the same
-segment vocabulary and constraints as Stage 1. Keep the accepted authored route as production
-default while evaluating candidates.
+### Accepted mode direction
+
+Use a deliberate hybrid separated by game mode rather than silently randomizing the campaign.
+After the title screen, a `DISPATCH` screen selects between a fixed-route campaign and a seeded
+Challenge run. The working presentation names are `COAST TO COAST` for the campaign and `ENDLESS
+BLACKTOP` for Challenge; final naming remains a presentation decision.
+
+- Campaign stages are authored, learnable, and individually tunable against their encounters.
+- Challenge consists of successive seeded stages, has its own score channel, and ends when the
+  player fails a stage.
+- A Challenge stage completion advances to an intermission and then a harder generated stage rather
+  than returning to Dispatch.
+- Generated routes are never substituted into Campaign implicitly.
+
+Challenge is planned as a roguelite rather than only an endless score attack. Cargo damage carries
+between stages, fuel receives a partial refill, and cumulative score, haul currency, and temporary
+run upgrades carry forward. The exact refill amount and future intermission economy remain tuning
+work. A failure clears the temporary run state and records the completed Challenge result.
+
+Reserve three distinct upgrade scopes so later progression does not become entangled with stage
+simulation:
+
+1. Permanent garage unlocks belong to the player profile.
+2. An equipped loadout defines what the truck brings into a run.
+3. Challenge run upgrades are temporary and reset when that run ends.
+
+Future ranked or daily Challenges may enforce a standard starting loadout for score fairness while
+ordinary Challenge runs use the player's equipped garage loadout. Upgrade effects must derive
+effective tuning from immutable base tuning; they must not mutate global defaults.
+
+### Seeded route experiment
+
+Build the smallest pure seeded generator needed to produce several valid `2,200 m` candidate routes
+from the same segment vocabulary and constraints as Stage 1. Generate from vetted route phrases
+within fixed gameplay section budgets rather than choosing arbitrary unconstrained lengths and
+curvatures. Keep the accepted authored route as the Campaign default while evaluating candidates in
+the Challenge context.
 
 Compare these options:
 
@@ -147,6 +180,15 @@ Use player comprehension, recovery windows, encounter coordination, replay value
 and authoring/maintenance cost as the decision criteria. Record the decision and rejected tradeoffs
 in this document before changing the production route source.
 
+One root Challenge identity owns the run seed and generator version. Derive named, independent
+substreams for every stage and for its route, encounters, traffic, and future shop offers. Adding a
+random choice to one subsystem must not perturb the others. Persist the resolved route definition in
+addition to its seed and generator version so a run remains reproducible after generator changes.
+
+The M8 implementation reserves but does not build the future truck-stop shop, currency economy, or
+upgrade catalog. Its session model must be able to carry those values without making route generation
+depend on them.
+
 ### Tests first
 
 - Equal seeds produce equal definitions; representative different seeds produce different routes.
@@ -154,12 +196,73 @@ in this document before changing the production route source.
   curvature, continuity, and finite-coordinate validation.
 - Invalid generator inputs and unsatisfiable constraints fail explicitly.
 - A replay records enough route identity to reproduce its geometry exactly.
+- Campaign and Challenge dispatch selections produce distinct session identities and route sources.
+- Challenge completion carries cargo damage, applies the accepted partial fuel refill policy, retains
+  cumulative score and run upgrades, increments stage number, and derives the next stage seed.
+- Challenge failure ends the run without leaking temporary state into a new run or Campaign.
+- Campaign and Challenge results cannot enter one another's score channel.
+
+### Session-model implementation checkpoint
+
+The pure session model now distinguishes authored Campaign sessions from seeded Challenge sessions
+before any navigation or route-generator UI is added. Campaign and Challenge carry explicit,
+different score channels. Challenge uses immutable `driving`, `intermission`, and `failed` snapshots;
+stage completion captures cargo damage, remaining fuel, cumulative score, earned haul currency, and
+opaque run-upgrade levels before the future truck-stop phase begins.
+
+Starting the next stage applies a provisional additive `25%` tank refill, clamped at full and
+supplied through an explicit intermission policy so later tuning does not alter transition logic.
+Cargo damage, currency, score, and run upgrades carry unchanged. Failure is exact-once, retains the
+failed-stage distance for result ordering, and a separately constructed run always starts without
+temporary state from the failed run.
+
+One validated `uint32` run seed plus generator version deterministically derives each positive stage
+number. Named route, encounter, traffic, and shop seeds are independent siblings, so consuming or
+adding randomness in one subsystem cannot advance another. Route definitions themselves remain the
+next generator slice and will be stored with this identity when generated.
+
+### Resume checkpoint — 2026-08-05
+
+Pause state: the pure session/seed model and its tests are implemented but not yet wired into
+`index.ts`, `roadGame.ts`, persistence, or presentation. `src/game/gameSession.ts` owns Campaign and
+Challenge identities, separate score-channel tags, the Challenge `driving → intermission → driving`
+stage loop, exact-once failure, carryover snapshots, the provisional additive `25%` fuel refill, and
+named stage subsystem seeds. `tests/unit/gameSession.test.ts` covers that contract. The project gate
+passes with `336` tests plus format, lint, typecheck, and build.
+
+Resume with the seeded route-phrase generator, test-first, consuming
+`ChallengeStageIdentity.routeSource.seed`. Remaining M8.3 work, in dependency order:
+
+1. Define a small library of vetted route phrases within the accepted section-length budgets.
+2. Generate deterministic route definitions from equal seeds, different definitions from
+   representative different seeds, and validate every result against length, curvature,
+   continuity, finite geometry, recovery-window, and global route-clearance constraints.
+3. Give generation a bounded attempt count and make invalid inputs or unsatisfiable constraints fail
+   explicitly. Record both generator identity and the resolved definition for durable reproduction.
+4. Produce and playtest several named seed candidates while the authored Stage 1 route remains the
+   Campaign default. Record comprehension, recovery, encounter-coordination, and map-legibility
+   evidence here.
+5. Build the `DISPATCH` presentation and navigation for the working `COAST TO COAST` and `ENDLESS
+   BLACKTOP` modes, then inject the selected route/session into gameplay instead of constructing the
+   fixed route inside `startRoadGame()`.
+6. Bridge stage terminal results into the Challenge session transitions, add the minimal deferred-shop
+   intermission/continue presentation, and start the next generated stage with accepted carryover.
+7. Tag persisted results with their mode/score channel and generated route identity when the pending
+   M6 tally and persistence work lands; do not mix Campaign and Challenge ordering.
+8. Run the full automated and browser matrices, including successive Challenge stages, fresh-run
+   isolation, phone controls, offline reload, and exact reproduction from recorded route identity.
+
+Do not implement the truck-stop economy, upgrade catalog, or permanent garage progression during
+M8.3. The session model reserves those seams; this milestone only proves deterministic generated
+routes and the multi-stage mode flow.
 
 ### Exit criterion
 
-We have a written fixed/generated/hybrid decision supported by deterministic prototypes and actual
-playtests. Experimental generator code that is not part of the decision is removed or kept behind
-an explicit development-only seam.
+The `DISPATCH` flow reaches the fixed Campaign route or a reproducible multi-stage Challenge run. We
+have a written hybrid decision supported by deterministic prototypes and actual playtests.
+Experimental generator code that is not part of the decision is removed or kept behind an explicit
+development-only seam. Upgrade and shop content remains deferred while the session contract needed
+by it is explicit and tested.
 
 ## M8.4 — Highway-patrol AI discovery and redesign
 
