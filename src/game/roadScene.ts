@@ -9,6 +9,10 @@ import type { TrafficVehicle } from '/src/game/traffic.js';
 import { buildRoadDebugDrawables } from '/src/game/roadDebug.js';
 import type { RoadDistanceWindow } from '/src/game/road.js';
 import { shortestHeadingDelta } from '/src/game/worldGeometry.js';
+import {
+  buildRoutePreviewDrawables,
+  DEFAULT_ROUTE_PREVIEW_TUNING,
+} from '/src/game/routePreview.js';
 
 export const COMMUTER_SPRITES = Object.freeze([
   '/images/vehicles/commuter-blue.png',
@@ -90,6 +94,8 @@ export interface BuildRoadSceneOptions {
   readonly focusDistanceAlongRouteMeters?: number;
   /** Route-space finish trigger; the visible band ends exactly at this distance. */
   readonly finishDistanceMeters?: number;
+  /** Explicit route-space progress used by the presentation-only route preview. */
+  readonly routePreviewDistanceMeters?: number;
 }
 
 export const DEFAULT_PARALLAX_LAYERS: readonly ParallaxLayerTuning[] = Object.freeze([
@@ -306,6 +312,24 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
   }
 
   drawables.push(...buildTruckDrawables(options.camera, options.truck, options.truckDimensions));
+
+  if (options.routePreviewDistanceMeters !== undefined) {
+    drawables.push(
+      ...buildRoutePreviewDrawables({
+        route: options.road.route,
+        distanceAlongRouteMeters: options.routePreviewDistanceMeters,
+        frame: {
+          x:
+            options.camera.viewportWidth -
+            DEFAULT_ROUTE_PREVIEW_TUNING.edgeInsetPixels -
+            DEFAULT_ROUTE_PREVIEW_TUNING.widthPixels,
+          y: DEFAULT_ROUTE_PREVIEW_TUNING.edgeInsetPixels,
+          width: DEFAULT_ROUTE_PREVIEW_TUNING.widthPixels,
+          height: DEFAULT_ROUTE_PREVIEW_TUNING.heightPixels,
+        },
+      })
+    );
+  }
 
   return {
     clear: tuning.backgroundColor,

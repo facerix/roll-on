@@ -39,6 +39,14 @@ export interface PolygonDrawable {
   color: Color;
 }
 
+/** Open stroked path in screen-pixel space. Points are rendered in caller order. */
+export interface PolylineDrawable {
+  kind: 'polyline';
+  points: readonly { readonly x: number; readonly y: number }[];
+  width: number;
+  color: Color;
+}
+
 /** Solid rectangle rotated around its center point. */
 export interface OrientedRectDrawable {
   kind: 'oriented-rect';
@@ -69,6 +77,7 @@ export interface OrientedSpriteDrawable {
 export type Drawable =
   | RectDrawable
   | PolygonDrawable
+  | PolylineDrawable
   | OrientedRectDrawable
   | OrientedSpriteDrawable;
 
@@ -151,6 +160,15 @@ export class Canvas2DRenderer implements Renderer {
           ctx.closePath();
           ctx.fill();
           break;
+        case 'polyline':
+          validatePolyline(d);
+          ctx.strokeStyle = d.color;
+          ctx.lineWidth = d.width;
+          ctx.beginPath();
+          ctx.moveTo(d.points[0]!.x, d.points[0]!.y);
+          for (const point of d.points.slice(1)) ctx.lineTo(point.x, point.y);
+          ctx.stroke();
+          break;
         case 'oriented-rect':
           ctx.fillStyle = d.color;
           ctx.save();
@@ -209,6 +227,23 @@ function validatePolygon(drawable: PolygonDrawable): void {
   for (const point of drawable.points) {
     if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
       throw new TypeError(`polygon points must be finite, got (${point.x}, ${point.y})`);
+    }
+  }
+}
+
+function validatePolyline(drawable: PolylineDrawable): void {
+  if (drawable.points.length < 2) {
+    throw new RangeError(`polyline needs at least 2 points, got ${drawable.points.length}`);
+  }
+  if (!Number.isFinite(drawable.width)) {
+    throw new TypeError(`polyline width must be finite, got ${drawable.width}`);
+  }
+  if (drawable.width <= 0) {
+    throw new RangeError(`polyline width must be positive, got ${drawable.width}`);
+  }
+  for (const point of drawable.points) {
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      throw new TypeError(`polyline points must be finite, got (${point.x}, ${point.y})`);
     }
   }
 }

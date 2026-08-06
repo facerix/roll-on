@@ -5,6 +5,7 @@ import type {
   Drawable,
   OrientedSpriteDrawable,
   PolygonDrawable,
+  PolylineDrawable,
   RectDrawable,
 } from '../../src/engine/renderer.ts';
 import { buildRoadCamera } from '../../src/game/roadCamera.ts';
@@ -23,6 +24,7 @@ import { createTruckState, type TruckState } from '../../src/game/truck.ts';
 import { createTrafficVehicle } from '../../src/game/traffic.ts';
 import { createRoute, routeToWorld } from '../../src/game/route.ts';
 import { getTruckTrailerCenter } from '../../src/game/roadCollision.ts';
+import { DEFAULT_ROUTE_PREVIEW_TUNING } from '../../src/game/routePreview.ts';
 
 const ROAD = createRoad(DEFAULT_ROAD_TUNING);
 const VIEWPORT = { width: 320, height: 480 };
@@ -68,6 +70,17 @@ function orientedSprites(drawables: readonly Drawable[]): OrientedSpriteDrawable
 
 function polygons(drawables: readonly Drawable[]): PolygonDrawable[] {
   return drawables.filter((d): d is PolygonDrawable => d.kind === 'polygon');
+}
+
+function polylines(drawables: readonly Drawable[]): PolylineDrawable[] {
+  return drawables.filter((d): d is PolylineDrawable => d.kind === 'polyline');
+}
+
+function lastIndexOfKind(drawables: readonly Drawable[], kind: Drawable['kind']): number {
+  for (let index = drawables.length - 1; index >= 0; index -= 1) {
+    if (drawables[index]!.kind === kind) return index;
+  }
+  return -1;
 }
 
 test('road scene emits drawables in back-to-front order', () => {
@@ -154,6 +167,45 @@ test('finish line is a checkered route-space band spanning the road at the autho
   assert.equal(
     Math.max(...ys),
     camera.anchorY - (10 - DEFAULT_ROAD_SCENE_TUNING.finishLineDepthMeters) * camera.pixelsPerMeter
+  );
+});
+
+test('route preview is an explicit top-right overlay driven by route-space progress', () => {
+  const route = createDefaultStageRoute();
+  const road = createRoad(DEFAULT_ROAD_TUNING, route);
+  const distanceAlongRouteMeters = 500;
+  const truck = truckAt(distanceAlongRouteMeters);
+  const camera = buildRoadCamera(truck.position, VIEWPORT, CAMERA_TUNING);
+  const scene = buildRoadScene({
+    road,
+    camera,
+    truck,
+    truckDimensions: TRUCK_DIMENSIONS,
+    routePreviewDistanceMeters: distanceAlongRouteMeters,
+  });
+  const previewLines = polylines(scene.drawables).filter(drawable =>
+    [
+      DEFAULT_ROUTE_PREVIEW_TUNING.routeShadowColor,
+      DEFAULT_ROUTE_PREVIEW_TUNING.routeColor,
+      DEFAULT_ROUTE_PREVIEW_TUNING.completedColor,
+    ].includes(drawable.color)
+  );
+  const frame = rects(scene.drawables).find(
+    drawable => drawable.color === DEFAULT_ROUTE_PREVIEW_TUNING.frameColor
+  );
+
+  assert.ok(frame);
+  assert.equal(
+    frame.x,
+    VIEWPORT.width -
+      DEFAULT_ROUTE_PREVIEW_TUNING.edgeInsetPixels -
+      DEFAULT_ROUTE_PREVIEW_TUNING.widthPixels
+  );
+  assert.equal(frame.y, DEFAULT_ROUTE_PREVIEW_TUNING.edgeInsetPixels);
+  assert.equal(previewLines.length, 3);
+  assert.ok(
+    lastIndexOfKind(scene.drawables, 'polyline') >
+      lastIndexOfKind(scene.drawables, 'oriented-sprite')
   );
 });
 

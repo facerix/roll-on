@@ -35,6 +35,8 @@ interface FakeCtx {
   ops: Op[];
   // Minimal surface the renderer is allowed to use. Extend as the renderer grows.
   fillStyle: string;
+  strokeStyle: string;
+  lineWidth: number;
   imageSmoothingEnabled: boolean;
   fillRect(x: number, y: number, w: number, h: number): void;
   beginPath(): void;
@@ -42,6 +44,7 @@ interface FakeCtx {
   lineTo(x: number, y: number): void;
   closePath(): void;
   fill(): void;
+  stroke(): void;
   save(): void;
   restore(): void;
   translate(x: number, y: number): void;
@@ -55,6 +58,8 @@ function makeFakeCtx(): FakeCtx {
     ops,
     // Backing fields; the proxy below intercepts to log writes.
     fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 1,
     imageSmoothingEnabled: true,
     fillRect(x, y, w, h) {
       ops.push({ kind: 'call', method: 'fillRect', args: [x, y, w, h] });
@@ -73,6 +78,9 @@ function makeFakeCtx(): FakeCtx {
     },
     fill() {
       ops.push({ kind: 'call', method: 'fill', args: [] });
+    },
+    stroke() {
+      ops.push({ kind: 'call', method: 'stroke', args: [] });
     },
     save() {
       ops.push({ kind: 'call', method: 'save', args: [] });
@@ -450,5 +458,97 @@ test('Canvas2DRenderer rejects insufficient or non-finite polygons', () => {
         ],
       }),
     TypeError
+  );
+});
+
+test('Canvas2DRenderer strokes polyline points in caller order without closing the path', () => {
+  const ctx = makeFakeCtx();
+  const r = new Canvas2DRenderer(ctx as unknown as CanvasRenderingContext2D);
+
+  r.draw({
+    clear: '#000',
+    width: 100,
+    height: 100,
+    drawables: [
+      {
+        kind: 'polyline',
+        points: [
+          { x: 10, y: 20 },
+          { x: 30, y: 20 },
+          { x: 20, y: 40 },
+        ],
+        width: 3,
+        color: '#abc',
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    ctx.ops
+      .filter(op => op.kind === 'call')
+      .map(op => (op.kind === 'call' ? [op.method, ...op.args] : null)),
+    [
+      ['fillRect', 0, 0, 100, 100],
+      ['beginPath'],
+      ['moveTo', 10, 20],
+      ['lineTo', 30, 20],
+      ['lineTo', 20, 40],
+      ['stroke'],
+    ]
+  );
+  assert.ok(
+    ctx.ops.some(op => op.kind === 'set' && op.prop === 'strokeStyle' && op.value === '#abc')
+  );
+  assert.ok(ctx.ops.some(op => op.kind === 'set' && op.prop === 'lineWidth' && op.value === 3));
+});
+
+test('Canvas2DRenderer rejects invalid polylines', () => {
+  const ctx = makeFakeCtx();
+  const r = new Canvas2DRenderer(ctx as unknown as CanvasRenderingContext2D);
+  const base = { clear: '#000', width: 100, height: 100 };
+
+  assert.throws(
+    () =>
+      r.draw({
+        ...base,
+        drawables: [{ kind: 'polyline', points: [{ x: 0, y: 0 }], width: 1, color: '#fff' }],
+      }),
+    RangeError
+  );
+  assert.throws(
+    () =>
+      r.draw({
+        ...base,
+        drawables: [
+          {
+            kind: 'polyline',
+            points: [
+              { x: 0, y: 0 },
+              { x: Number.NaN, y: 1 },
+            ],
+            width: 1,
+            color: '#fff',
+          },
+        ],
+      }),
+    TypeError
+  );
+  assert.throws(
+    () =>
+      r.draw({
+        ...base,
+        drawables: [
+          {
+            kind: 'polyline',
+            points: [
+              { x: 0, y: 0 },
+              { x: 1, y: 1 },
+            ],
+            width: 0,
+            color: '#fff',
+          },
+        ],
+      }),
+    RangeError
   );
 });

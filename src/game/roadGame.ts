@@ -254,6 +254,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
             barrierFlashSeconds > 0 ? BARRIER_FLASH_COLOR : DEFAULT_ROAD_SCENE_TUNING.barrierColor,
         },
         finishDistanceMeters: STAGE_1_FINISH_DISTANCE_METERS,
+        routePreviewDistanceMeters: drivingState.routePosition.distanceAlongRouteMeters,
       });
     },
   });
