@@ -11,7 +11,6 @@ interface PngHeader {
 
 const assets = [
   { path: 'images/hud/cargo-crate.png', width: 32, height: 36 },
-  { path: 'images/hud/instrument-bezel.png', width: 64, height: 40 },
   { path: 'images/hud/cabinet-screw.png', width: 8, height: 8 },
 ] as const;
 
