@@ -108,6 +108,26 @@ section lengths and curvature from those observations, not from route-map appear
 Stage 1 has a learnable rhythm, multiple memorable road sections, and no long final stretch that
 feels mechanically empty.
 
+### Implementation checkpoint
+
+The production route is now authored as seven immutable, named sections whose endpoints match the
+existing encounter bands exactly: launch/onboarding (`0–250 m`), opening alternating sweepers
+(`250–700 m`), patrol sightline (`700–950 m`), technical lull (`950–1,200 m`), mixed-pressure
+sweepers (`1,200–1,700 m`), recovery (`1,700–1,900 m`), and final gauntlet (`1,900–2,200 m`). Module
+initialization fails loudly if a section's segment lengths drift from its accepted endpoint.
+
+The patrol band begins with a `100 m` sightline and uses only one broad bend. The lull carries the
+first compact technical pair, the dense-pressure section returns to broader separated sweepers, and
+the `200 m` recovery straight precedes a faster opposing curve pair that continues to the finish.
+This keeps traffic pressure and geometric demand from peaking at the same band transitions.
+
+Structural tests lock the exact total, section distribution and direction changes, minimum bend
+radius, finite samples, continuous joins, and the non-empty final challenge. The full automated
+suite passes. Initial browser checks at native size and `374 × 516` forced-touch size reached the
+first sweeper in a collision-heavy unsteered run: the bend was readable in both road view and inset,
+controls and HUD remained clear, and the console stayed clean. Complete clean and collision-heavy
+runs are still required before accepting the playable checkpoint or tuning section geometry.
+
 ## M8.3 — Fixed routes versus seeded generation
 
 Treat route generation as a decision experiment, not a foregone implementation. Build the smallest
@@ -180,8 +200,8 @@ are added after the M8.4 design gate.
 
 - [x] The route map derives only from the active compiled route and route-space progress.
 - [x] Its corner and size are selected by playtesting, with no control or threat occlusion.
-- [ ] Stage 1 contains several intentional, tested road sections totaling `2,200 m`.
-- [ ] Encounter bands are reviewed against the revised geometry.
+- [x] Stage 1 contains several intentional, tested road sections totaling `2,200 m`.
+- [x] Encounter bands are reviewed against the revised geometry.
 - [ ] The fixed/generated/hybrid decision and its evidence are recorded.
 - [ ] Production route identity is reproducible for saved runs and bug reports.
 - [ ] Rylee is consulted before patrol behavior tests or implementation are changed.

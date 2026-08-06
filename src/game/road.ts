@@ -4,6 +4,7 @@ import {
   sampleRoute,
   type Route,
   type RouteSample,
+  type RouteSegmentDefinition,
 } from '/src/game/route.js';
 import type { WorldPoint } from '/src/game/worldGeometry.js';
 
@@ -62,26 +63,140 @@ export const DEFAULT_ROAD_TUNING: RoadTuning = Object.freeze({
   markerLengthMeters: 5,
 });
 
+export interface StageRouteSection {
+  readonly id: string;
+  readonly intent: string;
+  readonly startDistanceMeters: number;
+  readonly endDistanceMeters: number;
+  readonly segments: readonly RouteSegmentDefinition[];
+}
+
+interface StageRouteSectionSource {
+  readonly id: string;
+  readonly intent: string;
+  readonly endDistanceMeters: number;
+  readonly segments: readonly RouteSegmentDefinition[];
+}
+
 /**
- * The authored Stage 1 prototype route.  The two opposing arcs form a shallow
- * S after a long approach, leaving enough straight road for traffic to spawn
- * and for the player to read each bend before entering it.
+ * Stage 1 geometry grouped by gameplay intent and aligned with the authored
+ * encounter bands. Section ends are checked while this module initializes so
+ * an edit cannot silently shift patrol, lull, recovery, or gauntlet geometry.
+ */
+export const STAGE_1_ROUTE_SECTIONS: readonly StageRouteSection[] = createStageRouteSections([
+  {
+    id: 'launch-and-onboarding',
+    intent: 'A straight launch gives the player room to accelerate and learn lane control.',
+    endDistanceMeters: 250,
+    segments: [{ kind: 'straight', lengthMeters: 250 }],
+  },
+  {
+    id: 'opening-alternating-sweepers',
+    intent: 'Two broad opposing sweepers teach approach, steering, and recovery rhythm.',
+    endDistanceMeters: 700,
+    segments: [
+      { kind: 'straight', lengthMeters: 75 },
+      { kind: 'arc', lengthMeters: 125, curvaturePerMeter: 0.004 },
+      { kind: 'straight', lengthMeters: 50 },
+      { kind: 'arc', lengthMeters: 125, curvaturePerMeter: -0.004 },
+      { kind: 'straight', lengthMeters: 75 },
+    ],
+  },
+  {
+    id: 'patrol-sightline',
+    intent: 'A long entry sightline precedes one gentle bend during the first patrol spike.',
+    endDistanceMeters: 950,
+    segments: [
+      { kind: 'straight', lengthMeters: 100 },
+      { kind: 'arc', lengthMeters: 100, curvaturePerMeter: -0.003 },
+      { kind: 'straight', lengthMeters: 50 },
+    ],
+  },
+  {
+    id: 'technical-lull',
+    intent: 'Lower traffic makes room for a compact opposing curve pair with a recovery gap.',
+    endDistanceMeters: 1_200,
+    segments: [
+      { kind: 'straight', lengthMeters: 50 },
+      { kind: 'arc', lengthMeters: 75, curvaturePerMeter: 0.006 },
+      { kind: 'straight', lengthMeters: 50 },
+      { kind: 'arc', lengthMeters: 75, curvaturePerMeter: -0.006 },
+    ],
+  },
+  {
+    id: 'mixed-pressure-sweepers',
+    intent: 'Broad separated bends keep dense mixed traffic readable without becoming empty.',
+    endDistanceMeters: 1_700,
+    segments: [
+      { kind: 'straight', lengthMeters: 125 },
+      { kind: 'arc', lengthMeters: 125, curvaturePerMeter: 0.0035 },
+      { kind: 'straight', lengthMeters: 125 },
+      { kind: 'arc', lengthMeters: 125, curvaturePerMeter: -0.0035 },
+    ],
+  },
+  {
+    id: 'recovery',
+    intent: 'A sustained straight lets the player stabilize before the final demand.',
+    endDistanceMeters: 1_900,
+    segments: [{ kind: 'straight', lengthMeters: 200 }],
+  },
+  {
+    id: 'final-gauntlet',
+    intent: 'A faster opposing curve pair carries meaningful steering pressure to the finish.',
+    endDistanceMeters: 2_200,
+    segments: [
+      { kind: 'straight', lengthMeters: 60 },
+      { kind: 'arc', lengthMeters: 90, curvaturePerMeter: -0.0065 },
+      { kind: 'straight', lengthMeters: 60 },
+      { kind: 'arc', lengthMeters: 90, curvaturePerMeter: 0.0065 },
+    ],
+  },
+]);
+
+/**
+ * The authored Stage 1 route. Its sections share boundaries with the encounter
+ * timeline so geometry and traffic pressure can be tuned as one rhythm.
  */
 export function createDefaultStageRoute(): Route {
   return createRoute({
     origin: { xMeters: 0, yMeters: 0 },
     headingRadians: 0,
-    segments: [
-      { kind: 'straight', lengthMeters: 320 },
-      { kind: 'arc', lengthMeters: 180, curvaturePerMeter: 0.004 },
-      { kind: 'arc', lengthMeters: 180, curvaturePerMeter: -0.004 },
-      { kind: 'straight', lengthMeters: 1_520 },
-    ],
+    segments: STAGE_1_ROUTE_SECTIONS.flatMap(section => section.segments),
     constraints: {
       maximumAbsoluteRoadOffsetMeters: 10,
       minimumBendRadiusMeters: 100,
     },
   });
+}
+
+function createStageRouteSections(
+  sources: readonly StageRouteSectionSource[]
+): readonly StageRouteSection[] {
+  let startDistanceMeters = 0;
+  const sections = sources.map(source => {
+    const segments = Object.freeze(source.segments.map(segment => Object.freeze({ ...segment })));
+    const sectionLengthMeters = segments.reduce(
+      (total, segment) => total + segment.lengthMeters,
+      0
+    );
+    const actualEndDistanceMeters = startDistanceMeters + sectionLengthMeters;
+    if (actualEndDistanceMeters !== source.endDistanceMeters) {
+      throw new RangeError(
+        `Stage route section ${source.id} must end at ${source.endDistanceMeters} m, got ${actualEndDistanceMeters} m`
+      );
+    }
+
+    const section = Object.freeze({
+      id: source.id,
+      intent: source.intent,
+      startDistanceMeters,
+      endDistanceMeters: actualEndDistanceMeters,
+      segments,
+    });
+    startDistanceMeters = actualEndDistanceMeters;
+    return section;
+  });
+  return Object.freeze(sections);
 }
 
 export function createRoad(tuning: RoadTuning, route: Route = defaultStraightRoute()): Road {

@@ -75,12 +75,12 @@ function runSeededWindingRoute(seed: number): {
   return { state, trafficState };
 }
 
-test('the default authored route is a long, deterministic shallow S-curve', () => {
+test('the default authored route begins with deterministic alternating sweepers', () => {
   const route = createDefaultStageRoute();
   assert.equal(route.totalLengthMeters, 2_200);
-  assert.equal(sampleRoute(route, 320).curvaturePerMeter, 0.004);
-  assert.equal(sampleRoute(route, 500).curvaturePerMeter, -0.004);
-  assert.equal(sampleRoute(route, 680).curvaturePerMeter, 0);
+  assert.equal(sampleRoute(route, 350).curvaturePerMeter, 0.004);
+  assert.equal(sampleRoute(route, 550).curvaturePerMeter, -0.004);
+  assert.equal(sampleRoute(route, 700).curvaturePerMeter, 0);
 });
 
 test('a seeded fixed-step winding run keeps all systems finite and deterministic', () => {
