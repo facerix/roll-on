@@ -96,6 +96,10 @@ export function installDispatchScreenHandlers(opts: DispatchScreenOptions): () =
     if (key === 'Escape') {
       const onBack = opts.onBack;
       if (!onBack) return;
+      // The title screen is re-armed synchronously by onBack(). Stop this
+      // event before it bubbles to the newly installed title listener.
+      keyEvent.preventDefault();
+      keyEvent.stopPropagation();
       dispose();
       onBack();
     }

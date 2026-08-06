@@ -1,34 +1,23 @@
 import '/components/UpdateNotification.js';
+import '/components/TitleScreen.js';
 import '/components/DispatchScreen.js';
 import type { DispatchSelectEventDetail } from '/components/DispatchScreen.js';
 import { serviceWorkerManager } from '/src/ServiceWorkerManager.js';
 import { h } from '/src/domUtils.js';
 import { startRoadGame } from '/src/game/roadGame.js';
 import { measureRoadViewport } from '/src/game/roadViewport.js';
-import { installTitleScreenStartHandlers } from '/src/game/titleScreen.js';
 
-function setupTitleScreen(): void {
-  const dispatchScreenElement = document.querySelector('dispatch-screen');
-  if (!dispatchScreenElement) throw new Error('missing required dispatch-screen element');
-  const dispatchScreen = dispatchScreenElement;
+function setupGame(): void {
+  const titleScreen = document.querySelector('title-screen');
+  const dispatchScreen = document.querySelector('dispatch-screen');
+  if (!titleScreen || !dispatchScreen) throw new Error('missing required root elements');
 
   let activeGame: ReturnType<typeof startRoadGame> | null = null;
   let gameRoot: HTMLElement | null = null;
-  let disposeTitleHandlers: (() => void) | null = null;
-
-  const clearTitleScreen = (): void => {
-    disposeTitleHandlers?.();
-    disposeTitleHandlers = null;
-    document.getElementById('title-screen')?.remove();
-  };
-
-  const clearDispatchScreen = (): void => {
-    dispatchScreen.hide();
-  };
 
   const startGame = (): void => {
-    clearTitleScreen();
-    clearDispatchScreen();
+    titleScreen?.hide();
+    dispatchScreen.hide();
     activeGame?.dispose();
     gameRoot?.remove();
 
@@ -45,8 +34,9 @@ function setupTitleScreen(): void {
   };
 
   function showDispatchScreen(): void {
-    clearTitleScreen();
-    dispatchScreen.show();
+    titleScreen?.hide();
+    dispatchScreen?.show();
+    dispatchScreen?.focus();
   }
 
   function showTitleScreen(): void {
@@ -55,23 +45,15 @@ function setupTitleScreen(): void {
     gameRoot?.remove();
     gameRoot = null;
     document.body.classList.remove('is-playing');
-    clearDispatchScreen();
+    dispatchScreen?.hide();
 
-    const titleScreen =
-      document.getElementById('title-screen') ??
-      h('main', { id: 'title-screen', role: 'button', tabIndex: 0, ariaLabel: 'Start game' }, [
-        h('p', { id: 'start-hint', textContent: 'Press Start' }),
-      ]);
-    if (!titleScreen.isConnected) document.body.appendChild(titleScreen);
-
-    disposeTitleHandlers?.();
-    disposeTitleHandlers = installTitleScreenStartHandlers({
-      activationTarget: titleScreen,
-      keyboardTarget: window,
-      onStart: showDispatchScreen,
-    });
-    titleScreen.focus();
+    titleScreen?.show();
+    titleScreen?.focus();
   }
+
+  titleScreen.addEventListener('title-select', () => {
+    showDispatchScreen();
+  });
 
   dispatchScreen.addEventListener('dispatch-select', event => {
     const { mode } = (event as CustomEvent<DispatchSelectEventDetail>).detail;
@@ -87,7 +69,11 @@ function setupTitleScreen(): void {
   showTitleScreen();
 }
 
-const whenLoaded = customElements.whenDefined('update-notification');
+const whenLoaded = Promise.all([
+  customElements.whenDefined('update-notification'),
+  customElements.whenDefined('title-screen'),
+  customElements.whenDefined('dispatch-screen'),
+]);
 
 whenLoaded.then(async () => {
   const updateNotification = document.querySelector('update-notification');
@@ -98,5 +84,5 @@ whenLoaded.then(async () => {
   });
 
   await serviceWorkerManager.register();
-  setupTitleScreen();
+  setupGame();
 });
