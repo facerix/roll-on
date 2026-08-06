@@ -381,7 +381,17 @@ blur, or mismatched window geometry.
 The dashboard clearly evokes the concept's metal arcade cluster without making decoration a hidden
 layout dependency.
 
-### M7.7 — Integrate status, events, controls, and accessibility
+#### Implementation notes
+
+The asset rules anticipated one large transparent dashboard skin plus a cargo icon. Implementation
+instead builds the cabinet almost entirely from CSS (gradients, `outset` borders, `box-shadow` bevels,
+`corner-shape: bevel`) and uses only two small raster assets — a repeated corner screw and the cargo
+crate glyph — both decorative and `pointer-events: none`. This still satisfies the accepted technical
+approach ("CSS defines the durable geometry... a transparent pixel-art dashboard skin may add
+highlights, screws...") and is a stronger no-skin fallback than a single large PNG would have been,
+since removing either raster asset degrades nothing but a highlight.
+
+### M7.7 — Integrate status, events, controls, and accessibility ✅
 
 Fit prioritized status and transient events into the lower message strip. Reconcile touch-control
 clearance with the final dashboard silhouette. Finish semantic labels, reduced motion, contrast,
@@ -407,7 +417,26 @@ service-worker update/reload behavior.
 The production dashboard communicates every gameplay-critical state without obscuring the road,
 controls, or terminal flow.
 
-### M7.8 — Visual calibration and closeout
+#### Implementation notes
+
+- `resolveStatusText` in `gameHud.ts` enforces one deterministic priority order — stage complete,
+  crashed, jackknifed, Fumes, transient event, driving — covered by
+  `status priority remains deterministic for overlapping urgent conditions`.
+- Status (`role="status"`, `aria-live="polite"`) and event (`<output>`, `aria-live="polite"`) are the
+  only live regions; speed, fuel, cargo, time, and score update via plain text content, not live
+  regions.
+- Cargo severity is communicated through the always-visible `INTACT`/`DAMAGED`/`CRITICAL` text label,
+  not color alone; Fumes and cargo-critical states add a `forced-colors` `!` glyph so the warning
+  survives with color suppressed.
+- The speedometer SVG and decorative screw/crate raster art are `aria-hidden`/`pointer-events: none`
+  and excluded from the accessibility tree.
+- Reduced motion is honored for the needle transition and both warning-pulse animations
+  (`prefers-reduced-motion: reduce` removes the tween/animation; the underlying value is unaffected).
+- The HUD bay height (`stageLayout.ts#HUD_HEIGHT_PIXELS = 126`) is unchanged from M6, so the existing
+  touch-control clearance above the bay still holds; the touch pad is an unrelated shadow-DOM overlay
+  this branch did not restyle.
+
+### M7.8 — Visual calibration and closeout ✅
 
 Compare the implementation against the concept at equal composition size. Judge hierarchy,
 silhouette, palette, density, and peripheral readability—not high-resolution detail count.
@@ -475,18 +504,23 @@ Browser verification must include:
 
 ## Completion checklist
 
-- [ ] HUD truth comes exclusively from validated snapshot/run inputs.
-- [ ] Road canvas and HUD bay retain an exact non-overlapping boundary.
-- [ ] Analog speed, cruise, fuel, cargo, time, score, and route instruments are live.
-- [ ] Current values remain legible at the smallest accepted display.
-- [ ] Status and event priority remains deterministic.
-- [ ] No fictional credits, level, speed, score, or continue state appears authoritative.
-- [ ] Decorative skin failure leaves a complete usable dashboard.
-- [ ] New assets are copied, cached, and available offline.
-- [ ] Touch and keyboard controls remain unobstructed.
-- [ ] Reduced-motion and high-contrast presentations retain all gameplay information.
-- [ ] Automated checks pass and the browser matrix has no console errors.
-- [ ] Curvature, bloom, distortion, and WebGL remain absent from the implementation.
+- [x] HUD truth comes exclusively from validated snapshot/run inputs.
+- [x] Road canvas and HUD bay retain an exact non-overlapping boundary (`HUD_HEIGHT_PIXELS` unchanged
+      from M6; road viewport ends exactly at the bay).
+- [x] Analog speed, cruise, fuel, cargo, time, score, and route instruments are live.
+- [x] Status and event priority remains deterministic (`resolveStatusText`, tested).
+- [x] No fictional credits, level, speed, score, or continue state appears authoritative.
+- [x] Decorative skin failure leaves a complete usable dashboard (screws/crate art are
+      `background-image` on decorative elements; no `<img>` is load-bearing for layout).
+- [x] New assets are copied, cached, and available offline (`images/hud/*`, `fonts/DSEG7/*` present
+      in both `scripts/copy-assets.mjs` and `sw-core.js#getStaticAssets()`).
+- [x] Reduced-motion and high-contrast presentations retain all gameplay information (needle tween,
+      Fumes/critical pulse, and forced-colors `!` glyphs verified in CSS).
+- [x] Curvature, bloom, distortion, and WebGL remain absent from the implementation.
+- [x] Current values remain legible at the smallest accepted display — browser-verified.
+- [x] Touch and keyboard controls remain unobstructed — browser-verified.
+- [x] Automated checks pass (`pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm build`
+      all green) and the browser matrix has no console errors — browser-verified.
 
 ## Decision carried into implementation
 
