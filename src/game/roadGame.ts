@@ -25,6 +25,7 @@ import {
 import { buildRoadCameraTuning } from '/src/game/roadViewport.js';
 import { calculateScore } from '/src/game/score.js';
 import { createRunTerminalView } from '/src/game/runTerminalView.js';
+import { createPauseMenuView, type PauseMenuView } from '/src/game/pauseMenuView.js';
 import {
   STAGE_1_FINISH_DISTANCE_METERS,
   advanceElapsedRunSeconds,
@@ -77,6 +78,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
   let trafficEventText = '';
   let cameraRotationRadians = 0;
   let elapsedRunSeconds = 0;
+  let isPaused = false;
   let stageRun = createStageRunState();
   let cruiseControl: CruiseControlState = createCruiseControlState();
   const worldFixedCamera = isWorldFixedCamera();
@@ -86,11 +88,13 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
     onRetry: options.onRetry,
     onExitToTitle: options.onExitToTitle,
   });
+  let pauseMenu: PauseMenuView | null = null;
   updateHud();
 
   const mountedGame = mountGame({
     root: options.root,
     update: (dt, input) => {
+      if (isPaused) return;
       elapsedRunSeconds = advanceElapsedRunSeconds(elapsedRunSeconds, dt, stageRun);
       if (stageRun.phase !== 'running') return;
       const previousRouteDistanceMeters = drivingState.routePosition.distanceAlongRouteMeters;
@@ -176,6 +180,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       stageRun = nextStageRun;
       updateHud();
       if (didTerminate) {
+        pauseMenu?.hide();
         mountedGame.setInteractionEnabled(false);
         terminal.show(buildRunTerminalPresentation(stageRun));
       }
@@ -260,12 +265,26 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
   });
   mountedGame.stage.appendChild(hud.root);
   mountedGame.stage.appendChild(terminal.root);
+  pauseMenu = createPauseMenuView({
+    onPause: () => {
+      isPaused = true;
+      mountedGame.setInteractionEnabled(false);
+    },
+    onResume: () => {
+      isPaused = false;
+      mountedGame.setInteractionEnabled(true);
+    },
+    onExitToTitle: options.onExitToTitle,
+  });
+  mountedGame.stage.appendChild(pauseMenu.root);
+  pauseMenu.show();
 
   return {
     dispose() {
       mountedGame.dispose();
       hud.root.remove();
       terminal.dispose();
+      pauseMenu?.dispose();
     },
   };
 

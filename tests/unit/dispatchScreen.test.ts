@@ -126,12 +126,14 @@ test('disposing inside onSelect prevents a second selection', () => {
 
 test('Escape leaves dispatch through onBack exactly once', () => {
   const h = harness();
-  h.keyboard.dispatchEvent(keyDown('Escape'));
+  const escape = keyDown('Escape');
+  h.keyboard.dispatchEvent(escape);
   h.keyboard.dispatchEvent(keyDown('Escape'));
   h.keyboard.dispatchEvent(keyDown('Enter'));
 
   assert.equal(h.backs.count, 1);
   assert.deepEqual(h.selections, []);
+  assert.equal(escape.cancelBubble, true);
 });
 
 test('Tab and modifier chords neither select nor move the highlight', () => {
