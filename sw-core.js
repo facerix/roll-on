@@ -53,6 +53,7 @@ const CacheConfig = {
       '/fonts/bigsquaredots/BigSquareDots.woff2',
       '/fonts/DSEG7/stylesheet.css',
       '/fonts/DSEG7/DSEG7Classic-Regular.woff2',
+      '/fonts/DSEG7/DSEG7Classic-Bold.woff2',
     ];
   },
 };

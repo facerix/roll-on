@@ -161,21 +161,6 @@ body.is-playing #main-foot {
   line-height: 1;
   text-shadow: 0 1px 0 #020304;
 
-  /* CRT scanlines */
-  &::before {
-    position: absolute;
-    z-index: 0;
-    inset: 0;
-    pointer-events: none;
-    content: '';
-    opacity: 0.16;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent 0 2px,
-      rgba(169, 196, 193, 0.3) 2px 3px
-    );
-  }
-
   /* cabinet screws, one per corner */
   &::after {
     position: absolute;
@@ -187,10 +172,10 @@ body.is-playing #main-foot {
       url('/images/hud/cabinet-screw.png'), url('/images/hud/cabinet-screw.png'),
       url('/images/hud/cabinet-screw.png'), url('/images/hud/cabinet-screw.png');
     background-position:
-      left top,
-      right top,
-      left bottom,
-      right bottom;
+      5px 5px,
+      92px 5px,
+      5px 83px,
+      92px 83px;
     background-repeat: no-repeat;
     background-size: 8px 8px;
     image-rendering: pixelated;
@@ -210,24 +195,27 @@ body.is-playing #main-foot {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 108px 36px 62px 80px 78px;
+  grid-template-columns: 98px 36px 62px 80px 78px;
   gap: 2px;
   min-width: 0;
   min-height: 0;
   margin: 0;
-  padding: 0;
+  padding: 2px;
+  background-color: #303652;
+  border: 3px outset #859bb3;
+  border-radius: 5px;
+  corner-shape: bevel;
 }
 
 .roll-on-hud-instrument {
   display: grid;
-  grid-template-rows: 13px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   margin: 0;
   overflow: hidden;
-  border: 2px solid transparent;
-  border-image: url('/images/hud/instrument-bezel.png') 4 / 2px stretch;
-  background: linear-gradient(135deg, #1a2630, #101722 45%, #0a1018);
+  border: 2px outset #859bb3;
+  background: linear-gradient(180deg, #122b44, #101722 45%, #0a1018);
   image-rendering: pixelated;
   box-shadow:
     inset 1px 1px 0 #314550,
@@ -239,23 +227,18 @@ body.is-playing #main-foot {
   }
 }
 
-.roll-on-hud-instrument-label {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  margin: 0;
-  border-bottom: 1px solid #354650;
-  color: #91a9ab;
-  font-size: 7px;
-  letter-spacing: 0.08em;
-}
-
 .roll-on-hud-instrument-body {
   min-width: 0;
   min-height: 0;
   margin: 0;
   padding: 3px;
+}
+
+.roll-on-hud-speed {
+  width: 88px;
+  height: 88px;
+  justify-self: center;
+  border-radius: 50%;
 }
 
 .roll-on-hud-speed .roll-on-hud-instrument-body {
@@ -274,18 +257,17 @@ body.is-playing #main-foot {
   .roll-on-hud-score-value {
     overflow: hidden;
     color: var(--hud-color);
-    font-family: 'DSEG7', monospace;
+    font-family: 'DSEG7-Bold', monospace;
     font-size: 11px;
     white-space: nowrap;
   }
 }
 
 .roll-on-speedometer {
-  position: absolute;
-  inset: 0 auto auto 1px;
   display: block;
-  width: 104px;
-  height: 68px;
+  width: 76px;
+  height: 50px;
+  margin: 4px auto 0;
   overflow: visible;
 }
 
@@ -326,7 +308,7 @@ body.is-playing #main-foot {
   transition: transform 90ms steps(3, end);
 
   & line {
-    stroke: #f4f0df;
+    stroke: #da322c;
     stroke-width: 2px;
   }
 
@@ -354,7 +336,7 @@ body.is-playing #main-foot {
 
 .roll-on-hud-speed-primary {
   position: absolute;
-  inset: 34px 6px auto;
+  inset: auto 0 20px 20px;
   display: flex;
   align-items: baseline;
   justify-content: center;
@@ -365,8 +347,8 @@ body.is-playing #main-foot {
 .roll-on-hud-speed-value {
   min-width: 2ch;
   overflow: hidden;
-  color: #e7ece9;
-  font-size: 26px;
+  font-family: 'DSEG7-Bold', monospace;
+  font-size: 16px;
   line-height: 0.9;
   text-align: right;
   white-space: nowrap;
@@ -381,11 +363,11 @@ body.is-playing #main-foot {
 
 .roll-on-hud-secondary-reading {
   position: absolute;
-  inset: auto 5px 3px;
+  inset: auto 12px 8px;
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
   gap: 2px;
+  justify-content: center;
   min-width: 0;
 }
 
@@ -412,7 +394,7 @@ body.is-playing #main-foot {
 .roll-on-hud-scale-label,
 .roll-on-hud-gauge-state {
   color: #799092;
-  font-size: 6px;
+  font-size: 8px;
   line-height: 8px;
 }
 

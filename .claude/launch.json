@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "roll-on",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["start"],
+      "port": 8018
+    }
+  ]
+}

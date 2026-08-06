@@ -123,7 +123,7 @@ test('HUD wireframe is one labelled section with five semantic instrument wells'
     ['speed', 'fuel', 'cargo', 'run', 'route']
   );
   assert.deepEqual(
-    wells.map(well => well.children[0]?.textContent),
+    wells.map(well => well.ariaLabel),
     ['SPEED', 'FUEL', 'CARGO', 'RUN', 'ROUTE']
   );
 

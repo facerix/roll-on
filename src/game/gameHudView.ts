@@ -197,11 +197,9 @@ function instrumentWell(name: string, label: string, body: Node[]): HTMLDivEleme
     {
       className: `roll-on-hud-instrument roll-on-hud-${name}`,
       dataset: { instrument: name },
+      ariaLabel: label,
     },
-    [
-      h('dt', { className: 'roll-on-hud-instrument-label', textContent: label }),
-      h('dd', { className: 'roll-on-hud-instrument-body' }, body),
-    ]
+    [h('dd', { className: 'roll-on-hud-instrument-body' }, body)]
   );
 }
 
