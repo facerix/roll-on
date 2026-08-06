@@ -1,5 +1,10 @@
-import { h } from '/src/domUtils.js';
+import { CreateSvg, h } from '/src/domUtils.js';
 import type { GameHudSnapshot } from '/src/game/gameHud.js';
+import {
+  SPEEDOMETER_VIEW_BOX,
+  buildSpeedometerSvgBody,
+  mapSpeedLevelToDialAngleDegrees,
+} from '/src/game/speedometer.js';
 
 export interface GameHudView {
   readonly root: HTMLElement;
@@ -7,86 +12,176 @@ export interface GameHudView {
 }
 
 export function createGameHudView(): GameHudView {
-  const speedValue = h('span', { className: 'roll-on-hud-speed-value', textContent: '0' });
-  const speedUnit = h('span', { className: 'roll-on-hud-speed-unit', textContent: 'MPH' });
-  const speedMetric = h('span', { className: 'roll-on-hud-subvalue', textContent: '0.0 m/s' });
-  const cruiseSpeed = h('span', { className: 'roll-on-hud-value', textContent: '0' });
-  const cargo = h('span', { className: 'roll-on-hud-value', textContent: '100%' });
-  const fuel = h('span', { className: 'roll-on-hud-value', textContent: '100%' });
-  const fuelFill = h('span', { className: 'roll-on-hud-fuel-fill' });
-  const fuelGauge = h('span', { className: 'roll-on-hud-fuel-gauge' }, [fuelFill]);
-  const distance = h('span', { className: 'roll-on-hud-value', textContent: '0 m' });
-  const routeProgress = h('span', { className: 'roll-on-hud-value', textContent: '0%' });
-  const score = h('span', { className: 'roll-on-hud-value', textContent: '0' });
-  const takedowns = h('span', { className: 'roll-on-hud-value', textContent: '0' });
+  const speedometer = CreateSvg(
+    buildSpeedometerSvgBody(),
+    104,
+    68,
+    'roll-on-speedometer',
+    SPEEDOMETER_VIEW_BOX
+  );
+  speedometer.dataset.field = 'speedometer';
+  speedometer.ariaHidden = 'true';
+  const speedValue = value('speed', 'roll-on-hud-speed-value', '0');
+  const speedUnit = value('speed-unit', 'roll-on-hud-speed-unit', 'MPH');
+  const cruiseSpeed = value('cruise', 'roll-on-hud-compact-value', '0');
+  const cruiseSpeedUnit = h('span', {
+    className: 'roll-on-hud-compact-unit',
+    dataset: { field: 'cruise-unit' },
+    textContent: 'MPH',
+  });
+  const speedWell = instrumentWell('speed', 'SPEED', [
+    speedometer,
+    h('div', { className: 'roll-on-hud-speed-primary' }, [speedValue, speedUnit]),
+    h('div', { className: 'roll-on-hud-secondary-reading' }, [
+      h('span', { className: 'roll-on-hud-sublabel', textContent: 'CRUISE' }),
+      cruiseSpeed,
+      cruiseSpeedUnit,
+    ]),
+  ]);
+
+  const fuelValue = value('fuel', 'roll-on-hud-gauge-value', '100%');
+  const fuelStatus = value('fuel-status', 'roll-on-hud-gauge-state', 'FUEL');
+  const fuelLevel = h('progress', {
+    className: 'roll-on-hud-progress roll-on-hud-progress-vertical',
+    dataset: { field: 'fuel-level' },
+    ariaLabel: 'Fuel level',
+    max: 1,
+    value: 1,
+  });
+  const fuelWell = instrumentWell('fuel', 'FUEL', [
+    h('span', { className: 'roll-on-hud-scale-label', textContent: 'F' }),
+    fuelLevel,
+    h('span', { className: 'roll-on-hud-scale-label', textContent: 'E' }),
+    fuelValue,
+    fuelStatus,
+  ]);
+
+  const cargoValue = value('cargo', 'roll-on-hud-gauge-value', '100%');
+  const cargoStatus = value('cargo-status', 'roll-on-hud-gauge-state', 'INTACT');
+  const cargoLevel = h('progress', {
+    className: 'roll-on-hud-progress roll-on-hud-progress-horizontal',
+    dataset: { field: 'cargo-level' },
+    ariaLabel: 'Cargo integrity',
+    max: 1,
+    value: 1,
+  });
+  const cargoWell = instrumentWell('cargo', 'CARGO', [
+    h('span', { className: 'roll-on-hud-cargo-icon', ariaHidden: 'true' }),
+    cargoLevel,
+    cargoValue,
+    cargoStatus,
+  ]);
+
+  const elapsedTime = value('time', 'roll-on-hud-run-time', '00:00');
+  const score = value('score', 'roll-on-hud-score-value', '0');
+  const runWell = instrumentWell('run', 'RUN', [
+    labelledReading('TIME ELAPSED', elapsedTime),
+    labelledReading('SCORE', score),
+  ]);
+
+  const distanceRemaining = value('distance-left', 'roll-on-hud-route-value', '0.0 mi');
+  const routeProgress = h('progress', {
+    className: 'roll-on-hud-progress roll-on-hud-progress-horizontal',
+    dataset: { field: 'route-progress' },
+    ariaLabel: 'Route progress',
+    max: 1,
+    value: 0,
+  });
+  const routeProgressText = value('route-progress-text', 'roll-on-hud-route-percent', '0%');
+  const distanceTraveled = value('distance-traveled', 'roll-on-hud-route-value', '0.0 mi');
+  const routeWell = instrumentWell('route', 'ROUTE', [
+    labelledReading('REMAINING', distanceRemaining),
+    h('div', { className: 'roll-on-hud-route-progress' }, [routeProgress, routeProgressText]),
+    labelledReading('TRAVELED', distanceTraveled),
+  ]);
+
+  const instruments = h('dl', { className: 'roll-on-hud-instruments' }, [
+    speedWell,
+    fuelWell,
+    cargoWell,
+    runWell,
+    routeWell,
+  ]);
+
+  const stage = value('stage', 'roll-on-hud-stage', 'STAGE 1');
   const status = h('span', {
     className: 'roll-on-hud-status',
+    dataset: { field: 'status', status: 'driving' },
     role: 'status',
     ariaLive: 'polite',
+    ariaAtomic: 'true',
     textContent: 'DRIVING',
   });
+  const takedowns = value('rage', 'roll-on-hud-rage-value', '0');
+  const rage = h('span', { className: 'roll-on-hud-rage' }, [
+    h('span', { className: 'roll-on-hud-sublabel', textContent: 'RAGE' }),
+    takedowns,
+  ]);
   const event = h('output', {
     className: 'roll-on-hud-event',
+    dataset: { field: 'event', visible: 'false' },
     ariaLive: 'polite',
+    ariaAtomic: 'true',
     textContent: '',
   });
+  const messages = h('div', { className: 'roll-on-hud-messages' }, [stage, status, rage, event]);
 
-  const root = h('section', { className: 'roll-on-hud', ariaLabel: 'Driving status' }, [
-    h('div', { className: 'roll-on-hud-brand', textContent: 'ROLL ON' }),
-    h('div', { className: 'roll-on-hud-speed' }, [
-      speedValue,
-      h('div', { className: 'roll-on-hud-speed-meta' }, [speedUnit, speedMetric]),
-    ]),
-    h('dl', { className: 'roll-on-hud-readouts' }, [
-      h('div', { className: 'roll-on-hud-readout' }, [
-        h('dt', { textContent: 'Cruise' }),
-        h('dd', {}, [
-          cruiseSpeed,
-          h('span', { className: 'roll-on-hud-unit', textContent: ' mph' }),
-        ]),
-      ]),
-      h('div', { className: 'roll-on-hud-readout' }, [
-        h('dt', { textContent: 'Cargo' }),
-        h('dd', {}, [cargo]),
-      ]),
-      h('div', { className: 'roll-on-hud-readout roll-on-hud-fuel' }, [
-        h('dt', { textContent: 'Fuel' }),
-        h('dd', {}, [fuel, fuelGauge]),
-      ]),
-      h('div', { className: 'roll-on-hud-readout' }, [
-        h('dt', { textContent: 'Run' }),
-        h('dd', {}, [distance]),
-      ]),
-      h('div', { className: 'roll-on-hud-readout' }, [
-        h('dt', { textContent: 'Route' }),
-        h('dd', {}, [routeProgress]),
-      ]),
-      h('div', { className: 'roll-on-hud-readout' }, [
-        h('dt', { textContent: 'Score' }),
-        h('dd', {}, [score]),
-      ]),
-      h('div', { className: 'roll-on-hud-readout' }, [
-        h('dt', { textContent: 'Rage' }),
-        h('dd', {}, [takedowns]),
-      ]),
-    ]),
-    status,
-    event,
-  ]);
+  const root = h(
+    'section',
+    {
+      className: 'roll-on-hud',
+      ariaLabel: 'Driving status',
+      dataset: { unitSystem: 'imperial', cargoSeverity: 'intact', fumes: 'false' },
+    },
+    [instruments, messages]
+  );
 
   return {
     root,
     update(snapshot) {
-      speedValue.textContent = snapshot.speedMphText;
-      speedMetric.textContent = snapshot.speedMetersPerSecondText;
-      cruiseSpeed.textContent = snapshot.cruiseSpeedMphText;
-      cargo.textContent = snapshot.cargoIntegrityText;
-      fuel.textContent = snapshot.fuelPercentText;
-      fuelFill.style.transform = `scaleX(${snapshot.fuelLevel})`;
-      fuelGauge.dataset.fumes = String(snapshot.isFuelInFumes);
-      distance.textContent = snapshot.distanceText;
-      routeProgress.textContent = snapshot.routeProgressText;
+      root.dataset.unitSystem = snapshot.unitSystem;
+      root.dataset.cargoSeverity = snapshot.cargoIntegritySeverity;
+      root.dataset.fumes = String(snapshot.isFuelInFumes);
+
+      speedValue.textContent = snapshot.speedText;
+      speedValue.ariaLabel = `${snapshot.speedText} ${snapshot.speedUnitText}`;
+      speedUnit.textContent = snapshot.speedUnitText;
+      cruiseSpeed.textContent = snapshot.cruiseSpeedText;
+      cruiseSpeed.ariaLabel = `Cruise target ${snapshot.cruiseSpeedText} ${snapshot.speedUnitText}`;
+      cruiseSpeedUnit.textContent = snapshot.speedUnitText;
+      speedometer.style.setProperty(
+        '--roll-on-speed-angle',
+        `${mapSpeedLevelToDialAngleDegrees(snapshot.speedLevel)}deg`
+      );
+      speedometer.style.setProperty(
+        '--roll-on-cruise-angle',
+        `${mapSpeedLevelToDialAngleDegrees(snapshot.cruiseSpeedLevel)}deg`
+      );
+
+      fuelValue.textContent = snapshot.fuelPercentText;
+      fuelValue.ariaLabel = `${snapshot.fuelStatusText} ${snapshot.fuelPercentText}`;
+      fuelStatus.textContent = snapshot.fuelStatusText;
+      fuelLevel.value = snapshot.fuelLevel;
+      fuelLevel.ariaValueText = snapshot.fuelPercentText;
+      fuelWell.dataset.state = snapshot.isFuelInFumes ? 'fumes' : 'normal';
+
+      cargoValue.textContent = snapshot.cargoIntegrityText;
+      cargoValue.ariaLabel = `Cargo integrity ${snapshot.cargoIntegrityText}, ${snapshot.cargoIntegritySeverity}`;
+      cargoStatus.textContent = snapshot.cargoIntegritySeverity.toUpperCase();
+      cargoLevel.value = snapshot.cargoIntegrityLevel;
+      cargoLevel.ariaValueText = snapshot.cargoIntegrityText;
+      cargoWell.dataset.state = snapshot.cargoIntegritySeverity;
+
+      elapsedTime.textContent = snapshot.elapsedTimeText;
       score.textContent = snapshot.scoreText;
+
+      distanceRemaining.textContent = snapshot.distanceRemainingText;
+      routeProgress.value = snapshot.routeProgress;
+      routeProgress.ariaValueText = snapshot.routeProgressText;
+      routeProgressText.textContent = snapshot.routeProgressText;
+      distanceTraveled.textContent = snapshot.distanceTraveledText;
+
+      stage.textContent = snapshot.stageText;
       takedowns.textContent = snapshot.takedownsText;
       status.textContent = snapshot.statusText;
       status.dataset.status = snapshot.statusText.toLowerCase().replaceAll(' ', '-');
@@ -94,4 +189,27 @@ export function createGameHudView(): GameHudView {
       event.dataset.visible = String(snapshot.eventText.length > 0);
     },
   };
+}
+
+function instrumentWell(name: string, label: string, body: Node[]): HTMLDivElement {
+  return h(
+    'div',
+    {
+      className: `roll-on-hud-instrument roll-on-hud-${name}`,
+      dataset: { instrument: name },
+      ariaLabel: label,
+    },
+    [h('dd', { className: 'roll-on-hud-instrument-body' }, body)]
+  );
+}
+
+function labelledReading(label: string, reading: HTMLElement): HTMLDivElement {
+  return h('div', { className: 'roll-on-hud-labelled-reading' }, [
+    h('span', { className: 'roll-on-hud-sublabel', textContent: label }),
+    reading,
+  ]);
+}
+
+function value(field: string, className: string, textContent: string): HTMLSpanElement {
+  return h('span', { className, dataset: { field }, textContent });
 }

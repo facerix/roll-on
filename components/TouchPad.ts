@@ -5,10 +5,14 @@
  *
  *   |---------|
  *   |         |
- *   |←       →|   steer left / steer right, at thumb height
+ *   |←       →|   portrait: steer at thumb height
  *   |         |
  *   |  [b][g] |   brake, gas
  *   |---------|
+ *
+ * In landscape, the fixed game stage becomes a narrow centre column. The
+ * controls leave that column and form steering / pedal clusters in the side
+ * gutters so both thumbs get full-size targets.
  *
  * It knows nothing about the game. It emits abstract `Action` names as DOM
  * events and `src/game/mount.ts` forwards them into `InputAdapter.setVirtual`,
@@ -71,20 +75,51 @@ const arrowRightSvg = CreateSvg('<path d="M8 2l11 10L8 22z" fill="currentColor"/
 
 const CSS = `
 :host {
-  /* Edges keep clear of notches and home indicators. */
-  --pad-edge-x: max(14px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
-  --pad-edge-y: max(18px, env(safe-area-inset-bottom, 0px));
-  --pad-hud-clearance: 120px;
-  --pad-steer-size: clamp(64px, 15vmin, 108px);
-  --pad-pedal-size: clamp(72px, 17vmin, 120px);
+  /* Physical-screen dimensions: this overlay deliberately lives outside the
+     scaled logical stage. Edges keep clear of notches and home indicators. */
+  --pad-edge-left: max(14px, env(safe-area-inset-left, 0px));
+  --pad-edge-right: max(14px, env(safe-area-inset-right, 0px));
+  --pad-control-inset: clamp(12px, 3vmin, 18px);
+  --pad-half-gap: clamp(6px, 1.5vmin, 10px);
+  --pad-steer-size: clamp(64px, 17vmin, 96px);
+  --pad-pedal-size: clamp(72px, 19vmin, 108px);
   --pad-ink: #f7ecd7;
   --pad-face: rgba(5, 6, 8, 0.46);
-  --pad-corner: 16px;
+  --pad-corner: clamp(12px, 4vmin, 18px);
   --pad-idle-opacity: 0.5;
+
+  /* Screen-space anchors supplied by mount.ts whenever the stage is fitted. */
+  --pad-stage-left: 0px;
+  --pad-stage-right: 100%;
+  --pad-stage-center-x: 50%;
+  --pad-road-top: 0px;
+  --pad-road-bottom: calc(100% - 126px);
+  --pad-portrait-steer-y: 50%;
+  --pad-landscape-control-y: 60%;
+  --pad-left-cluster-x: 25%;
+  --pad-right-cluster-x: 75%;
+
+  /* On exceptionally narrow landscape screens the gutters cannot contain a
+     whole cluster. Clamp its centre so targets remain on-screen and allow the
+     cluster to overlap the road edge instead. */
+  --pad-left-thumb-x: clamp(
+    calc(var(--pad-edge-left) + var(--pad-pedal-size) + var(--pad-half-gap)),
+    var(--pad-left-cluster-x),
+    calc(
+      100% - var(--pad-edge-right) - var(--pad-pedal-size) - var(--pad-half-gap)
+    )
+  );
+  --pad-right-thumb-x: clamp(
+    calc(var(--pad-edge-left) + var(--pad-pedal-size) + var(--pad-half-gap)),
+    var(--pad-right-cluster-x),
+    calc(
+      100% - var(--pad-edge-right) - var(--pad-pedal-size) - var(--pad-half-gap)
+    )
+  );
 
   position: absolute;
   inset: 0;
-  /* Above the HUD (z-index 20 in main.css) so controls are never occluded. */
+  /* Above the transformed stage and its HUD. */
   z-index: 30;
   display: none;
   /* The overlay itself must never eat taps meant for the canvas. */
@@ -160,7 +195,7 @@ button svg {
 
 [data-role='steer-left'],
 [data-role='steer-right'] {
-  top: 50%;
+  top: var(--pad-portrait-steer-y);
   width: var(--pad-steer-size);
   height: var(--pad-steer-size);
   transform: translateY(-50%);
@@ -172,31 +207,82 @@ button svg {
 }
 
 [data-role='steer-left'] {
-  left: var(--pad-edge-x);
+  left: max(
+    var(--pad-edge-left),
+    calc(var(--pad-stage-left) + var(--pad-control-inset))
+  );
 }
 
 [data-role='steer-right'] {
-  right: var(--pad-edge-x);
+  right: max(
+    var(--pad-edge-right),
+    calc(100% - var(--pad-stage-right) + var(--pad-control-inset))
+  );
 }
 
-/* Brake and gas sit just above the bottom HUD. Gas is on the right because
-   that is where a right thumb rests, matching a real pedal box and every
-   arcade cabinet we are borrowing from. */
+/* Brake and gas sit just above the displayed HUD, even when the stage is
+   vertically letterboxed. Gas stays on the right, matching a pedal box. */
 [data-role='brake'],
 [data-role='gas'] {
-  bottom: calc(var(--pad-edge-y) + var(--pad-hud-clearance));
+  top: calc(var(--pad-road-bottom) - var(--pad-pedal-size) - var(--pad-control-inset));
   width: var(--pad-pedal-size);
   height: var(--pad-pedal-size);
 }
 
 [data-role='brake'] {
-  right: calc(50% + 8px);
+  right: calc(100% - var(--pad-stage-center-x) + var(--pad-half-gap));
   color: #ff5f1f;
 }
 
 [data-role='gas'] {
-  left: calc(50% + 8px);
+  left: calc(var(--pad-stage-center-x) + var(--pad-half-gap));
   color: #f6d96d;
+}
+
+/* Landscape turns the otherwise empty side gutters into two broad thumb
+   zones. Keeping each action pair together also avoids reaching across the
+   road while the player is steering. */
+@media (orientation: landscape) {
+  :host {
+    --pad-steer-size: clamp(64px, 18vmin, 88px);
+    --pad-pedal-size: clamp(72px, 20vmin, 96px);
+  }
+
+  [data-role='steer-left'],
+  [data-role='steer-right'],
+  [data-role='brake'],
+  [data-role='gas'] {
+    top: var(--pad-landscape-control-y);
+    bottom: auto;
+    transform: translateY(-50%);
+  }
+
+  [data-role='steer-left'] {
+    right: calc(100% - var(--pad-left-thumb-x) + var(--pad-half-gap));
+    left: auto;
+  }
+
+  [data-role='steer-right'] {
+    right: auto;
+    left: calc(var(--pad-left-thumb-x) + var(--pad-half-gap));
+  }
+
+  [data-role='brake'] {
+    right: calc(100% - var(--pad-right-thumb-x) + var(--pad-half-gap));
+    left: auto;
+  }
+
+  [data-role='gas'] {
+    right: auto;
+    left: calc(var(--pad-right-thumb-x) + var(--pad-half-gap));
+  }
+
+  [data-role='steer-left'][data-pressed='true'],
+  [data-role='steer-right'][data-pressed='true'],
+  [data-role='brake'][data-pressed='true'],
+  [data-role='gas'][data-pressed='true'] {
+    transform: translateY(calc(-50% + 2px));
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -208,16 +294,6 @@ button svg {
   }
 }
 
-/* Short landscape (a phone held sideways) — reclaim vertical room so the
-   pedals don't crowd the horizon line. */
-@media (max-height: 480px) {
-  :host {
-    --pad-edge-y: max(10px, env(safe-area-inset-bottom, 0px));
-    --pad-hud-clearance: 108px;
-    --pad-pedal-size: clamp(60px, 22vmin, 92px);
-    --pad-steer-size: clamp(56px, 20vmin, 88px);
-  }
-}
 `;
 
 /** Read the `?touch` override. `null` = auto-detect. */
@@ -275,8 +351,7 @@ class TouchPad extends HTMLElement {
   #build(): void {
     this.#built = true;
     const shadow = this.attachShadow({ mode: 'open' });
-    const styles = document.createElement('style');
-    styles.textContent = CSS;
+    const styles = h('style', { textContent: CSS });
     shadow.appendChild(styles);
 
     // The group is announced as a whole; the individual buttons stay out of

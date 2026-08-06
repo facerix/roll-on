@@ -1,4 +1,4 @@
-import { buildGameHudSnapshot } from '/src/game/gameHud.js';
+import { DEFAULT_GAME_HUD_UNIT_SYSTEM, buildGameHudSnapshot } from '/src/game/gameHud.js';
 import { createGameHudView } from '/src/game/gameHudView.js';
 import {
   createCruiseControlState,
@@ -27,6 +27,7 @@ import { calculateScore } from '/src/game/score.js';
 import { createRunTerminalView } from '/src/game/runTerminalView.js';
 import {
   STAGE_1_FINISH_DISTANCE_METERS,
+  advanceElapsedRunSeconds,
   buildRunTerminalPresentation,
   createStageRunState,
   stepStageRun,
@@ -75,6 +76,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
   let trafficEventSeconds = 0;
   let trafficEventText = '';
   let cameraRotationRadians = 0;
+  let elapsedRunSeconds = 0;
   let stageRun = createStageRunState();
   let cruiseControl: CruiseControlState = createCruiseControlState();
   const worldFixedCamera = isWorldFixedCamera();
@@ -89,6 +91,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
   const mountedGame = mountGame({
     root: options.root,
     update: (dt, input) => {
+      elapsedRunSeconds = advanceElapsedRunSeconds(elapsedRunSeconds, dt, stageRun);
       if (stageRun.phase !== 'running') return;
       const previousRouteDistanceMeters = drivingState.routePosition.distanceAlongRouteMeters;
       const cruiseStep = stepCruiseControl(cruiseControl, {
@@ -163,6 +166,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
           speedMetersPerSecond: drivingState.truck.speedMetersPerSecond,
           fuelLevel: drivingState.fuel.level,
           cargoIntegrity: drivingState.truck.cargoIntegrity,
+          elapsedRunSeconds,
           score: buildCurrentScore(),
           roadRageCount: trafficState.takedowns,
           truckStatus: drivingState.truck.status,
@@ -284,6 +288,9 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         eventText: trafficEventText,
         routeDistanceMeters: drivingState.routePosition.distanceAlongRouteMeters,
         routeLengthMeters: STAGE_1_FINISH_DISTANCE_METERS,
+        elapsedRunSeconds,
+        stageNumber: 1,
+        unitSystem: DEFAULT_GAME_HUD_UNIT_SYSTEM,
         isStageComplete: stageRun.phase === 'completed',
         cruiseTargetSpeedMetersPerSecond: cruiseControl.targetSpeedMetersPerSecond,
       })

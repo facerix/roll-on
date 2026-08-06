@@ -28,8 +28,11 @@ import { Canvas2DRenderer } from '/src/engine/renderer.js';
 import type { Scene } from '/src/engine/renderer.js';
 import { InputAdapter } from '/src/engine/input.js';
 import { FpsMeter } from '/src/engine/fpsMeter.js';
+import { calculateTouchPadLayout } from '/src/game/touchPadLayout.js';
 import { runGameUpdate } from '/src/game/update.js';
 import {
+  HUD_HEIGHT_PIXELS,
+  ROAD_VIEWPORT_HEIGHT_PIXELS,
   STAGE_HEIGHT_PIXELS,
   STAGE_WIDTH_PIXELS,
   calculateStageLayout,
@@ -79,7 +82,7 @@ function isDebugFromUrl(): boolean {
 export function mountGame(opts: MountOptions): MountedGame {
   const canvas = h('canvas', {
     width: STAGE_WIDTH_PIXELS,
-    height: STAGE_HEIGHT_PIXELS,
+    height: ROAD_VIEWPORT_HEIGHT_PIXELS,
     className: 'roll-on-canvas',
     tabIndex: 0, // canvas needs tabindex to receive focus; arcade key capture wants focus
   });
@@ -121,12 +124,12 @@ export function mountGame(opts: MountOptions): MountedGame {
     touchPad.addEventListener('action-up', onPadUp);
   }
 
-  const overlays = [canvas, debugEl, touchPad].filter(el => el !== null);
+  const overlays = [canvas, debugEl].filter(el => el !== null);
   const stage = h(
     'div',
     {
       className: 'roll-on-game-stage',
-      style: `position:absolute;width:${STAGE_WIDTH_PIXELS}px;height:${STAGE_HEIGHT_PIXELS}px;transform-origin:top left;`,
+      style: `position:absolute;width:${STAGE_WIDTH_PIXELS}px;height:${STAGE_HEIGHT_PIXELS}px;--roll-on-hud-height:${HUD_HEIGHT_PIXELS}px;transform-origin:top left;`,
     },
     overlays
   );
@@ -136,21 +139,42 @@ export function mountGame(opts: MountOptions): MountedGame {
       'position:absolute;inset:0;overflow:hidden;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);',
   });
   shell.appendChild(stage);
+  if (touchPad) shell.appendChild(touchPad);
   opts.root.appendChild(shell);
 
   const applyStageLayout = (): void => {
     const shellRect = shell.getBoundingClientRect();
     const style = getComputedStyle(shell);
+    const viewport = { width: shellRect.width, height: shellRect.height };
+    const safeAreaInsets = {
+      top: Number.parseFloat(style.paddingTop),
+      right: Number.parseFloat(style.paddingRight),
+      bottom: Number.parseFloat(style.paddingBottom),
+      left: Number.parseFloat(style.paddingLeft),
+    };
     const layout = calculateStageLayout({
-      viewport: { width: shellRect.width, height: shellRect.height },
-      safeAreaInsets: {
-        top: Number.parseFloat(style.paddingTop),
-        right: Number.parseFloat(style.paddingRight),
-        bottom: Number.parseFloat(style.paddingBottom),
-        left: Number.parseFloat(style.paddingLeft),
-      },
+      viewport,
+      safeAreaInsets,
     });
     stage.style.transform = `translate(${layout.displayX}px, ${layout.displayY}px) scale(${layout.scale})`;
+
+    if (touchPad) {
+      const padLayout = calculateTouchPadLayout({ viewport, safeAreaInsets, stage: layout });
+      const properties = {
+        '--pad-stage-left': padLayout.stageLeft,
+        '--pad-stage-right': padLayout.stageRight,
+        '--pad-stage-center-x': padLayout.stageCenterX,
+        '--pad-road-top': padLayout.roadTop,
+        '--pad-road-bottom': padLayout.roadBottom,
+        '--pad-portrait-steer-y': padLayout.portraitSteerY,
+        '--pad-landscape-control-y': padLayout.landscapeControlY,
+        '--pad-left-cluster-x': padLayout.leftClusterX,
+        '--pad-right-cluster-x': padLayout.rightClusterX,
+      } as const;
+      for (const [property, value] of Object.entries(properties)) {
+        touchPad.style.setProperty(property, `${value}px`);
+      }
+    }
   };
   applyStageLayout();
   window.addEventListener('resize', applyStageLayout);

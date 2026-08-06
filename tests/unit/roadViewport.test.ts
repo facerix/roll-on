@@ -3,13 +3,21 @@ import assert from 'node:assert/strict';
 
 import { createRoad, DEFAULT_ROAD_TUNING } from '../../src/game/road.ts';
 import { buildRoadCameraTuning, measureRoadViewport } from '../../src/game/roadViewport.ts';
-import { STAGE_HEIGHT_PIXELS, STAGE_WIDTH_PIXELS } from '../../src/game/stageLayout.ts';
+import { ROAD_VIEWPORT_HEIGHT_PIXELS, STAGE_WIDTH_PIXELS } from '../../src/game/stageLayout.ts';
 
 test('road viewport always uses the fixed stage rather than browser dimensions', () => {
   assert.deepEqual(measureRoadViewport(), {
     width: STAGE_WIDTH_PIXELS,
-    height: STAGE_HEIGHT_PIXELS,
+    height: ROAD_VIEWPORT_HEIGHT_PIXELS,
   });
+});
+
+test('camera framing moves up with the road viewport while preserving rear-view depth', () => {
+  const road = createRoad(DEFAULT_ROAD_TUNING);
+  const tuning = buildRoadCameraTuning(road, measureRoadViewport());
+
+  assert.ok(Math.abs(tuning.anchorY - 208.08) < 0.001);
+  assert.ok(Math.abs(ROAD_VIEWPORT_HEIGHT_PIXELS - tuning.anchorY - 241.92) < 0.001);
 });
 
 test('camera tuning centers the road and anchors the truck below the midpoint', () => {
@@ -18,7 +26,7 @@ test('camera tuning centers the road and anchors the truck below the midpoint', 
   assert.deepEqual(buildRoadCameraTuning(road, { width: 800, height: 600 }), {
     pixelsPerMeter: 20,
     anchorX: 400,
-    anchorY: 348,
+    anchorY: 358.08,
   });
 });
 

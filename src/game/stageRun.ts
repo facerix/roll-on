@@ -11,6 +11,7 @@ export interface StageRunFrame {
   readonly speedMetersPerSecond: number;
   readonly fuelLevel: number;
   readonly cargoIntegrity: number;
+  readonly elapsedRunSeconds: number;
   readonly score: number;
   readonly roadRageCount: number;
   readonly truckStatus: TruckStatus;
@@ -41,6 +42,22 @@ export function createStageRunState(): StageRunState {
     failureReason: null,
     terminalSnapshot: null,
   });
+}
+
+/** Advance presentation time only for a fixed step accepted by an active run. */
+export function advanceElapsedRunSeconds(
+  elapsedRunSeconds: number,
+  dtSeconds: number,
+  state: StageRunState
+): number {
+  assertNonNegative('elapsedRunSeconds', elapsedRunSeconds);
+  assertNonNegative('dtSeconds', dtSeconds);
+  validateState(state);
+  if (state.phase !== 'running') return elapsedRunSeconds;
+
+  const nextElapsedRunSeconds = elapsedRunSeconds + dtSeconds;
+  assertFinite('nextElapsedRunSeconds', nextElapsedRunSeconds);
+  return nextElapsedRunSeconds;
 }
 
 /**
@@ -138,6 +155,7 @@ function validateFrame(frame: StageRunFrame): void {
   assertNonNegative('speedMetersPerSecond', frame.speedMetersPerSecond);
   assertRange('fuelLevel', frame.fuelLevel, 0, 1);
   assertRange('cargoIntegrity', frame.cargoIntegrity, 0, 1);
+  assertNonNegative('elapsedRunSeconds', frame.elapsedRunSeconds);
   assertNonNegativeInteger('score', frame.score);
   assertNonNegativeInteger('roadRageCount', frame.roadRageCount);
   if (

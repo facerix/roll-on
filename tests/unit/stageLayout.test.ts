@@ -2,10 +2,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  HUD_HEIGHT_PIXELS,
+  ROAD_VIEWPORT_HEIGHT_PIXELS,
   STAGE_HEIGHT_PIXELS,
   STAGE_WIDTH_PIXELS,
   calculateStageLayout,
 } from '../../src/game/stageLayout.ts';
+
+test('the authored stage reserves a bottom HUD bay outside the road viewport', () => {
+  assert.equal(ROAD_VIEWPORT_HEIGHT_PIXELS + HUD_HEIGHT_PIXELS, STAGE_HEIGHT_PIXELS);
+});
 
 test('stage layout always preserves the fixed logical stage dimensions', () => {
   for (const viewport of [
