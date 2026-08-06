@@ -40,6 +40,8 @@ export interface RoadSceneTuning {
   readonly roadColor: string;
   readonly barrierColor: string;
   readonly laneMarkerColor: string;
+  readonly leftRoadEdgeMarkerColor: string;
+  readonly rightRoadEdgeMarkerColor: string;
   readonly laneMarkerWidthMeters: number;
   readonly finishLineLightColor: string;
   readonly finishLineDarkColor: string;
@@ -122,7 +124,9 @@ export const DEFAULT_ROAD_SCENE_TUNING: RoadSceneTuning = Object.freeze({
   shoulderColor: '#5b5145',
   roadColor: '#30343b',
   barrierColor: '#d8d2c4',
-  laneMarkerColor: '#f6d96d',
+  laneMarkerColor: '#f4f4ea',
+  leftRoadEdgeMarkerColor: '#e8c547',
+  rightRoadEdgeMarkerColor: '#f4f4ea',
   laneMarkerWidthMeters: 0.18,
   finishLineLightColor: '#f7ecd7',
   finishLineDarkColor: '#050608',
@@ -251,6 +255,18 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
         options.road.leftRoadEdgeMeters,
         options.road.rightRoadEdgeMeters,
         tuning.roadColor
+      ),
+      roadEdgeMarker(
+        options.camera,
+        options.road.leftRoadEdgeMeters,
+        tuning.laneMarkerWidthMeters,
+        tuning.leftRoadEdgeMarkerColor
+      ),
+      roadEdgeMarker(
+        options.camera,
+        options.road.rightRoadEdgeMeters,
+        tuning.laneMarkerWidthMeters,
+        tuning.rightRoadEdgeMarkerColor
       ),
       barrier(options.camera, options.road.leftBarrierLateralMeters, tuning.barrierColor),
       barrier(options.camera, options.road.rightBarrierLateralMeters, tuning.barrierColor)
@@ -479,6 +495,24 @@ function buildCurvedRoadDrawables(
         current.roadEdges[0],
         tuning.roadColor
       ),
+      roadEdgeMarkerSegment(
+        camera,
+        road,
+        previous,
+        current,
+        'left',
+        tuning.laneMarkerWidthMeters,
+        tuning.leftRoadEdgeMarkerColor
+      ),
+      roadEdgeMarkerSegment(
+        camera,
+        road,
+        previous,
+        current,
+        'right',
+        tuning.laneMarkerWidthMeters,
+        tuning.rightRoadEdgeMarkerColor
+      ),
       barrierSegment(camera, road, previous, current, 'left', tuning.barrierColor),
       barrierSegment(camera, road, previous, current, 'right', tuning.barrierColor)
     );
@@ -563,6 +597,38 @@ function barrierSegment(
   const currentOuter = routeToWorld(road.route, {
     distanceAlongRouteMeters: current.distanceAlongRouteMeters,
     lateralOffsetMeters: lateral + (side === 'left' ? -halfWidth : halfWidth),
+  });
+  return crossSectionQuad(camera, previousInner, previousOuter, currentOuter, currentInner, color);
+}
+
+function roadEdgeMarkerSegment(
+  camera: RoadCamera,
+  road: Road,
+  previous: ReturnType<typeof sampleRoad>,
+  current: ReturnType<typeof sampleRoad>,
+  side: 'left' | 'right',
+  widthMeters: number,
+  color: string
+): Drawable {
+  const lateral = side === 'left' ? road.leftRoadEdgeMeters : road.rightRoadEdgeMeters;
+  const halfWidth = widthMeters / 2;
+  const inwardOffset = side === 'left' ? halfWidth : -halfWidth;
+  const outwardOffset = -inwardOffset;
+  const previousInner = routeToWorld(road.route, {
+    distanceAlongRouteMeters: previous.distanceAlongRouteMeters,
+    lateralOffsetMeters: lateral + inwardOffset,
+  });
+  const previousOuter = routeToWorld(road.route, {
+    distanceAlongRouteMeters: previous.distanceAlongRouteMeters,
+    lateralOffsetMeters: lateral + outwardOffset,
+  });
+  const currentInner = routeToWorld(road.route, {
+    distanceAlongRouteMeters: current.distanceAlongRouteMeters,
+    lateralOffsetMeters: lateral + inwardOffset,
+  });
+  const currentOuter = routeToWorld(road.route, {
+    distanceAlongRouteMeters: current.distanceAlongRouteMeters,
+    lateralOffsetMeters: lateral + outwardOffset,
   });
   return crossSectionQuad(camera, previousInner, previousOuter, currentOuter, currentInner, color);
 }
@@ -656,6 +722,28 @@ function barrier(camera: RoadCamera, lateralMeters: number, color: string): Draw
     yMeters: camera.focus.yMeters,
   });
   const width = Math.max(2, camera.pixelsPerMeter * 0.18);
+
+  return {
+    kind: 'rect',
+    x: center.x - width / 2,
+    y: 0,
+    w: width,
+    h: camera.viewportHeight,
+    color,
+  };
+}
+
+function roadEdgeMarker(
+  camera: RoadCamera,
+  lateralMeters: number,
+  widthMeters: number,
+  color: string
+): Drawable {
+  const center = projectWorldPoint(camera, {
+    xMeters: lateralMeters,
+    yMeters: camera.focus.yMeters,
+  });
+  const width = widthMeters * camera.pixelsPerMeter;
 
   return {
     kind: 'rect',

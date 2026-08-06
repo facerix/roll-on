@@ -98,13 +98,37 @@ test('road scene emits drawables in back-to-front order', () => {
   assert.equal(colors[firstShoulderIndex], DEFAULT_ROAD_SCENE_TUNING.shoulderColor);
   assert.equal(colors[firstShoulderIndex + 1], DEFAULT_ROAD_SCENE_TUNING.shoulderColor);
   assert.equal(colors[firstShoulderIndex + 2], DEFAULT_ROAD_SCENE_TUNING.roadColor);
-  assert.equal(colors[firstShoulderIndex + 3], DEFAULT_ROAD_SCENE_TUNING.barrierColor);
-  assert.equal(colors[firstShoulderIndex + 4], DEFAULT_ROAD_SCENE_TUNING.barrierColor);
+  assert.equal(colors[firstShoulderIndex + 3], DEFAULT_ROAD_SCENE_TUNING.leftRoadEdgeMarkerColor);
+  assert.equal(colors[firstShoulderIndex + 4], DEFAULT_ROAD_SCENE_TUNING.rightRoadEdgeMarkerColor);
+  assert.equal(colors[firstShoulderIndex + 5], DEFAULT_ROAD_SCENE_TUNING.barrierColor);
+  assert.equal(colors[firstShoulderIndex + 6], DEFAULT_ROAD_SCENE_TUNING.barrierColor);
   assert.ok(colors.includes(DEFAULT_ROAD_SCENE_TUNING.laneMarkerColor));
   assert.deepEqual(
     scene.drawables.slice(-2).map(drawable => drawable.kind),
     ['oriented-sprite', 'oriented-sprite']
   );
+});
+
+test('straight Stage 1 road uses white dashed dividers and yellow-left/white-right edge lines', () => {
+  const scene = sceneFor(truckAt(0));
+  const roadEdgeColors = rects(scene.drawables)
+    .filter(
+      drawable =>
+        drawable.h === VIEWPORT.height &&
+        [
+          DEFAULT_ROAD_SCENE_TUNING.leftRoadEdgeMarkerColor,
+          DEFAULT_ROAD_SCENE_TUNING.rightRoadEdgeMarkerColor,
+        ].includes(drawable.color)
+    )
+    .map(drawable => drawable.color);
+
+  assert.deepEqual(roadEdgeColors, [
+    DEFAULT_ROAD_SCENE_TUNING.leftRoadEdgeMarkerColor,
+    DEFAULT_ROAD_SCENE_TUNING.rightRoadEdgeMarkerColor,
+  ]);
+  assert.equal(DEFAULT_ROAD_SCENE_TUNING.leftRoadEdgeMarkerColor, '#e8c547');
+  assert.equal(DEFAULT_ROAD_SCENE_TUNING.rightRoadEdgeMarkerColor, '#f4f4ea');
+  assert.equal(DEFAULT_ROAD_SCENE_TUNING.laneMarkerColor, '#f4f4ea');
 });
 
 test('lane marker drawables repeat from world cadence and shift with camera distance', () => {
@@ -436,6 +460,12 @@ test('curved road scene emits finite sampled polygons in back-to-front mesh orde
   );
   assert.equal(mesh[0]!.color, DEFAULT_ROAD_SCENE_TUNING.shoulderColor);
   assert.ok(mesh.some(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.roadColor));
+  assert.ok(
+    mesh.some(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.leftRoadEdgeMarkerColor)
+  );
+  assert.ok(
+    mesh.some(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.rightRoadEdgeMarkerColor)
+  );
   assert.ok(mesh.some(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.laneMarkerColor));
 });
 
