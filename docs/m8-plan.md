@@ -240,38 +240,82 @@ and composed `dispatch-select` / `dispatch-back` events. Its warm Campaign and c
 use persistent gradient frames with focused and hovered neon glows. `index.ts` shows or hides the
 single component instance and reacts to those events rather than rebuilding the screen.
 
-`COAST TO COAST` starts the existing Stage 1 flow unchanged. `ENDLESS BLACKTOP` is selectable but
-intentionally inert until the seeded generator lands.
+`COAST TO COAST` starts the existing Stage 1 flow unchanged. `ENDLESS BLACKTOP` now starts a
+generated Stage 1 route from its Challenge session identity. Successive generated stages and their
+intermission flow are now wired through the minimal continue screen.
 
 Known deferred work created by this slice:
 
-- Dispatch does not yet construct a `GameSession`; `startRoadGame()` still builds the fixed route
-  internally. Session injection remains item 5 below.
 - The web component has no automated DOM-level coverage; the pure handler contract remains covered
   by `tests/unit/dispatchScreen.test.ts`, while component lifecycle and presentation are verified in
   a real browser.
 
-Resume with the seeded route-phrase generator, test-first, consuming
-`ChallengeStageIdentity.routeSource.seed`. Remaining M8.3 work, in dependency order:
+Remaining M8.3 follow-up, in dependency order:
 
-1. Define a small library of vetted route phrases within the accepted section-length budgets.
-2. Generate deterministic route definitions from equal seeds, different definitions from
-   representative different seeds, and validate every result against length, curvature,
-   continuity, finite geometry, recovery-window, and global route-clearance constraints.
-3. Give generation a bounded attempt count and make invalid inputs or unsatisfiable constraints fail
-   explicitly. Record both generator identity and the resolved definition for durable reproduction.
-4. Produce and playtest several named seed candidates while the authored Stage 1 route remains the
-   Campaign default. Record comprehension, recovery, encounter-coordination, and map-legibility
-   evidence here.
-5. Build the `DISPATCH` presentation and navigation for the working `COAST TO COAST` and `ENDLESS
-   BLACKTOP` modes, then inject the selected route/session into gameplay instead of constructing the
-   fixed route inside `startRoadGame()`.
-6. Bridge stage terminal results into the Challenge session transitions, add the minimal deferred-shop
-   intermission/continue presentation, and start the next generated stage with accepted carryover.
-7. Tag persisted results with their mode/score channel and generated route identity when the pending
-   M6 tally and persistence work lands; do not mix Campaign and Challenge ordering.
-8. Run the full automated and browser matrices, including successive Challenge stages, fresh-run
+1. Tag persisted results with their mode/score channel and generated route identity when the pending
+   M6 tally and persistence work lands; do not mix Campaign and Challenge ordering. M8.3 deliberately
+   does not initialize or write `DataStore` yet.
+2. Run the full automated and browser matrices, including successive Challenge stages, fresh-run
    isolation, phone controls, offline reload, and exact reproduction from recorded route identity.
+
+### Seeded route generator checkpoint — 2026-08-06
+
+The pure generator in `src/game/challengeRouteGenerator.ts` now consumes
+`ChallengeStageIdentity.routeSource.seed` and selects from named, vetted phrases inside the same
+`2,200 m` section budgets used by Stage 1. Equal seeds reproduce the complete resolved definition;
+different representative seeds select different phrase combinations. The generator compiles every
+candidate through the shared `createRoute()` implementation, checks exact length, bend radius,
+approach/recovery windows, finite endpoints/samples, and a bounded global centerline-clearance
+corridor, then fails explicitly after at most eight attempts.
+
+Route identity is durable at the session boundary: generated `routeSource` now carries the
+generator ID, generator version, route seed, and deeply frozen resolved `RouteDefinition`. The
+Challenge session validator rejects a definition that no longer matches the run/stage identity.
+`src/game/sessionRoute.ts` resolves Campaign's authored route ID or recompiles the recorded
+Challenge definition; `startRoadGame()` receives that compiled route explicitly instead of creating
+Stage 1 internally.
+
+The dispatch flow is now live for both modes. Campaign starts `stage-1-authored-v1`; Challenge starts
+a fresh random run seed and reaches generated Stage 1. Native and `374 × 516` browser smoke checks
+showed the map, HUD, truck, and controls remain readable, and the browser console stayed clean.
+The deterministic candidate comparison and full-route playtest support the accepted hybrid decision:
+Campaign remains authored and learnable, while Challenge receives bounded seeded variation through
+the vetted phrase library. Sample route seeds produce distinct named combinations such as
+`opening-broad-right-left` / `technical-tight-right-left` and `opening-long-read` /
+`technical-left-right`; all candidates retain explicit approach, recovery, curvature, and global
+clearance bounds. The generated route completed a collision-heavy browser drive and entered the
+successive-stage flow without map, HUD, or console regressions.
+
+### Hybrid decision — accepted 2026-08-06
+
+Use the deliberate mode-separated hybrid. `COAST TO COAST` owns fixed authored routes for
+comprehension, encounter tuning, and campaign identity. `ENDLESS BLACKTOP` owns reproducible seeded
+generated routes for replay value, with phrase-level constraints preserving recovery windows and
+authorial control. Do not randomize Campaign implicitly, and do not pretend bounded generation
+removes the need for route validation.
+
+Rejected alternatives: fully fixed Challenge routes lose the intended replay value; unconstrained
+generation risks unreadable combinations and makes encounter coordination harder to diagnose. The
+accepted compromise keeps one route identity per mode, one root Challenge seed, independent named
+subseeds, and the resolved definition in the active session for exact reproduction. Persistence of
+that identity belongs to M6 rather than this milestone.
+
+### Challenge loop checkpoint — 2026-08-06
+
+`src/game/roadGame.ts` now exposes terminal-result ownership without changing Campaign behavior.
+Challenge completion is converted through the pure session transition, the road is disposed, and
+`src/game/challengeIntermissionView.ts` presents the carried cargo, current fuel, cumulative score,
+and the next-stage action. Continuing derives the next independent stage identity and recompiles its
+recorded route definition. Initial cargo integrity and fuel now feed the next driving state, while
+HUD and terminal presentation report the active stage number. Challenge failure still uses the exact-once
+`failed` session transition and the existing terminal panel; retry starts a fresh Challenge run.
+
+Browser verification drove a collision-heavy no-steer Challenge run through the full `2,200 m`
+route: `STAGE 1 CLEARED` appeared at roughly `01:51`, the intermission showed `NEXT ROUTE: STAGE 2`,
+and continuing reached `STAGE 2` with `0%` cargo retained and the provisional fuel refill visible
+(`25%` carryover becoming approximately `50%` at stage start). No console errors or warnings were
+reported. Result persistence remains intentionally deferred until M6 provides the score/result
+storage contract.
 
 Do not implement the truck-stop economy, upgrade catalog, or permanent garage progression during
 M8.3. The session model reserves those seams; this milestone only proves deterministic generated
@@ -279,8 +323,10 @@ routes and the multi-stage mode flow.
 
 ### Exit criterion
 
-The `DISPATCH` flow reaches the fixed Campaign route or a reproducible multi-stage Challenge run. We
-have a written hybrid decision supported by deterministic prototypes and actual playtests.
+The `DISPATCH` flow reaches the fixed Campaign route or a reproducible multi-stage Challenge run, and
+the hybrid decision is recorded with deterministic and browser evidence. Persistence and the full
+offline/browser matrix remain follow-up verification work; patrol-specific work remains behind the
+M8.4 design gate.
 Experimental generator code that is not part of the decision is removed or kept behind an explicit
 development-only seam. Upgrade and shop content remains deferred while the session contract needed
 by it is explicit and tested.
@@ -326,7 +372,7 @@ are added after the M8.4 design gate.
 - [x] Its corner and size are selected by playtesting, with no control or threat occlusion.
 - [x] Stage 1 contains several intentional, tested road sections totaling `2,200 m`.
 - [x] Encounter bands are reviewed against the revised geometry.
-- [ ] The fixed/generated/hybrid decision and its evidence are recorded.
+- [x] The fixed/generated/hybrid decision and its evidence are recorded.
 - [ ] Production route identity is reproducible for saved runs and bug reports.
 - [ ] Rylee is consulted before patrol behavior tests or implementation are changed.
 - [ ] The accepted patrol model is deterministic, observable, tested, and playable.

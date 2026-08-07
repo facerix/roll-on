@@ -764,6 +764,83 @@ body.is-playing #main-foot {
   color: #f6d96d;
 }
 
+.roll-on-challenge-intermission {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px;
+  background: rgba(5, 6, 8, 0.94);
+  color: #f7ecd7;
+  font-family: 'BigSquareDots', 'Courier New', Courier, monospace;
+  text-align: center;
+  text-shadow: 0 3px 0 #050608;
+}
+
+.roll-on-challenge-intermission[hidden] {
+  display: none;
+}
+
+.roll-on-challenge-intermission::before {
+  content: '';
+  position: absolute;
+  inset: 112px 24px;
+  z-index: -1;
+  border: 4px double #48cfff;
+  background: rgba(12, 12, 46, 0.96);
+  box-shadow: 0 0 30px rgba(72, 207, 255, 0.3);
+}
+
+.roll-on-challenge-intermission-kicker {
+  margin: 0 0 12px;
+  color: #48cfff;
+  font-size: 0.9rem;
+  letter-spacing: 0.14em;
+}
+
+.roll-on-challenge-intermission h2 {
+  margin: 0;
+  color: #c7fbff;
+  font-size: 2.2rem;
+  line-height: 1.1;
+}
+
+.roll-on-challenge-intermission-detail,
+.roll-on-challenge-intermission-summary {
+  margin: 10px 0;
+  color: #f6d96d;
+  font-size: 1rem;
+}
+
+.roll-on-challenge-intermission-summary {
+  color: #bff5ff;
+  font-size: 0.85rem;
+}
+
+.roll-on-challenge-intermission-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.roll-on-challenge-intermission-action {
+  min-height: 42px;
+  border: 2px solid #48cfff;
+  border-radius: 0;
+  background: #050608;
+  color: #f7ecd7;
+  font: inherit;
+}
+
+.roll-on-challenge-intermission-primary {
+  border-color: #c7fbff;
+  color: #c7fbff;
+}
+
 .roll-on-pause-ui {
   position: absolute;
   inset: 0;

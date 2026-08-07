@@ -2,6 +2,7 @@ import { h } from '/src/domUtils.js';
 import type { RunTerminalPresentation } from '/src/game/stageRun.js';
 
 export interface RunTerminalViewOptions {
+  readonly stageNumber: number;
   readonly onRetry: () => void;
   readonly onExitToTitle: () => void;
 }
@@ -14,6 +15,9 @@ export interface RunTerminalView {
 
 /** Terminal game chrome; lifecycle truth remains in `stageRun.ts`. */
 export function createRunTerminalView(options: RunTerminalViewOptions): RunTerminalView {
+  if (!Number.isSafeInteger(options.stageNumber) || options.stageNumber <= 0) {
+    throw new RangeError(`stageNumber must be a positive integer, got ${options.stageNumber}`);
+  }
   const title = h('h2', { id: 'run-terminal-title', textContent: '' });
   const detail = h('p', { className: 'roll-on-run-terminal-detail', textContent: '' });
   const retryButton = h('button', {
@@ -36,7 +40,10 @@ export function createRunTerminalView(options: RunTerminalViewOptions): RunTermi
       ariaAtomic: 'true',
     },
     [
-      h('p', { className: 'roll-on-run-terminal-kicker', textContent: 'STAGE 1' }),
+      h('p', {
+        className: 'roll-on-run-terminal-kicker',
+        textContent: `STAGE ${options.stageNumber}`,
+      }),
       title,
       detail,
       h('div', { className: 'roll-on-run-terminal-actions' }, [retryButton, titleButton]),

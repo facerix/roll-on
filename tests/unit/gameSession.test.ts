@@ -51,6 +51,10 @@ test('Dispatch creates a fresh Challenge run with generated route identity', () 
   assert.equal(session.identity.generatorVersion, CHALLENGE_GENERATOR_VERSION);
   assert.equal(session.stage.stageNumber, 1);
   assert.equal(session.stage.routeSource.kind, 'generated');
+  assert.equal(session.stage.routeSource.generatorId, 'route-phrases-v1');
+  assert.equal(session.stage.routeSource.definition.segments.length > 0, true);
+  assert.ok(Object.isFrozen(session.stage.routeSource.definition));
+  assert.ok(Object.isFrozen(session.stage.routeSource.definition.segments));
   assert.equal(session.completedStages, 0);
   assert.equal(session.cumulativeScore, 0);
   assert.deepEqual(session.carryover, {

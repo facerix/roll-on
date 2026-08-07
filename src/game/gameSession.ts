@@ -1,8 +1,14 @@
 import { Rng } from '/src/rng.js';
+import {
+  CHALLENGE_ROUTE_GENERATOR_ID,
+  CHALLENGE_ROUTE_GENERATOR_VERSION,
+  generateChallengeRoute,
+} from '/src/game/challengeRouteGenerator.js';
+import type { RouteDefinition } from '/src/game/route.js';
 
 const MAX_U32 = 0xffff_ffff;
 
-export const CHALLENGE_GENERATOR_VERSION = 1;
+export const CHALLENGE_GENERATOR_VERSION = CHALLENGE_ROUTE_GENERATOR_VERSION;
 
 export interface ChallengeIntermissionPolicy {
   /** Normalized tank fraction added before the next stage, clamped at one. */
@@ -44,8 +50,11 @@ export interface ChallengeStageIdentity {
   readonly stageSeed: number;
   readonly routeSource: {
     readonly kind: 'generated';
+    readonly generatorId: string;
     readonly generatorVersion: number;
     readonly seed: number;
+    /** Resolved definition retained so a replay survives generator changes. */
+    readonly definition: RouteDefinition;
   };
   readonly encounterSeed: number;
   readonly trafficSeed: number;
@@ -167,13 +176,19 @@ export function deriveChallengeStageIdentity(
 
   const runRng = new Rng(identity.runSeed);
   const stageRng = runRng.fork(`challenge-v${identity.generatorVersion}:stage-${stageNumber}`);
+  const routeSeed = stageRng.fork('route').seed;
+  const generatedRoute = generateChallengeRoute(routeSeed, {
+    generatorVersion: identity.generatorVersion,
+  });
   return Object.freeze({
     stageNumber,
     stageSeed: stageRng.seed,
     routeSource: Object.freeze({
       kind: 'generated',
+      generatorId: CHALLENGE_ROUTE_GENERATOR_ID,
       generatorVersion: identity.generatorVersion,
-      seed: stageRng.fork('route').seed,
+      seed: routeSeed,
+      definition: generatedRoute.definition,
     }),
     encounterSeed: stageRng.fork('encounters').seed,
     trafficSeed: stageRng.fork('traffic').seed,
@@ -366,8 +381,11 @@ function validateStageIdentity(
   if (
     stage.stageSeed !== expected.stageSeed ||
     stage.routeSource.kind !== 'generated' ||
+    stage.routeSource.generatorId !== expected.routeSource.generatorId ||
     stage.routeSource.generatorVersion !== expected.routeSource.generatorVersion ||
     stage.routeSource.seed !== expected.routeSource.seed ||
+    JSON.stringify(stage.routeSource.definition) !==
+      JSON.stringify(expected.routeSource.definition) ||
     stage.encounterSeed !== expected.encounterSeed ||
     stage.trafficSeed !== expected.trafficSeed ||
     stage.shopSeed !== expected.shopSeed
