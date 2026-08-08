@@ -480,6 +480,53 @@ glow without changing the encounter.
 - Lateral/yaw impulse is strong enough to demand correction but reaches jackknife only through the
   same articulation and speed thresholds as other truck motion.
 
+### Accepted implementation order and ownership — 2026-08-07
+
+Rylee accepted a slice order of shared speed tiers, the pure encounter model, authored pullout
+geometry, cruiser motion and consequences, presentation, and finally Challenge seeding plus the
+playtest matrix. Pullout geometry lands **before** cruiser motion so the trap is physically real the
+first time a pursuit is playable.
+
+The cruiser keeps living in the traffic vehicle list so it reuses the existing rigid-body solver,
+commuter contacts, culling, and scene rendering. `patrolEncounter.ts` owns every decision and will
+hand traffic a per-step command; `traffic.ts` keeps only generic vehicle physics. Its current
+implicit patrol follow/ram behavior and ambient `patrolSpawnChance` are removed in the cruiser-motion
+slice, not before, so the game keeps running while the model lands.
+
+### Shared speed tier and encounter model checkpoint — 2026-08-07
+
+`src/game/speedTiers.ts` now owns the four dashboard tiers as validated domain data. The speedometer
+renders exactly those tiers instead of its own copy, and patrol detection resolves the `high`
+boundary through the same module, so the dial and a speed trap cannot drift apart. Gapped,
+overlapping, duplicated, or non-finite tier definitions fail at module initialization. Each boundary
+belongs to the faster tier, so `30 m/s` against the current `40 m/s` maximum counts as `high`.
+
+`src/game/patrolEncounter.ts` implements the tagged encounter model as pure, frame-driven state. It
+covers the posted trap's single forward-crossing decision, the exactly-`10 s` non-stacking Road Rage
+response, the documented precedence rule, the full `posted → … → resolved` phase set, deterministic
+tactical side selection with a stable left-favoring tie-break, avoid accounting, and the four escape
+conditions. Callers pass one observation frame per step — resolved truck speed, route distance,
+cruiser gap, per-side clearance, committed-attack contact, incident count, terminal flag — and apply
+the returned events. `tests/unit/patrolEncounter.test.ts` locks that contract; the project gate
+passes with `386` tests plus format, lint, typecheck, and build.
+
+Two rules emerged while implementing and are now explicit:
+
+- A cruiser that appears during a step does not advance a phase in that same step, because the
+  frame's gap, clearance, and contact values describe a road that did not yet contain it.
+- Escape conditions are evaluated before any attack progress, and at most one phase transition
+  occurs per step, so a single large fixed step cannot skip a telegraph or manufacture an avoid.
+
+Known deferred work created by this slice:
+
+- Nothing consumes the model yet: no cruiser motion, no consequences, no glare, no telemetry, and no
+  Stage 1 encounter definition. `traffic.ts` still runs the old ambient patrol.
+- Per-side clearance and committed-attack contact are injected observations. The geometry that
+  computes them honestly, including barrier and traffic occupancy, belongs to the pullout and
+  cruiser-motion slices.
+- Road Rage window length, required avoids, and phase durations are provisional; they are validated
+  and centrally tuned but not yet playtested.
+
 ### Playable checkpoint
 
 Drive the following at native size and representative phone scales, with debug telemetry visible
