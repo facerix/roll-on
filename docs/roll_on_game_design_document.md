@@ -50,7 +50,7 @@ Earned haul currency can be spent at intermission truck stops on modular upgrade
 
 | Stage | Theme | Mundane Obstacles | Bizarre / Chaotic Elements |
 | :--- | :--- | :--- | :--- |
-| **Stage 1** | **Interstate 80** | Commuter cars, slow RVs, standard highway patrol cruisers. | Rogue gravel trucks fishtailing ahead, pelting the windshield with cracked-glass visual effects. |
+| **Stage 1** | **Interstate 40** | Commuter cars, slow RVs, standard highway patrol cruisers. | Rogue gravel trucks fishtailing ahead, pelting the windshield with cracked-glass visual effects. |
 | **Stage 2** | **Construction Zone** | Narrow single lanes, concrete barriers, orange cones. | Corrupt officials chasing in weaponized bulldozers and asphalt rollers attempting to crush the cab. |
 | **Stage 3** | **Pacific Northwest** | Slick rainy asphalt, sharp winding mountain roads. | Logging trucks splitting open, sending screen-filling logs bouncing down the highway at the player. |
 | **Stage 4** | **Desert Showdown** | High crosswinds, tumbleweeds, hidden speed traps. | Post-apocalyptic joyriders in spiked dune buggies trying to board and raid the trailer; requires violent swerving to shake them off. |

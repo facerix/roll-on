@@ -12,7 +12,7 @@ Living implementation plan. Pairs with `roll_on_game_design_document.md` (the *w
   orthographic debug mode.
 - **Art**: programmer-art placeholders remain through M6. Production art begins only after the
   pseudo-3D projection and representative compositions are accepted.
-- **PoC scope**: Stage 1 (Interstate 80) playable end-to-end. No shop, no weapons, no other stages.
+- **PoC scope**: Stage 1 (Interstate 40) playable end-to-end. No shop, no weapons, no other stages.
 - **Discipline**: TDD. Every system lands with failing-first tests that exercise its pure logic.
 
 ---
@@ -76,7 +76,7 @@ See `docs/m2-plan.md` for the sub-milestone implementation plan.
 - [ ] **World bounds + barriers**: hitting a barrier hurts integrity (and triggers crash if jackknifed).
   - *Test*: collision detection between truck AABB and barrier segments.
 
-Exit criterion: driving Interstate 80 feels like a road, not a void.
+Exit criterion: driving Interstate 40 feels like a road, not a void.
 
 ---
 

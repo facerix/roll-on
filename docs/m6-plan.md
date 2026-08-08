@@ -3,7 +3,8 @@
 This plan turns the mechanically complete winding-road prototype into a complete, end-to-end
 Stage 1 proof of concept. It keeps the fixed responsive stage, uses the trustworthy orthographic
 view and existing assets as development presentation, and completes the Stage 1 timeline, finish,
-scoring, persistence, high-score, and device-playability commitments.
+live-scoring, and device-playability commitments. Final tally, persistence, and high scores move to
+M8 after the M8.4 patrol pass, when Campaign and Challenge result identity is stable.
 
 M6 deliberately does not spend production-art effort on the temporary top-down presentation. The
 proper pseudo-3D visualization and the Stage 1 art language belong together in the next dedicated
@@ -13,8 +14,9 @@ must be discarded when that visualization lands.
 ## Outcome
 
 A player can open Roll On on a phone or desktop, see the same `384 × 576` game composition scaled
-to fit without cropping or stretching, drive a deterministic Interstate 80 stage through its finish
-line, receive an explainable score tally, and find the persisted run in the high-score table.
+to fit without cropping or stretching, drive a deterministic Interstate 40 stage through its finish
+line, and receive an explainable live score plus an immutable terminal result snapshot. Final tally,
+persistence, and high-score presentation are post-M6 work in M8.
 
 The result is a fully playable PoC, not the final visual Stage 1. It retains legible development art
 and the road-following orthographic view so gameplay can be completed and tested. Work intended to
@@ -35,7 +37,7 @@ where road projection, vehicle art, scenery, and HUD composition can be develope
 - Integer display scales are preferred when they fit the viewport well. Fractional scaling and
   downscaling are allowed at the final CSS boundary so small phones and intermediate desktop sizes
   remain usable; the source pixel grid remains fixed and image smoothing remains disabled.
-- Unused desktop space may contain decorative cabinet rails, instructions, high scores, or mirrored
+- Unused desktop space may contain decorative cabinet rails, instructions, future high scores, or mirrored
   status. It must not contain gameplay information or controls unavailable to mobile players.
 - A separate landscape gameplay profile is out of scope. Add one only after device testing provides
   evidence that the fixed portrait stage is unusable in an important context.
@@ -67,7 +69,7 @@ code must validate finite positive dimensions and fail loudly on invalid input.
 ### Functional HUD, controls, and accessibility
 
 - The existing HUD remains development UI. Add or change only what is needed to understand and
-  complete the Stage 1 loop: essential driving state, finish status, tally, and high-score flow.
+  complete the Stage 1 loop: essential driving state, finish status, live score, and terminal flow.
 - The development HUD sits in a reserved bay along the bottom of the fixed stage. The road viewport
   ends at the bay's top edge, and touch gas and brake controls remain above it, so gameplay and
   controls are never rendered behind the dashboard.
@@ -99,9 +101,9 @@ code must validate finite positive dimensions and fail loudly on invalid input.
 - Aspect-preserving centering, letterboxing, safe-area handling, resize/orientation response, and
   correct input focus across presentation scales.
 - The existing road-following orthographic projection and development art needed to read gameplay.
-- Functional HUD and touch-control changes required to play from title through high scores.
+- Functional HUD and touch-control changes required to play from title through Stage 1 completion or failure.
 - A deterministic Stage 1 timeline, difficulty progression, and finish trigger.
-- Stage-complete tally, final score calculation, run persistence, schema migration, and high scores.
+- Live/provisional score calculation and the immutable terminal-result seam consumed by M8.
 - Browser verification on representative portrait phones, mobile landscape, tablet, and desktop
   aspect ratios.
 
@@ -150,7 +152,8 @@ dimensions. No layout code may change camera field of view, traffic culling, or 
 ## Slice strategy
 
 Each slice starts with failing tests around its pure policy or state transition and ends with a
-browser checkpoint. Prefer gameplay lifecycle and persistence work over presentation polish. Do not
+browser checkpoint. Prefer gameplay lifecycle and terminal-result work over presentation polish. Final
+tally, persistence, and high scores belong to M8 after M8.4. Do not
 begin final scenery, vehicle, road, effect, or cabinet-HUD production during M6.
 
 Resolve the development service-worker module-skew issue recorded in `docs/kaizen.md` before M6.7.
@@ -218,7 +221,7 @@ their browser checkpoint.
 
 Keep the current HUD and touch controls functional within the fixed stage. Add only the information
 and states required to play the complete Stage 1 loop: speed, fuel, cargo integrity, route progress,
-score, immediate status, finish state, and navigation through tally and high scores.
+live score, immediate status, finish state, and navigation through terminal state.
 
 Controls continue to emit the same abstract actions and must remain usable after resize or
 orientation changes. Do not recompose the HUD into the final arcade dashboard or tune overlays
@@ -231,11 +234,11 @@ against temporary orthographic screen geometry.
 - Status priority remains deterministic when fuel, damage, jackknife, finish, and event conditions
   overlap.
 - Touch controls emit the same action transitions before and after resize/orientation change.
-- Tally and high-score transitions remain keyboard-, touch-, and assistive-technology accessible.
+- Terminal transitions remain keyboard-, touch-, and assistive-technology accessible.
 
 ### Exit criterion
 
-A player can understand and operate every state from title through high scores on phone and desktop;
+A player can understand and operate every state from title through Stage 1 completion or failure on phone and desktop;
 no production HUD-art criterion blocks the PoC.
 
 ## M6.5 — Deterministic Stage 1 timeline and finish
@@ -245,7 +248,7 @@ distance-based encounter scheduling remains.
 
 Define an authored Stage 1 length and deterministic encounter schedule. Make difficulty progression
 explicit rather than deriving it from wall-clock time or frame rate. Add the finish trigger and a
-stage-complete lifecycle that stops gameplay consequences before presenting the tally.
+stage-complete lifecycle that stops gameplay consequences before presenting the terminal state.
 
 The accepted Stage 1 target is a `2,200 m` route that a competent player clears in approximately
 100 seconds. This is a play target, not a countdown: driving decisions, collisions, and fuel use may
@@ -279,7 +282,8 @@ until it has a gameplay effect; preserve the abstract input action for later imp
 Rage commuter collisions are penalties rather than bonuses: track each qualifying collision, show
 the event, deduct the provisional 250-point amount, and floor the live score at zero.
 
-Resolve the remaining M6 design question recorded in `docs/kaizen.md`: final score weights.
+Carry the remaining score-weight question recorded in `docs/kaizen.md` into M8.5. M6 only needs
+deterministic live/provisional scoring and a complete terminal snapshot.
 
 The lifecycle contract is:
 
@@ -302,7 +306,7 @@ finish band from route geometry ending at the exact `2,200 m` trigger. On comple
 prominent semantic `STAGE COMPLETE` dialog over the frozen stage. On failure, show `GAME OVER` with
 the cause `CRASHED` or `OUT OF FUEL`. Suspend keyboard/touch driving input, hide the touch pad, and
 offer keyboard- and touch-accessible actions to retry from fresh state or return to the title
-screen. M6.6 may extend the completion dialog into the tally; it must consume the locked terminal
+screen. The post-M6 tally may extend the completion dialog into the tally; it must consume the locked terminal
 snapshot rather than resuming simulation.
 
 ### Tests first
@@ -329,36 +333,22 @@ snapshot rather than resuming simulation.
 A player can start Stage 1, experience its intended escalation, and reach one unambiguous completion
 or failure state without an endless prototype loop; a failed run can restart cleanly.
 
-## M6.6 — Final tally, persistence, and high scores
+## Deferred M6.6 — Final tally, persistence, and high scores
 
-Build the final score from delivered progress/cargo, retained integrity, fuel remaining, Road Rage
-collision penalties, and accepted bonuses. Extend `DataStore` with a versioned run record and
-explicit migration from the current `scores` shape. Unknown or corrupt versions fail loudly rather
-than being guessed.
+This slice is intentionally moved to M8.5 after the M8.4 patrol pass. M6 supplies live/provisional
+score inputs and an immutable terminal snapshot; M8.5 settles the final tally, mode-separated result
+identity, versioned `DataStore` migration, persistence, high-score ordering, and final presentation.
 
-Show the tally after completion, persist it once, and surface the ordered result in the high-score
-table. Define deterministic tie-breaking.
+Do not initialize or write `DataStore`, or add high-score ordering, in M6. The M8.5 plan owns the
+tests and exit criterion for those behaviors.
 
-### Tests first
-
-- Final score arithmetic matches documented examples and boundary values.
-- Migration is idempotent and preserves every valid existing score.
-- Unknown versions, invalid records, and non-finite score inputs fail explicitly.
-- Completing one run persists exactly one record even if completion/tally rendering repeats.
-- High-score ordering and tie-breaking are deterministic.
-- Empty, partially migrated, and full tables render valid semantic states.
-
-### Exit criterion
-
-A completed Stage 1 run produces one explainable score, persists once, and is visible in the
-high-score table after reload.
-
-## M6.7 — Integration and closeout
+## M6.7 — Gameplay integration and closeout
 
 Run the complete automated suite and a seeded end-to-end browser matrix. Verify title → play →
-finish → tally → high scores on representative phone and desktop viewports, keyboard and touch,
-normal and debug presentation, and reload. Offline/update lifecycle expansion belongs outside this
-PoC unless existing behavior regresses.
+finish or failure → terminal state on representative phone and desktop viewports, keyboard and
+touch, normal and debug presentation, and retry. M6 does not verify final tally, persistence, or
+high scores; M8.5 owns that work after M8.4. Offline/update lifecycle expansion belongs outside
+this PoC unless existing behavior regresses.
 
 ### Completion checklist
 
@@ -369,7 +359,8 @@ PoC unless existing behavior regresses.
 - [ ] Development art and HUD communicate every gameplay-critical state without silent ambiguity.
 - [ ] Touch controls fit the fixed stage and retain semantic/keyboard parity.
 - [ ] Stage timeline, difficulty, and finish lifecycle are deterministic.
-- [ ] Final scoring, migration, persistence, and high-score ordering are tested.
+- [ ] Final scoring, migration, persistence, and high-score ordering are tested. (Deferred to M8.5
+      after M8.4.)
 - [ ] Automated format, lint, typecheck, and test commands pass.
 - [ ] Browser matrix passes without console errors, geometry drift, duplicated listeners, or
       stale-module skew.
