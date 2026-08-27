@@ -7,6 +7,7 @@ import {
 import type { PatrolEncounterDefinition } from '/src/game/patrolEncounter.js';
 import { createRoute, type Route } from '/src/game/route.js';
 import type { GameSession } from '/src/game/gameSession.js';
+import { validateChallengeRoadFeatures } from '/src/game/challengeRoadFeatures.js';
 
 /** The compiled geometry plus the authored road features one stage drives on. */
 export interface SessionRoad {
@@ -33,12 +34,12 @@ export function createRoadForSession(session: GameSession): SessionRoad {
   }
 
   if (session.mode === 'challenge') {
-    // Generated stages author no road features yet; their trap geometry and
-    // seeded enforcement arrive with the Challenge encounter slice.
+    const route = createRoute(session.stage.routeSource.definition);
+    validateChallengeRoadFeatures(session.stage.roadFeatureSource, route);
     return {
-      route: createRoute(session.stage.routeSource.definition),
-      pullouts: [],
-      patrolEncounters: [],
+      route,
+      pullouts: session.stage.roadFeatureSource.pullouts,
+      patrolEncounters: session.stage.roadFeatureSource.patrolEncounters,
     };
   }
 

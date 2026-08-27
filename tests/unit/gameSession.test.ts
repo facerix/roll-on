@@ -51,10 +51,14 @@ test('Dispatch creates a fresh Challenge run with generated route identity', () 
   assert.equal(session.identity.generatorVersion, CHALLENGE_GENERATOR_VERSION);
   assert.equal(session.stage.stageNumber, 1);
   assert.equal(session.stage.routeSource.kind, 'generated');
-  assert.equal(session.stage.routeSource.generatorId, 'route-phrases-v1');
+  assert.equal(session.stage.routeSource.generatorId, 'route-phrases-v2');
   assert.equal(session.stage.routeSource.definition.segments.length > 0, true);
   assert.ok(Object.isFrozen(session.stage.routeSource.definition));
   assert.ok(Object.isFrozen(session.stage.routeSource.definition.segments));
+  assert.equal(session.stage.roadFeatureSource.kind, 'generated');
+  assert.equal(session.stage.roadFeatureSource.seed, session.stage.encounterSeed);
+  assert.equal(session.stage.roadFeatureSource.pullouts.length, 1);
+  assert.equal(session.stage.roadFeatureSource.patrolEncounters.length, 1);
   assert.equal(session.completedStages, 0);
   assert.equal(session.cumulativeScore, 0);
   assert.deepEqual(session.carryover, {
@@ -149,6 +153,44 @@ test('starting the next Challenge stage partially refills fuel and derives a new
   );
   assert.equal(next.carryover.haulCurrency, 25);
   assert.equal(next.cumulativeScore, 9_000);
+});
+
+test('multi-stage Challenge progression raises only bounded recorded feature pressure', () => {
+  let session = challenge();
+  const stages = [session.stage];
+  for (let stageNumber = 2; stageNumber <= 6; stageNumber += 1) {
+    session = startNextChallengeStage(
+      completeChallengeStage(session, {
+        stageScore: 100,
+        cargoIntegrity: 0.8,
+        fuelLevel: 0.5,
+        haulCurrencyEarned: 1,
+      })
+    );
+    stages.push(session.stage);
+  }
+
+  assert.deepEqual(
+    stages.map(stage => ({
+      stageNumber: stage.stageNumber,
+      encounterCount: stage.roadFeatureSource.patrolEncounters.length,
+      requiredAvoids: stage.roadFeatureSource.difficulty.requiredAvoids,
+    })),
+    [
+      { stageNumber: 1, encounterCount: 1, requiredAvoids: 1 },
+      { stageNumber: 2, encounterCount: 1, requiredAvoids: 1 },
+      { stageNumber: 3, encounterCount: 1, requiredAvoids: 2 },
+      { stageNumber: 4, encounterCount: 1, requiredAvoids: 2 },
+      { stageNumber: 5, encounterCount: 2, requiredAvoids: 2 },
+      { stageNumber: 6, encounterCount: 2, requiredAvoids: 2 },
+    ]
+  );
+  assert.equal(session.completedStages, 5);
+  assert.equal(session.cumulativeScore, 500);
+  assert.equal(session.scoreChannel, 'challenge');
+  assert.equal(new Set(stages.map(stage => stage.encounterSeed)).size, stages.length);
+  assert.equal(new Set(stages.map(stage => stage.trafficSeed)).size, stages.length);
+  assert.equal(new Set(stages.map(stage => stage.shopSeed)).size, stages.length);
 });
 
 test('the partial refill clamps at a full tank and accepts explicit tuning', () => {
@@ -268,6 +310,10 @@ test('Challenge session objects are deeply frozen snapshots', () => {
   assert.ok(Object.isFrozen(session.identity));
   assert.ok(Object.isFrozen(session.stage));
   assert.ok(Object.isFrozen(session.stage.routeSource));
+  assert.ok(Object.isFrozen(session.stage.roadFeatureSource));
+  assert.ok(Object.isFrozen(session.stage.roadFeatureSource.difficulty));
+  assert.ok(Object.isFrozen(session.stage.roadFeatureSource.pullouts));
+  assert.ok(Object.isFrozen(session.stage.roadFeatureSource.patrolEncounters));
   assert.ok(Object.isFrozen(session.carryover));
   assert.ok(Object.isFrozen(session.carryover.runUpgrades));
   assert.ok(Object.isFrozen(session.carryover.runUpgrades[0]));

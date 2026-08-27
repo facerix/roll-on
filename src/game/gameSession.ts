@@ -5,6 +5,12 @@ import {
   generateChallengeRoute,
 } from '/src/game/challengeRouteGenerator.js';
 import type { RouteDefinition } from '/src/game/route.js';
+import {
+  generateChallengeRoadFeatures,
+  type ChallengeDifficulty,
+} from '/src/game/challengeRoadFeatures.js';
+import type { RoadPullout } from '/src/game/road.js';
+import type { PatrolEncounterDefinition } from '/src/game/patrolEncounter.js';
 
 const MAX_U32 = 0xffff_ffff;
 
@@ -57,6 +63,17 @@ export interface ChallengeStageIdentity {
     readonly definition: RouteDefinition;
   };
   readonly encounterSeed: number;
+  readonly roadFeatureSource: {
+    readonly kind: 'generated';
+    readonly generatorId: string;
+    readonly generatorVersion: number;
+    readonly seed: number;
+    readonly stageNumber: number;
+    readonly attempt: number;
+    readonly difficulty: ChallengeDifficulty;
+    readonly pullouts: readonly RoadPullout[];
+    readonly patrolEncounters: readonly PatrolEncounterDefinition[];
+  };
   readonly trafficSeed: number;
   readonly shopSeed: number;
 }
@@ -180,6 +197,12 @@ export function deriveChallengeStageIdentity(
   const generatedRoute = generateChallengeRoute(routeSeed, {
     generatorVersion: identity.generatorVersion,
   });
+  const encounterSeed = stageRng.fork('encounters').seed;
+  const generatedRoadFeatures = generateChallengeRoadFeatures(encounterSeed, {
+    stageNumber,
+    route: generatedRoute.route,
+    generatorVersion: identity.generatorVersion,
+  });
   return Object.freeze({
     stageNumber,
     stageSeed: stageRng.seed,
@@ -190,7 +213,8 @@ export function deriveChallengeStageIdentity(
       seed: routeSeed,
       definition: generatedRoute.definition,
     }),
-    encounterSeed: stageRng.fork('encounters').seed,
+    encounterSeed,
+    roadFeatureSource: Object.freeze({ kind: 'generated' as const, ...generatedRoadFeatures }),
     trafficSeed: stageRng.fork('traffic').seed,
     shopSeed: stageRng.fork('shop').seed,
   });
@@ -387,6 +411,7 @@ function validateStageIdentity(
     JSON.stringify(stage.routeSource.definition) !==
       JSON.stringify(expected.routeSource.definition) ||
     stage.encounterSeed !== expected.encounterSeed ||
+    JSON.stringify(stage.roadFeatureSource) !== JSON.stringify(expected.roadFeatureSource) ||
     stage.trafficSeed !== expected.trafficSeed ||
     stage.shopSeed !== expected.shopSeed
   ) {

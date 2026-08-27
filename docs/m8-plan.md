@@ -411,6 +411,41 @@ driving crisis through ordinary physics, and native/phone playtests confirm the 
 
 ## M8.5 — Challenge encounters, seeded pullouts, and difficulty progression
 
+**Implementation checkpoint — 2026-08-27:** Challenge stages now record and resolve generated road
+features from their independent encounter seed. The pure `challengeRoadFeatures.ts` generator uses
+two vetted placement bands, validates each candidate against the compiled route and shared road and
+patrol constructors, and fails with the last validation error after at most eight attempts. Each
+recorded feature source retains the generator ID/version, seed, attempt, stage number, frozen
+difficulty policy, pullouts, and patrol definitions. `createRoadForSession()` validates that complete
+record before play; Campaign still returns its authored route, pullout, and patrol constants
+unchanged.
+
+The complete Challenge generator version is now `2`. Generated routes reserve `14 m` of road offset
+instead of `10 m`: the four lanes and ordinary shoulder consume `9.9 m`, while the accepted `3.6 m`
+cruiser apron needs `13.5 m`. This constraint is part of the recorded route definition, so playback
+cannot silently widen older geometry.
+
+Difficulty has three bounded tiers. Stages 1–2 post one trap requiring one avoid; stages 3–4 retain
+one trap and require two avoids; stages 5 onward cap at two well-separated traps requiring two
+avoids each. The policy never shortens the `300 m` encounter window or changes detection, telegraph,
+attack, damage, side-clearance, or escape tuning. The second placement uses the route's sustained
+recovery section, and validation enforces approach, inter-encounter recovery, finish recovery,
+full-depth apron placement, lane-side clearance, and the state machine's single-active-patrol
+contract.
+
+Automated coverage now includes equal/different seeds, route-stream independence, physical road
+construction, bounded failure, deeply frozen identity, tamper rejection, sequential trigger
+ownership, Campaign isolation, and six-stage carryover/pressure progression. The full project gate
+passes with `463` tests. A native and `374 × 516` browser run showed the generated cruiser posted at
+stage start, exercised patrol flanking and a left telegraph on the generated road, completed Stage 1,
+and began Stage 2 with its own posted cruiser and carried cargo/fuel. The route map, HUD, and warning
+remained legible and the console stayed clean.
+
+Remaining playable-checkpoint work: drive several deliberately recorded seeds rather than one
+random dispatch seed; trigger the posted trap above the enforcement threshold; and exercise the
+stage-5 two-trap tier at native and forced-touch phone sizes. Those checks should tune placement
+bands or pressure thresholds if needed before marking the M8.5 exit criterion accepted.
+
 Start this slice after the M8.4 patrol model and its direct `roadGame.ts` composition coverage are
 accepted. Keep Campaign's authored patrol definitions unchanged. Challenge owns deterministic
 generation of patrol encounters and roadside pullouts for each generated stage, using the existing

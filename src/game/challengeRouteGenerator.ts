@@ -8,8 +8,8 @@ import {
   type RouteSegmentDefinition,
 } from '/src/game/route.js';
 
-export const CHALLENGE_ROUTE_GENERATOR_VERSION = 1;
-export const CHALLENGE_ROUTE_GENERATOR_ID = 'route-phrases-v1';
+export const CHALLENGE_ROUTE_GENERATOR_VERSION = 2;
+export const CHALLENGE_ROUTE_GENERATOR_ID = 'route-phrases-v2';
 export const CHALLENGE_ROUTE_TOTAL_LENGTH_METERS = 2_200;
 
 export interface ChallengeRouteConstraints extends RouteConstraints {
@@ -24,7 +24,10 @@ export interface ChallengeRouteConstraints extends RouteConstraints {
 }
 
 export const CHALLENGE_ROUTE_CONSTRAINTS: ChallengeRouteConstraints = Object.freeze({
-  maximumAbsoluteRoadOffsetMeters: 10,
+  // Four lanes and the ordinary shoulder consume 9.9 m. Challenge patrol
+  // aprons need another 3.6 m, so generated definitions reserve that geometry
+  // in their recorded route constraint rather than widening the road later.
+  maximumAbsoluteRoadOffsetMeters: 14,
   minimumBendRadiusMeters: 100,
   maximumAbsoluteCenterOffsetMeters: 360,
   minimumApproachMeters: 40,
