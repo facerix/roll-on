@@ -101,6 +101,31 @@ export interface ChallengeSession {
 
 export type GameSession = CampaignSession | ChallengeSession;
 
+/** Validate a deserialized session before it is trusted for replay or persistence. */
+export function validateGameSession(session: GameSession): void {
+  if (typeof session !== 'object' || session === null) {
+    throw new TypeError('GameSession must be an object');
+  }
+  if (session.mode === 'challenge') {
+    validateChallengeSession(session);
+    return;
+  }
+  if (session.mode !== 'campaign') {
+    throw new TypeError(`unknown game mode: ${String((session as { mode: unknown }).mode)}`);
+  }
+  if (session.scoreChannel !== 'campaign') {
+    throw new TypeError('CampaignSession must use the campaign score channel');
+  }
+  assertNonEmptyString('stageId', session.stage?.stageId);
+  if (session.stage.stageNumber !== 1) {
+    throw new RangeError(`Campaign stageNumber must be 1, got ${session.stage.stageNumber}`);
+  }
+  if (session.stage.routeSource?.kind !== 'authored') {
+    throw new TypeError('CampaignSession must use an authored route');
+  }
+  assertNonEmptyString('routeId', session.stage.routeSource.routeId);
+}
+
 export interface CreateCampaignSessionOptions {
   readonly mode: 'campaign';
   readonly stageId: string;

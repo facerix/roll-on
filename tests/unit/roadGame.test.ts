@@ -75,6 +75,10 @@ class FakeElement extends EventTarget {
 
   remove(): void {}
 
+  replaceChildren(...children: FakeElement[]): void {
+    this.children.splice(0, this.children.length, ...children);
+  }
+
   setAttribute(name: string, value: string): void {
     this.attributes.set(name, value);
   }
@@ -320,7 +324,7 @@ test('roadGame delegates terminal ownership and suppresses its fallback terminal
         resultCount += 1;
         assert.equal(state.phase, 'failed');
         assert.equal(state.failureReason, 'out-of-fuel');
-        return true;
+        return null;
       },
     });
 

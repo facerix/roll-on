@@ -28,7 +28,7 @@ import {
 } from '/src/game/roadScene.js';
 import { buildRoadCameraTuning } from '/src/game/roadViewport.js';
 import { calculateScore } from '/src/game/score.js';
-import { createRunTerminalView } from '/src/game/runTerminalView.js';
+import { createRunTerminalView, type RunTerminalResultDetails } from '/src/game/runTerminalView.js';
 import { createPauseMenuView, type PauseMenuView } from '/src/game/pauseMenuView.js';
 import {
   advanceElapsedRunSeconds,
@@ -98,8 +98,8 @@ export interface StartRoadGameOptions {
   readonly initialFuelLevel?: number;
   readonly onRetry: () => void;
   readonly onExitToTitle: () => void;
-  /** Return true when the caller owns terminal presentation for this result. */
-  readonly onStageResult?: (state: StageRunState) => boolean;
+  /** Return null when the caller owns navigation, or details to enrich the built-in terminal. */
+  readonly onStageResult?: (state: StageRunState) => RunTerminalResultDetails | null;
 }
 
 export function startRoadGame(options: StartRoadGameOptions): RoadGame {
@@ -262,8 +262,9 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       if (didTerminate) {
         pauseMenu?.hide();
         mountedGame.setInteractionEnabled(false);
-        if (options.onStageResult?.(stageRun) !== true) {
-          terminal.show(buildRunTerminalPresentation(stageRun));
+        const resultDetails = options.onStageResult?.(stageRun);
+        if (resultDetails !== null) {
+          terminal.show(buildRunTerminalPresentation(stageRun), resultDetails);
         }
       }
     },

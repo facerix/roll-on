@@ -8,9 +8,6 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
 
 ## Open design questions
 
-- **Score formula precise weights**: §6 of the design doc gives the formula but no coefficients. M4
-  uses prototype weights (10 points/meter, 2,000 integrity multiplier, and a 250-point penalty per
-  Road Rage collision); tune during the M6 finish-tally playtest.
 - **Touch control ergonomics**: the pad layout (steer arrows at left/right centre, brake+gas centred
   along the bottom) is a first pass that has NOT been played on a real device yet. Open: whether
   steering wants held arrows at all versus a drag-anywhere lane slider. Revisit after the first
@@ -56,6 +53,11 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
 - **`DataStore` schema churn**: deferred — during prototyping we accept tearing down localStorage and starting fresh whenever the shape changes. Revisit once gameplay stabilizes and real player data is at stake; at that point we want explicit version tags and crash-on-unknown-version (per directive: crashing > corruption).
 
 ## Resolved (move entries here when decided, with the decision)
+
+- **Initial final-tally weights** (2026-08-27): retain the established `10` points/meter, `2,000`
+  Cargo Integrity multiplier, and `250`-point Road Rage deduction. Add up to `1,000` points for
+  diesel residuals and a `2,500`-point dry-tank completion bonus. The terminal exposes every
+  component and the constants remain isolated in `finalTally.ts` for later playtest tuning.
 
 - **Horn visibility for the Stage 1 PoC** (2026-08-03): defer horn mechanics beyond M6 and do not
   show a control that has no gameplay effect. The touch pad exposes steering, brake, and throttle

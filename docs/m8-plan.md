@@ -502,6 +502,38 @@ Start this slice only after the M8.5 Challenge content contract is stable, with 
 route identity contracts in place. M6 supplies live/provisional score inputs and immutable terminal
 snapshots; M8.6 owns the durable result contract.
 
+**Implementation checkpoint — 2026-08-27:** The terminal tally now consumes only the locked
+`StageRunState.terminalSnapshot`. It retains the established `10` points/meter, `2,000`-point Cargo
+Integrity multiplier, and `250`-point Road Rage deduction, then adds an explicit first-pass diesel
+residual worth up to `1,000` points and the design document's dry-tank completion bonus, initially
+`2,500` points. Every component is shown separately; negative totals floor at zero, finish overshoot
+does not earn extra distance points, and non-finite or unsafe arithmetic fails loudly.
+
+The historical `scores` key now contains a version-`1` envelope of immutable run results. Loading an
+unversioned score array explicitly migrates every valid legacy score into the Campaign channel and
+writes the canonical envelope back once. Malformed JSON, unknown versions, corrupt records,
+duplicate IDs, and conflicting exact-once writes throw instead of clearing or guessing. Ordering is
+score, completed stages, route distance, elapsed time, completion timestamp, then ID, so ties are
+stable across reloads. Campaign completion and terminal Challenge failure each own one result ID;
+intermediate Challenge stages update the cumulative tally without writing partial results.
+
+Each native result stores its terminal snapshot, final-stage tally, and validated `GameSession`.
+Challenge records therefore retain the root seed, generator version, complete resolved route,
+generated pullouts, and patrol definitions. Deserialization revalidates the session against its
+derived identity, and automated round-trip coverage recompiles an identical road and feature set.
+Campaign failure still shows an explainable tally but does not enter the completed-run table.
+
+The terminal dialog now renders the final total, component ledger, and the correct channel's top
+five. Dispatch renders separate Campaign and Challenge tables, including semantic empty states, so
+scores remain discoverable after reload rather than only immediately after a run. A real desktop
+Campaign clear produced and persisted a `22,160`-point tally, then reloaded into Campaign without
+appearing in Challenge. A `374 × 516` run reached Challenge intermission with carried score, cargo,
+and fuel; forced-touch controls, map, HUD, and both score surfaces remained legible. Browser console
+warnings and errors stayed empty. A built `dist/` run was then primed through its service worker,
+its temporary server was stopped, and a real network-off reload reached the title, retained the
+Campaign score in Dispatch, and started cached Campaign gameplay with touch controls and no console
+warnings or errors.
+
 Build the final tally from the locked terminal snapshot without re-simulating the run. Extend
 `DataStore` with a versioned run-result schema and explicit migration from the current `scores`
 shape. Unknown or corrupt versions fail loudly rather than being guessed. Keep Campaign and
@@ -559,5 +591,7 @@ persistence, migration, high-score, and complete stage-identity checks are added
 - [x] Production route identity is reproducible for saved runs and bug reports.
 - [x] Rylee is consulted before patrol behavior tests or implementation are changed.
 - [x] The accepted patrol model is deterministic, observable, tested, and playable.
-- [ ] Final tally, versioned persistence/migration, and channel-separated high scores pass after M8.5.
-- [ ] Automated checks and the browser matrix pass without console or offline-cache regressions.
+- [x] Final tally, versioned persistence/migration, and channel-separated high scores pass after M8.5.
+- [x] Automated checks and the browser matrix pass without console or offline-cache regressions.
+      (`473` tests, format, lint, typecheck, build, desktop, phone, touch, completion, intermission,
+      reload persistence, network-off title/Dispatch/gameplay, and console checks pass.)

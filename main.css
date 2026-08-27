@@ -721,6 +721,10 @@ body.is-playing #main-foot {
   box-shadow: 0 0 30px rgba(151, 240, 170, 0.3);
 }
 
+.roll-on-run-terminal[data-has-result='true']::before {
+  inset: 24px;
+}
+
 .roll-on-run-terminal-kicker {
   margin: 0 0 12px;
   color: #e88a2a;
@@ -740,18 +744,96 @@ body.is-playing #main-foot {
 }
 
 .roll-on-run-terminal-detail {
-  margin: 16px 0 28px;
+  margin: 8px 0;
   color: #f6d96d;
   font-size: 1rem;
 }
 
+.roll-on-run-terminal-score {
+  margin: 2px 0 8px;
+  color: #fff4a8;
+  font-family: 'DSEG7Classic-Bold', monospace;
+  font-size: 1.7rem;
+}
+
+.roll-on-run-terminal-tally {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  width: 250px;
+  margin: 0;
+  font-size: 0.58rem;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.roll-on-run-terminal-tally dt,
+.roll-on-run-terminal-tally dd {
+  margin: 0;
+}
+
+.roll-on-run-terminal-tally dd {
+  color: #f6d96d;
+  text-align: right;
+}
+
+.roll-on-run-terminal-high-scores {
+  width: min(100%, 280px);
+  margin: 10px 0;
+  border-top: 1px solid #576266;
+  padding-top: 8px;
+  font-size: 0.55rem;
+}
+
+.roll-on-run-terminal-high-scores h3,
+.roll-on-run-terminal-high-scores p {
+  margin: 0 0 4px;
+  line-height: 1.25;
+}
+
+.roll-on-run-terminal-high-scores ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roll-on-run-terminal-high-scores li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 6px;
+  margin-top: 2px;
+  text-align: left;
+}
+
+.roll-on-run-terminal-high-scores li > span:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roll-on-run-terminal-high-scores li[data-current='true'] {
+  color: #97f0aa;
+}
+
+.roll-on-run-terminal-high-scores small {
+  color: #b6c8c6;
+  font: inherit;
+  white-space: nowrap;
+}
+
 .roll-on-run-terminal-actions {
   display: flex;
-  gap: 12px;
+  gap: 8px;
+  width: min(100%, 280px);
+  margin-top: 4px;
 }
 
 .roll-on-run-terminal .roll-on-run-terminal-action {
+  flex: 1 1 0;
+  min-width: 0;
   min-height: 42px;
+  padding-inline: 0.5em;
   border: 2px solid #e88a2a;
   border-radius: 0;
   background: #050608;
@@ -762,6 +844,53 @@ body.is-playing #main-foot {
 .roll-on-run-terminal .roll-on-run-terminal-primary {
   border-color: #f6d96d;
   color: #f6d96d;
+}
+
+@media (max-width: 420px) {
+  .roll-on-run-terminal {
+    padding: 20px;
+  }
+
+  .roll-on-run-terminal[data-has-result='true']::before {
+    inset: 16px;
+  }
+
+  .roll-on-run-terminal-kicker {
+    margin-bottom: 8px;
+    font-size: 0.78rem;
+  }
+
+  .roll-on-run-terminal h2 {
+    font-size: 1.9rem;
+  }
+
+  .roll-on-run-terminal-detail {
+    margin-block: 6px;
+    font-size: 0.85rem;
+  }
+
+  .roll-on-run-terminal-score {
+    margin-bottom: 6px;
+    font-size: 1.5rem;
+  }
+
+  .roll-on-run-terminal-tally {
+    width: min(100%, 280px);
+    font-size: 0.55rem;
+    line-height: 1.35;
+  }
+
+  .roll-on-run-terminal-high-scores {
+    margin-block: 8px;
+    padding-top: 6px;
+    font-size: 0.5rem;
+  }
+
+  .roll-on-run-terminal .roll-on-run-terminal-action {
+    min-height: 38px;
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
 }
 
 .roll-on-challenge-intermission {

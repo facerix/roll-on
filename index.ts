@@ -2,8 +2,10 @@ import '/components/UpdateNotification.js';
 import '/components/TitleScreen.js';
 import '/components/DispatchScreen.js';
 import type { DispatchSelectEventDetail } from '/components/DispatchScreen.js';
+import DataStore from '/src/DataStore.js';
 import { serviceWorkerManager } from '/src/ServiceWorkerManager.js';
 import { h } from '/src/domUtils.js';
+import { buildFinalTally } from '/src/game/finalTally.js';
 import {
   completeChallengeStage,
   createGameSession,
@@ -16,7 +18,10 @@ import { createChallengeIntermissionView } from '/src/game/challengeIntermission
 import { startRoadGame } from '/src/game/roadGame.js';
 import { measureRoadViewport } from '/src/game/roadViewport.js';
 import { createRoadForSession } from '/src/game/sessionRoute.js';
+import { buildHighScoreTablePresentation, createRunResult } from '/src/game/runResults.js';
+import type { RunTerminalResultDetails } from '/src/game/runTerminalView.js';
 import type { StageRunState } from '/src/game/stageRun.js';
+import { v4WithTimestamp } from '/src/uuid.js';
 
 function setupGame(): void {
   const titleScreen = document.querySelector('title-screen');
@@ -27,7 +32,7 @@ function setupGame(): void {
   let gameRoot: HTMLElement | null = null;
   let intermission: ReturnType<typeof createChallengeIntermissionView> | null = null;
 
-  const startGame = (session: GameSession): void => {
+  const startGame = (session: GameSession, resultId: string = v4WithTimestamp()): void => {
     titleScreen?.hide();
     dispatchScreen.hide();
     intermission?.dispose();
@@ -51,44 +56,82 @@ function setupGame(): void {
       initialFuelLevel: session.mode === 'challenge' ? session.carryover.fuelLevel : 1,
       onRetry: () => startGame(retrySession(session)),
       onExitToTitle: showTitleScreen,
-      onStageResult: state => handleStageResult(session, state),
+      onStageResult: state => handleStageResult(session, state, resultId),
     });
   };
 
-  function handleStageResult(session: GameSession, state: StageRunState): boolean {
+  function handleStageResult(
+    session: GameSession,
+    state: StageRunState,
+    resultId: string
+  ): RunTerminalResultDetails | null {
     const terminalSnapshot = state.terminalSnapshot;
     if (terminalSnapshot === null) {
       throw new Error('terminal stage result is missing its snapshot');
     }
 
+    const finalStageTally = buildFinalTally(state);
+
     if (session.mode === 'campaign') {
-      return false;
+      let currentResultId: string | undefined;
+      if (state.phase === 'completed') {
+        const result = createRunResult({
+          id: resultId,
+          completedAt: new Date().toISOString(),
+          session,
+          terminalState: state,
+          finalStageTally,
+        });
+        DataStore.addRunResult(result);
+        currentResultId = result.id;
+      }
+      return {
+        score: finalStageTally.total,
+        finalStageTally,
+        highScores: buildHighScoreTablePresentation(
+          DataStore.items,
+          session.scoreChannel,
+          currentResultId
+        ),
+      };
     }
 
     if (state.phase === 'completed') {
       const completed = completeChallengeStage(session, {
-        stageScore: terminalSnapshot.score,
+        stageScore: finalStageTally.total,
         cargoIntegrity: terminalSnapshot.cargoIntegrity,
         fuelLevel: terminalSnapshot.fuelLevel,
         haulCurrencyEarned: 0,
       });
-      showChallengeIntermission(completed);
-      return true;
+      showChallengeIntermission(completed, resultId);
+      return null;
     }
 
     if (state.phase !== 'failed') {
       throw new Error(`unknown terminal stage phase: ${state.phase}`);
     }
-    failChallengeRun(session, {
-      stageScore: terminalSnapshot.score,
+    const failed = failChallengeRun(session, {
+      stageScore: finalStageTally.total,
       routeDistanceMeters: terminalSnapshot.routeDistanceMeters,
       cargoIntegrity: terminalSnapshot.cargoIntegrity,
       fuelLevel: terminalSnapshot.fuelLevel,
     });
-    return false;
+    const result = createRunResult({
+      id: resultId,
+      completedAt: new Date().toISOString(),
+      session: failed,
+      terminalState: state,
+      finalStageTally,
+    });
+    DataStore.addRunResult(result);
+    return {
+      score: result.score,
+      finalStageTally,
+      highScores: buildHighScoreTablePresentation(DataStore.items, failed.scoreChannel, result.id),
+    };
   }
 
-  function showChallengeIntermission(completed: ChallengeSession): void {
+  function showChallengeIntermission(completed: ChallengeSession, resultId: string): void {
     activeGame?.dispose();
     activeGame = null;
     gameRoot?.remove();
@@ -100,7 +143,7 @@ function setupGame(): void {
       cumulativeScore: completed.cumulativeScore,
       cargoIntegrity: completed.carryover.cargoIntegrity,
       fuelLevel: completed.carryover.fuelLevel,
-      onContinue: () => startGame(startNextChallengeStage(completed)),
+      onContinue: () => startGame(startNextChallengeStage(completed), resultId),
       onExitToTitle: showTitleScreen,
     });
     document.body.appendChild(intermission.root);
@@ -120,6 +163,10 @@ function setupGame(): void {
 
   function showDispatchScreen(): void {
     titleScreen?.hide();
+    dispatchScreen?.setHighScores({
+      campaign: buildHighScoreTablePresentation(DataStore.items, 'campaign'),
+      challenge: buildHighScoreTablePresentation(DataStore.items, 'challenge'),
+    });
     dispatchScreen?.show();
     dispatchScreen?.focus();
   }
@@ -175,6 +222,7 @@ whenLoaded.then(async () => {
     updateNotification?.show(event.detail.pendingWorker);
   });
 
+  await DataStore.init();
   await serviceWorkerManager.register();
   setupGame();
 });

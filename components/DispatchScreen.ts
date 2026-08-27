@@ -1,5 +1,6 @@
 import { h } from '/src/domUtils.js';
 import { installDispatchScreenHandlers, type DispatchMode } from '/src/game/dispatchScreen.js';
+import type { HighScoreTablePresentation } from '/src/game/runResults.js';
 
 interface DispatchOptionPresentation {
   readonly mode: DispatchMode;
@@ -10,6 +11,11 @@ interface DispatchOptionPresentation {
 
 export interface DispatchSelectEventDetail {
   readonly mode: DispatchMode;
+}
+
+export interface DispatchHighScores {
+  readonly campaign: HighScoreTablePresentation;
+  readonly challenge: HighScoreTablePresentation;
 }
 
 const OPTIONS: readonly DispatchOptionPresentation[] = [
@@ -170,6 +176,60 @@ const CSS = `
     text-shadow: 0 0 0.65rem var(--frame-glow);
   }
 
+  .dispatch-high-scores {
+    width: min(54rem, 94vw);
+    color: #fff8cf;
+    font-family: 'BigSquareDots', 'Courier New', Courier, monospace;
+  }
+
+  .dispatch-high-scores > h2 {
+    margin: 0 0 0.75rem;
+    font-size: clamp(0.9rem, 1.8vw, 1.25rem);
+    letter-spacing: 0.16em;
+    text-align: center;
+  }
+
+  .dispatch-score-columns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .dispatch-score-channel {
+    padding: 0.75rem 1rem;
+    border: 2px solid #ffb52d;
+    background: rgba(2, 2, 16, 0.86);
+  }
+
+  .dispatch-score-channel.challenge {
+    border-color: #48cfff;
+  }
+
+  .dispatch-score-channel h3,
+  .dispatch-score-channel p {
+    margin: 0;
+    font-size: 0.72rem;
+    text-align: center;
+  }
+
+  .dispatch-score-channel ol {
+    margin: 0;
+    padding-left: 2rem;
+  }
+
+  .dispatch-score-channel li {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 0.75rem;
+    margin-top: 0.35rem;
+    font-size: 0.68rem;
+  }
+
+  .dispatch-score-channel small {
+    color: #b6c8c6;
+    font: inherit;
+  }
+
   @media (max-width: 720px) {
     .dispatch-shell {
       justify-content: flex-start;
@@ -194,6 +254,10 @@ const CSS = `
     .dispatch-option-art {
       width: min(82%, 24rem);
     }
+
+    .dispatch-score-columns {
+      grid-template-columns: 1fr;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -206,6 +270,7 @@ const CSS = `
 export class DispatchScreen extends HTMLElement {
   readonly #optionElements: readonly HTMLButtonElement[];
   readonly #optionList: HTMLDivElement;
+  readonly #highScores: HTMLElement;
   #disposeHandlers: (() => void) | null = null;
 
   constructor() {
@@ -248,6 +313,10 @@ export class DispatchScreen extends HTMLElement {
       },
       [...this.#optionElements]
     );
+    this.#highScores = h('section', {
+      className: 'dispatch-high-scores',
+      ariaLabel: 'High scores by game mode',
+    });
 
     root.appendChild(h('style', { textContent: CSS }));
     root.appendChild(
@@ -258,6 +327,7 @@ export class DispatchScreen extends HTMLElement {
           alt: 'Dispatch',
         }),
         this.#optionList,
+        this.#highScores,
       ])
     );
 
@@ -313,6 +383,19 @@ export class DispatchScreen extends HTMLElement {
     this.ariaHidden = 'true';
   }
 
+  setHighScores(tables: DispatchHighScores): void {
+    if (tables.campaign.channel !== 'campaign' || tables.challenge.channel !== 'challenge') {
+      throw new TypeError('Dispatch high-score tables do not match their channels');
+    }
+    this.#highScores.replaceChildren(
+      h('h2', { textContent: 'HIGH SCORES' }),
+      h('div', { className: 'dispatch-score-columns' }, [
+        this.#renderScoreTable(tables.campaign),
+        this.#renderScoreTable(tables.challenge),
+      ])
+    );
+  }
+
   #highlight(index: number): void {
     this.#optionElements.forEach((element, elementIndex) => {
       const highlighted = elementIndex === index;
@@ -320,6 +403,30 @@ export class DispatchScreen extends HTMLElement {
       element.ariaSelected = String(highlighted);
     });
     this.#optionList.setAttribute('aria-activedescendant', this.#optionElements[index]!.id);
+  }
+
+  #renderScoreTable(table: HighScoreTablePresentation): HTMLElement {
+    const content = table.emptyMessage
+      ? h('p', { textContent: table.emptyMessage })
+      : h(
+          'ol',
+          {},
+          table.rows.map(row =>
+            h('li', {}, [
+              h('span', { textContent: `#${row.rank}` }),
+              h('span', { textContent: row.scoreText }),
+              h('small', { textContent: row.detailText }),
+            ])
+          )
+        );
+    return h(
+      'section',
+      {
+        className: `dispatch-score-channel ${table.channel}`,
+        ariaLabel: `${table.heading} high scores`,
+      },
+      [h('h3', { textContent: table.heading }), content]
+    );
   }
 }
 
