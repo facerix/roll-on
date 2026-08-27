@@ -8,7 +8,7 @@ import {
 import { createFuelState, DEFAULT_FUEL_TUNING, isFuelInFumes } from '/src/game/fuel.js';
 import { stepDriving, ZERO_FUEL_BURN, type DrivingState } from '/src/game/drivingUpdate.js';
 import { mountGame } from '/src/game/mount.js';
-import { createRoad, DEFAULT_ROAD_TUNING } from '/src/game/road.js';
+import { createRoad, DEFAULT_ROAD_TUNING, type RoadPullout } from '/src/game/road.js';
 import {
   buildRoadCamera,
   getVisibleWorldDistanceRange,
@@ -16,6 +16,10 @@ import {
   type RoadViewport,
 } from '/src/game/roadCamera.js';
 import { sampleRoute, worldToRoute, type Route } from '/src/game/route.js';
+import {
+  buildRouteFollowerSteering,
+  isDebugRouteFollowerEnabled,
+} from '/src/game/routeFollower.js';
 import type { RoadBarrierImpact } from '/src/game/roadCollision.js';
 import {
   buildRoadScene,
@@ -33,7 +37,38 @@ import {
   stepStageRun,
   type StageRunState,
 } from '/src/game/stageRun.js';
-import { createTrafficState, stepTraffic, type TrafficState } from '/src/game/traffic.js';
+import {
+  addPatrolCruiser,
+  createTrafficState,
+  removeTrafficVehicle,
+  stagePatrolCruiser,
+  stepTraffic,
+  type PatrolVehicleCommand,
+  type TrafficEvent,
+  type TrafficState,
+  type TrafficVehicle,
+} from '/src/game/traffic.js';
+import {
+  createPatrolEncounterState,
+  getActivePatrolEncounter,
+  stepPatrolEncounter,
+  type PatrolAttackSide,
+  type PatrolEncounterDefinition,
+  type PatrolEncounterState,
+} from '/src/game/patrolEncounter.js';
+import {
+  applyPatrolHit,
+  buildPatrolCommand,
+  buildPatrolStagingPose,
+  DEFAULT_PATROL_PURSUIT_TUNING,
+  observePatrolSurroundings,
+  parkedCruiserPose,
+} from '/src/game/patrolPursuit.js';
+import {
+  buildPatrolGlareDrawables,
+  buildPatrolGlareSnapshot,
+  type PatrolGlareSnapshot,
+} from '/src/game/patrolGlare.js';
 import { createTruckState, DEFAULT_TRUCK_TUNING, type TruckControls } from '/src/game/truck.js';
 import { buildTruckTelemetry, formatTruckTelemetry } from '/src/game/truckTelemetry.js';
 
@@ -43,6 +78,8 @@ const TRAFFIC_EVENT_DURATION_SECONDS = 0.9;
 const INTEGRITY_SCORE_MULTIPLIER = 2_000;
 const ROAD_RAGE_PENALTY = 250;
 const BASE_POINTS_PER_METER = 10;
+/** How far behind the truck an unowned cruiser may fall before it is removed. */
+const RELEASED_CRUISER_CULL_BEHIND_METERS = 60;
 
 export interface RoadGame {
   dispose(): void;
@@ -52,6 +89,10 @@ export interface StartRoadGameOptions {
   readonly root: HTMLElement;
   readonly viewport: RoadViewport;
   readonly route: Route;
+  /** Authored road features for this stage, such as speed-trap pullouts. */
+  readonly pullouts?: readonly RoadPullout[];
+  /** Authored patrol encounters posted for this stage. */
+  readonly patrolEncounters?: readonly PatrolEncounterDefinition[];
   readonly stageNumber: number;
   readonly initialCargoIntegrity?: number;
   readonly initialFuelLevel?: number;
@@ -62,7 +103,7 @@ export interface StartRoadGameOptions {
 }
 
 export function startRoadGame(options: StartRoadGameOptions): RoadGame {
-  const road = createRoad(DEFAULT_ROAD_TUNING, options.route);
+  const road = createRoad(DEFAULT_ROAD_TUNING, options.route, { pullouts: options.pullouts ?? [] });
   const finishDistanceMeters = road.route.totalLengthMeters;
   const cameraTuning = buildRoadCameraTuning(road, options.viewport);
   const truckDimensions: RoadSceneTruckDimensions = {
@@ -77,6 +118,14 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
     fuelLevel: options.initialFuelLevel,
   });
   let trafficState: TrafficState = createTrafficState();
+  let patrolState: PatrolEncounterState = createPatrolEncounterState({
+    definitions: options.patrolEncounters ?? [],
+  });
+  let patrolGlare: PatrolGlareSnapshot = { isVisible: false, intensity: 0, side: null };
+  let patrolAttackSide: PatrolAttackSide | null = null;
+  let pendingPatrolCommand: PatrolVehicleCommand | null = null;
+  const patrolCruiserIdsByEncounter = new Map<string, number>();
+  const releasedCruiserIds = new Set<number>();
   let lastBarrierImpact: RoadBarrierImpact | null = null;
   let barrierFlashSeconds = 0;
   let trafficEventSeconds = 0;
@@ -88,6 +137,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
   let cruiseControl: CruiseControlState = createCruiseControlState();
   const worldFixedCamera = isWorldFixedCamera();
   const debugMode = isDebugMode();
+  const debugRouteFollow = isDebugRouteFollowMode();
   const hud = createGameHudView();
   const terminal = createRunTerminalView({
     stageNumber: options.stageNumber,
@@ -95,6 +145,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
     onExitToTitle: options.onExitToTitle,
   });
   let pauseMenu: PauseMenuView | null = null;
+  postParkedCruisers();
   updateHud();
 
   const mountedGame = mountGame({
@@ -113,7 +164,14 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       cruiseControl = cruiseStep.state;
       const controls: TruckControls = {
         ...cruiseStep.controls,
-        steering: (input.isActive('steerRight') ? 1 : 0) - (input.isActive('steerLeft') ? 1 : 0),
+        steering: debugRouteFollow
+          ? buildRouteFollowerSteering({
+              route: road.route,
+              routeDistanceMeters: drivingState.routePosition.distanceAlongRouteMeters,
+              lateralOffsetMeters: drivingState.routePosition.lateralOffsetMeters,
+              headingRadians: drivingState.truck.headingRadians,
+            })
+          : (input.isActive('steerRight') ? 1 : 0) - (input.isActive('steerLeft') ? 1 : 0),
       };
       const result = stepDriving({
         state: drivingState,
@@ -130,6 +188,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         road,
         truckDimensions,
         dtSeconds: dt,
+        ...(pendingPatrolCommand === null ? {} : { patrolCommand: pendingPatrolCommand }),
       });
       trafficState = trafficResult.state;
       const finalRouteProjection = worldToRoute(road.route, trafficResult.truck.position, {
@@ -144,6 +203,12 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
           lateralOffsetMeters: finalRouteProjection.lateralOffsetMeters,
         },
       };
+      stepPatrolEnforcement({
+        dtSeconds: dt,
+        previousRouteDistanceMeters,
+        trafficEvents: trafficResult.events,
+        isTerminal: false,
+      });
       if (!worldFixedCamera) {
         cameraRotationRadians = stepRoadCameraRotation(
           cameraRotationRadians,
@@ -184,6 +249,15 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       });
       const didTerminate = nextStageRun !== stageRun;
       stageRun = nextStageRun;
+      if (didTerminate) {
+        // Terminal state cancels enforcement before any consequence can land.
+        stepPatrolEnforcement({
+          dtSeconds: 0,
+          previousRouteDistanceMeters: drivingState.routePosition.distanceAlongRouteMeters,
+          trafficEvents: [],
+          isTerminal: true,
+        });
+      }
       updateHud();
       if (didTerminate) {
         pauseMenu?.hide();
@@ -231,6 +305,8 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
             : 'none'
         } cooldown ${drivingState.barrierContactState.cooldownRemainingSeconds.toFixed(2)} s`,
         `traffic: ${trafficState.vehicles.length} active, ${trafficState.takedowns} takedowns`,
+        `patrol: ${describePatrolTelemetry()}`,
+        `steering: ${debugRouteFollow ? 'route follower' : 'player'}`,
         `cruise: ${cruiseControl.targetSpeedMetersPerSecond.toFixed(1)} m/s`,
         `score: ${buildCurrentScore()}`,
         `stage: ${stageRun.phase}${stageRun.failureReason ? ` (${stageRun.failureReason})` : ''}`,
@@ -268,6 +344,12 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         },
         finishDistanceMeters,
         routePreviewDistanceMeters: drivingState.routePosition.distanceAlongRouteMeters,
+        patrolGlare: buildPatrolGlareDrawables({
+          snapshot: patrolGlare,
+          viewport: options.viewport,
+          elapsedSeconds: elapsedRunSeconds,
+          reducedMotion: prefersReducedMotion(),
+        }),
       });
     },
   });
@@ -296,6 +378,185 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
     },
   };
 
+  /** Put every authored trap's cruiser in its apron before the run starts. */
+  function postParkedCruisers(): void {
+    for (const encounter of patrolState.encounters) {
+      if (encounter.phase !== 'posted') continue;
+      const pose = parkedCruiserPose(road, encounter.triggerDistanceMeters);
+      const added = addPatrolCruiser(trafficState, {
+        distanceMeters: pose.distanceMeters,
+        lateralMeters: pose.lateralMeters,
+        speedMetersPerSecond: pose.speedMetersPerSecond,
+        headingOffsetRadians: pose.headingOffsetRadians,
+        road,
+      });
+      trafficState = added.state;
+      patrolCruiserIdsByEncounter.set(encounter.id, added.vehicleId);
+    }
+  }
+
+  function findCruiser(encounterId: string | undefined): TrafficVehicle | null {
+    if (encounterId === undefined) return null;
+    const vehicleId = patrolCruiserIdsByEncounter.get(encounterId);
+    if (vehicleId === undefined) return null;
+    return trafficState.vehicles.find(vehicle => vehicle.id === vehicleId) ?? null;
+  }
+
+  /**
+   * Advance enforcement from what the world just did. Traffic reports contacts
+   * and Road Rage; the encounter model decides what they mean; this applies the
+   * consequences and prepares the cruiser's next motion order.
+   */
+  function stepPatrolEnforcement(step: {
+    readonly dtSeconds: number;
+    readonly previousRouteDistanceMeters: number;
+    readonly trafficEvents: readonly TrafficEvent[];
+    readonly isTerminal: boolean;
+  }): void {
+    const activeBefore = getActivePatrolEncounter(patrolState);
+    const cruiser = findCruiser(activeBefore?.id);
+    const surroundings = observePatrolSurroundings({
+      road,
+      truckRoutePosition: drivingState.routePosition,
+      cruiser,
+      traffic: trafficState.vehicles,
+    });
+    const patrolResult = stepPatrolEncounter({
+      state: patrolState,
+      frame: {
+        dtSeconds: step.dtSeconds,
+        previousRouteDistanceMeters: step.previousRouteDistanceMeters,
+        routeDistanceMeters: drivingState.routePosition.distanceAlongRouteMeters,
+        speedMetersPerSecond: drivingState.truck.speedMetersPerSecond,
+        maximumSpeedMetersPerSecond: DEFAULT_TRUCK_TUNING.maxForwardSpeedMetersPerSecond,
+        patrolGapMeters: surroundings.patrolGapMeters,
+        leftClearanceMeters: surroundings.leftClearanceMeters,
+        rightClearanceMeters: surroundings.rightClearanceMeters,
+        hasPatrolContact:
+          cruiser !== null &&
+          step.trafficEvents.some(
+            event => event.kind === 'patrol-contact' && event.vehicleId === cruiser.id
+          ),
+        roadRageIncidents: step.trafficEvents.filter(event => event.kind === 'road-rage').length,
+        isTerminal: step.isTerminal,
+      },
+    });
+    patrolState = patrolResult.state;
+
+    for (const event of patrolResult.events) {
+      if (event.kind === 'pursuit-started' && !patrolCruiserIdsByEncounter.has(event.encounterId)) {
+        const added = addPatrolCruiser(trafficState, {
+          distanceMeters:
+            drivingState.routePosition.distanceAlongRouteMeters -
+            DEFAULT_PATROL_PURSUIT_TUNING.responseSpawnGapMeters,
+          lateralMeters: drivingState.routePosition.lateralOffsetMeters,
+          speedMetersPerSecond: drivingState.truck.speedMetersPerSecond,
+          road,
+        });
+        trafficState = added.state;
+        patrolCruiserIdsByEncounter.set(event.encounterId, added.vehicleId);
+      }
+      if (event.kind === 'closing-started') {
+        const vehicleId = patrolCruiserIdsByEncounter.get(event.encounterId);
+        if (vehicleId === undefined) {
+          throw new RangeError(`active patrol ${event.encounterId} has no cruiser to stage`);
+        }
+        const stagingCruiser = trafficState.vehicles.find(vehicle => vehicle.id === vehicleId);
+        if (stagingCruiser?.kind !== 'patrol') {
+          throw new RangeError(`active patrol ${event.encounterId} has no cruiser to stage`);
+        }
+        const pose = buildPatrolStagingPose({
+          truckRouteDistanceMeters: drivingState.routePosition.distanceAlongRouteMeters,
+          truckSpeedMetersPerSecond: drivingState.truck.speedMetersPerSecond,
+          cruiser: stagingCruiser,
+          traffic: trafficState.vehicles,
+        });
+        trafficState = stagePatrolCruiser(trafficState, vehicleId, { ...pose, road });
+      }
+      if (event.kind === 'attack-hit') {
+        drivingState = {
+          ...drivingState,
+          truck: applyPatrolHit(drivingState.truck, event.side, DEFAULT_PATROL_PURSUIT_TUNING),
+        };
+        trafficEventSeconds = TRAFFIC_EVENT_DURATION_SECONDS;
+        trafficEventText = `PATROL HIT ${event.side.toUpperCase()}`;
+      }
+      // A cruiser whose encounter is over stops being owned. It keeps its pose
+      // and is culled like ordinary traffic once it is well behind, so nothing
+      // pops out of existence in view.
+      if (event.kind === 'resolved' || event.kind === 'trap-resolved') {
+        const vehicleId = patrolCruiserIdsByEncounter.get(event.encounterId);
+        if (vehicleId !== undefined) {
+          releasedCruiserIds.add(vehicleId);
+          patrolCruiserIdsByEncounter.delete(event.encounterId);
+        }
+      }
+    }
+
+    for (const vehicleId of releasedCruiserIds) {
+      const cruiserBehind = trafficState.vehicles.find(vehicle => vehicle.id === vehicleId);
+      if (
+        cruiserBehind === undefined ||
+        drivingState.routePosition.distanceAlongRouteMeters - cruiserBehind.distanceMeters >
+          RELEASED_CRUISER_CULL_BEHIND_METERS
+      ) {
+        trafficState = removeTrafficVehicle(trafficState, vehicleId);
+        releasedCruiserIds.delete(vehicleId);
+      }
+    }
+
+    const active = getActivePatrolEncounter(patrolState);
+    const activeCruiser = findCruiser(active?.id);
+    pendingPatrolCommand =
+      active === null || activeCruiser === null
+        ? null
+        : buildPatrolCommand({
+            encounter: active,
+            cruiser: activeCruiser,
+            road,
+            truck: drivingState.truck,
+            truckRoutePosition: drivingState.routePosition,
+          });
+    patrolGlare = buildPatrolGlareSnapshot({
+      encounter: active,
+      patrolGapMeters: surroundings.patrolGapMeters,
+    });
+    patrolAttackSide =
+      active?.phase === 'telegraphing' || active?.phase === 'sideswiping'
+        ? active.chosenSide
+        : null;
+  }
+
+  /** One diagnosable line: source, state, gap, window end, timer, avoids, side. */
+  function describePatrolTelemetry(): string {
+    const pending = patrolState.pendingResponse;
+    const active = getActivePatrolEncounter(patrolState);
+    if (active === null) {
+      const posted = patrolState.encounters.filter(
+        encounter => encounter.phase === 'posted'
+      ).length;
+      return pending === null
+        ? `idle, ${posted} posted`
+        : `response in ${pending.secondsRemaining.toFixed(1)} s`;
+    }
+
+    const cruiser = findCruiser(active.id);
+    const gapMeters =
+      cruiser === null
+        ? Number.NaN
+        : drivingState.routePosition.distanceAlongRouteMeters - cruiser.distanceMeters;
+    const timerSeconds = 'phaseSecondsRemaining' in active ? active.phaseSecondsRemaining : 0;
+    const side = 'chosenSide' in active ? active.chosenSide : 'none';
+    return [
+      `${active.source} ${active.phase}`,
+      `gap ${gapMeters.toFixed(1)} m`,
+      `until ${active.windowEndDistanceMeters.toFixed(0)} m`,
+      `t ${timerSeconds.toFixed(2)} s`,
+      `avoids ${active.recordedAvoids}/${active.requiredAvoids}`,
+      `side ${side}`,
+    ].join(' ');
+  }
+
   function buildCurrentScore(): number {
     return calculateScore({
       baseDeliveredCargo:
@@ -321,6 +582,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         unitSystem: DEFAULT_GAME_HUD_UNIT_SYSTEM,
         isStageComplete: stageRun.phase === 'completed',
         cruiseTargetSpeedMetersPerSecond: cruiseControl.targetSpeedMetersPerSecond,
+        patrolWarning: { isPursuing: patrolGlare.isVisible, attackSide: patrolAttackSide },
       })
     );
   }
@@ -358,4 +620,14 @@ function isWorldFixedCamera(): boolean {
 function isDebugMode(): boolean {
   if (typeof window === 'undefined') return false;
   return new URL(window.location.href).searchParams.has('debug');
+}
+
+function isDebugRouteFollowMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  return isDebugRouteFollowerEnabled(window.location.search);
+}
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }

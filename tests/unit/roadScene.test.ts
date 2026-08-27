@@ -225,7 +225,19 @@ test('route preview is an explicit top-right overlay driven by route-space progr
       DEFAULT_ROUTE_PREVIEW_TUNING.edgeInsetPixels -
       DEFAULT_ROUTE_PREVIEW_TUNING.widthPixels
   );
-  assert.equal(frame.y, DEFAULT_ROUTE_PREVIEW_TUNING.edgeInsetPixels);
+  assert.equal(
+    frame.y,
+    VIEWPORT.height -
+      DEFAULT_ROUTE_PREVIEW_TUNING.edgeInsetPixels -
+      DEFAULT_ROUTE_PREVIEW_TUNING.heightPixels,
+    'the preview sits in the bottom corner, clear of the road ahead'
+  );
+  // The rear approach is where a patrol first shows up, so the inset must stay
+  // outside the travel lanes rather than merely outside the canvas centre.
+  assert.ok(
+    frame.x >= camera.anchorX + road.rightRoadEdgeMeters * camera.pixelsPerMeter,
+    `the preview must not cover the travel lanes, got x ${frame.x}`
+  );
   assert.equal(previewLines.length, 3);
   assert.ok(
     lastIndexOfKind(scene.drawables, 'polyline') >

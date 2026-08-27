@@ -4,7 +4,7 @@ This plan turns the mechanically complete winding-road prototype into a complete
 Stage 1 proof of concept. It keeps the fixed responsive stage, uses the trustworthy orthographic
 view and existing assets as development presentation, and completes the Stage 1 timeline, finish,
 live-scoring, and device-playability commitments. Final tally, persistence, and high scores move to
-M8 after the M8.4 patrol pass, when Campaign and Challenge result identity is stable.
+M8.6 after the M8.5 Challenge content pass, when Campaign and Challenge result identity is stable.
 
 M6 deliberately does not spend production-art effort on the temporary top-down presentation. The
 proper pseudo-3D visualization and the Stage 1 art language belong together in the next dedicated
@@ -153,7 +153,7 @@ dimensions. No layout code may change camera field of view, traffic culling, or 
 
 Each slice starts with failing tests around its pure policy or state transition and ends with a
 browser checkpoint. Prefer gameplay lifecycle and terminal-result work over presentation polish. Final
-tally, persistence, and high scores belong to M8 after M8.4. Do not
+tally, persistence, and high scores belong to M8.6 after M8.5. Do not
 begin final scenery, vehicle, road, effect, or cabinet-HUD production during M6.
 
 Resolve the development service-worker module-skew issue recorded in `docs/kaizen.md` before M6.7.
@@ -282,7 +282,7 @@ until it has a gameplay effect; preserve the abstract input action for later imp
 Rage commuter collisions are penalties rather than bonuses: track each qualifying collision, show
 the event, deduct the provisional 250-point amount, and floor the live score at zero.
 
-Carry the remaining score-weight question recorded in `docs/kaizen.md` into M8.5. M6 only needs
+Carry the remaining score-weight question recorded in `docs/kaizen.md` into M8.6. M6 only needs
 deterministic live/provisional scoring and a complete terminal snapshot.
 
 The lifecycle contract is:
@@ -335,11 +335,11 @@ or failure state without an endless prototype loop; a failed run can restart cle
 
 ## Deferred M6.6 — Final tally, persistence, and high scores
 
-This slice is intentionally moved to M8.5 after the M8.4 patrol pass. M6 supplies live/provisional
-score inputs and an immutable terminal snapshot; M8.5 settles the final tally, mode-separated result
+This slice is intentionally moved to M8.6 after the M8.5 Challenge content pass. M6 supplies
+live/provisional score inputs and an immutable terminal snapshot; M8.6 settles the final tally, mode-separated result
 identity, versioned `DataStore` migration, persistence, high-score ordering, and final presentation.
 
-Do not initialize or write `DataStore`, or add high-score ordering, in M6. The M8.5 plan owns the
+Do not initialize or write `DataStore`, or add high-score ordering, in M6. The M8.6 plan owns the
 tests and exit criterion for those behaviors.
 
 ## M6.7 — Gameplay integration and closeout
@@ -347,7 +347,7 @@ tests and exit criterion for those behaviors.
 Run the complete automated suite and a seeded end-to-end browser matrix. Verify title → play →
 finish or failure → terminal state on representative phone and desktop viewports, keyboard and
 touch, normal and debug presentation, and retry. M6 does not verify final tally, persistence, or
-high scores; M8.5 owns that work after M8.4. Offline/update lifecycle expansion belongs outside
+high scores; M8.6 owns that work after M8.5. Offline/update lifecycle expansion belongs outside
 this PoC unless existing behavior regresses.
 
 ### Completion checklist
@@ -359,8 +359,8 @@ this PoC unless existing behavior regresses.
 - [ ] Development art and HUD communicate every gameplay-critical state without silent ambiguity.
 - [ ] Touch controls fit the fixed stage and retain semantic/keyboard parity.
 - [ ] Stage timeline, difficulty, and finish lifecycle are deterministic.
-- [ ] Final scoring, migration, persistence, and high-score ordering are tested. (Deferred to M8.5
-      after M8.4.)
+- [ ] Final scoring, migration, persistence, and high-score ordering are tested. (Deferred to M8.6
+      after M8.5.)
 - [ ] Automated format, lint, typecheck, and test commands pass.
 - [ ] Browser matrix passes without console errors, geometry drift, duplicated listeners, or
       stale-module skew.

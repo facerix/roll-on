@@ -10,10 +10,14 @@ import {
   type RigidBody,
 } from '../../src/game/rigidBody.ts';
 import {
+  addPatrolCruiser,
   createTrafficState,
   createTrafficVehicle,
   DEFAULT_TRAFFIC_TUNING,
+  removeTrafficVehicle,
+  stagePatrolCruiser,
   stepTraffic,
+  type PatrolVehicleCommand,
   type TrafficState,
 } from '../../src/game/traffic.ts';
 import { createTruckState, type TruckState } from '../../src/game/truck.ts';
@@ -352,50 +356,205 @@ test('low-speed commuter contact separates bodies without falsely awarding Road 
   assert.deepEqual(result.events, []);
 });
 
-test('patrol cruiser accelerates to catch and pace the truck', () => {
-  const cruiser = createTrafficVehicle({
-    id: 2,
-    kind: 'patrol',
-    laneIndex: 0,
+test('a cruiser moves only as its encounter commands', () => {
+  const posted = addPatrolCruiser(createTrafficState({ seed: 5, spawnCountdownSeconds: 99 }), {
     distanceMeters: 70,
-    speedMetersPerSecond: 20,
+    lateralMeters: 10.4,
+    speedMetersPerSecond: 0,
+    headingOffsetRadians: Math.PI / 2,
+    road: ROAD,
   });
-  const state = createTrafficState({ seed: 5, vehicles: [cruiser], spawnCountdownSeconds: 99 });
-
+  const command: PatrolVehicleCommand = {
+    vehicleId: posted.vehicleId,
+    targetLateralMeters: 1.85,
+    lateralRateMetersPerSecond: 3,
+    targetSpeedMetersPerSecond: 30,
+    targetHeadingOffsetRadians: 0,
+    headingRateRadiansPerSecond: 2,
+  };
   const result = stepTraffic({
-    state,
+    state: posted.state,
+    truck: truck(),
+    road: ROAD,
+    truckDimensions: TRUCK_DIMENSIONS,
+    dtSeconds: 0.5,
+    patrolCommand: command,
+  });
+  const cruiser = result.state.vehicles[0]!;
+
+  assert.equal(cruiser.kind, 'patrol');
+  assert.ok(cruiser.speedMetersPerSecond > 0 && cruiser.speedMetersPerSecond <= 30);
+  assert.ok(cruiser.lateralMeters < 10.4 && cruiser.lateralMeters >= 1.85);
+  assert.ok(Math.abs(cruiser.headingRadians) < Math.PI / 2);
+  assert.deepEqual(result.events, []);
+});
+
+test('an uncommanded cruiser holds the pose its encounter parked it in', () => {
+  const posted = addPatrolCruiser(createTrafficState({ seed: 5, spawnCountdownSeconds: 99 }), {
+    distanceMeters: 700,
+    lateralMeters: 10.4,
+    speedMetersPerSecond: 0,
+    headingOffsetRadians: Math.PI / 2,
+    road: ROAD,
+  });
+  const result = stepTraffic({
+    state: posted.state,
     truck: truck(),
     road: ROAD,
     truckDimensions: TRUCK_DIMENSIONS,
     dtSeconds: 1,
   });
-  const paced = result.state.vehicles[0]!;
+  const cruiser = result.state.vehicles[0]!;
 
-  assert.ok(paced.speedMetersPerSecond > 20);
-  assert.equal(paced.targetLaneIndex, 1);
-  assert.ok(paced.lateralMeters > ROAD.laneCenterOffsetsMeters[0]!);
+  assert.equal(cruiser.speedMetersPerSecond, 0);
+  assert.equal(cruiser.lateralMeters, 10.4);
+  assert.equal(cruiser.distanceMeters, 700);
+  assert.ok(Math.abs(cruiser.headingRadians - Math.PI / 2) < 1e-9);
 });
 
-test('patrol cruiser brakes hard instead of overrunning a suddenly slower truck', () => {
-  const cruiser = createTrafficVehicle({
-    id: 2,
-    kind: 'patrol',
-    laneIndex: 1,
-    distanceMeters: 75,
-    speedMetersPerSecond: 30,
+test('staging relocates one cruiser without disturbing its lateral pull-out pose', () => {
+  const posted = addPatrolCruiser(createTrafficState({ seed: 5, spawnCountdownSeconds: 99 }), {
+    distanceMeters: 700,
+    lateralMeters: 7.1,
+    speedMetersPerSecond: 9,
+    headingOffsetRadians: 0.4,
+    road: CURVED_ROAD,
+  });
+  const staged = stagePatrolCruiser(posted.state, posted.vehicleId, {
+    distanceMeters: 735,
+    speedMetersPerSecond: 40,
+    road: CURVED_ROAD,
+  });
+  const cruiser = staged.vehicles.find(vehicle => vehicle.id === posted.vehicleId)!;
+
+  assert.equal(cruiser.distanceMeters, 735);
+  assert.equal(cruiser.speedMetersPerSecond, 40);
+  assert.equal(cruiser.lateralMeters, 7.1);
+  assert.equal(cruiser.distanceCollisionVelocityMetersPerSecond, 0);
+  assert.equal(cruiser.lateralCollisionVelocityMetersPerSecond, 0);
+  assert.throws(
+    () =>
+      stagePatrolCruiser(staged, 999, {
+        distanceMeters: 700,
+        speedMetersPerSecond: 30,
+        road: ROAD,
+      }),
+    /patrol cruiser 999/
+  );
+});
+
+test('ambient traffic never spawns a cruiser on its own', () => {
+  let state = createTrafficState({ seed: 3, spawnCountdownSeconds: 0 });
+  let currentTruck = truck();
+  for (let index = 0; index < 60; index++) {
+    const result = stepTraffic({
+      state,
+      truck: currentTruck,
+      road: ROAD,
+      truckDimensions: TRUCK_DIMENSIONS,
+      dtSeconds: 0.5,
+    });
+    state = result.state;
+    currentTruck = result.truck;
+  }
+
+  assert.ok(state.nextVehicleId > 1, 'expected ambient traffic to have spawned');
+  assert.equal(state.vehicles.filter(vehicle => vehicle.kind === 'patrol').length, 0);
+});
+
+test('a parked cruiser and a responding cruiser can share the road, and removal is explicit', () => {
+  const posted = addPatrolCruiser(createTrafficState({ seed: 1, spawnCountdownSeconds: 99 }), {
+    distanceMeters: 700,
+    lateralMeters: 10.4,
+    speedMetersPerSecond: 0,
+    headingOffsetRadians: Math.PI / 2,
+    road: ROAD,
+  });
+  const responding = addPatrolCruiser(posted.state, {
+    distanceMeters: 660,
+    lateralMeters: 5.55,
+    speedMetersPerSecond: 25,
+    road: ROAD,
+  });
+
+  assert.notEqual(responding.vehicleId, posted.vehicleId);
+  assert.equal(responding.state.vehicles.length, 2);
+
+  const parkedOnly = removeTrafficVehicle(responding.state, responding.vehicleId);
+  assert.deepEqual(
+    parkedOnly.vehicles.map(vehicle => vehicle.id),
+    [posted.vehicleId]
+  );
+});
+
+test('only the commanded cruiser moves when two are on the road', () => {
+  const posted = addPatrolCruiser(createTrafficState({ seed: 1, spawnCountdownSeconds: 99 }), {
+    distanceMeters: 700,
+    lateralMeters: 10.4,
+    speedMetersPerSecond: 0,
+    headingOffsetRadians: Math.PI / 2,
+    road: ROAD,
+  });
+  const responding = addPatrolCruiser(posted.state, {
+    distanceMeters: 660,
+    lateralMeters: 5.55,
+    speedMetersPerSecond: 25,
+    road: ROAD,
   });
   const result = stepTraffic({
-    state: createTrafficState({ seed: 5, vehicles: [cruiser], spawnCountdownSeconds: 99 }),
-    truck: truck({ speedMetersPerSecond: 10 }),
+    state: responding.state,
+    truck: truck({ position: { xMeters: 0, yMeters: 690 } }),
     road: ROAD,
     truckDimensions: TRUCK_DIMENSIONS,
     dtSeconds: 0.5,
+    patrolCommand: {
+      vehicleId: responding.vehicleId,
+      targetLateralMeters: 1.85,
+      lateralRateMetersPerSecond: 3,
+      targetSpeedMetersPerSecond: 32,
+      targetHeadingOffsetRadians: 0,
+      headingRateRadiansPerSecond: 2,
+    },
   });
 
-  assert.ok(result.state.vehicles[0]!.speedMetersPerSecond <= 24);
+  const parked = result.state.vehicles.find(vehicle => vehicle.id === posted.vehicleId)!;
+  const chasing = result.state.vehicles.find(vehicle => vehicle.id === responding.vehicleId)!;
+
+  assert.equal(parked.speedMetersPerSecond, 0);
+  assert.equal(parked.lateralMeters, 10.4);
+  assert.ok(chasing.speedMetersPerSecond > 25);
+  assert.ok(chasing.lateralMeters < 5.55);
 });
 
-test('patrol contact causes a stronger cooldown-limited cargo hit without a takedown', () => {
+test('a cruiser outlives the distance cull because its encounter owns it', () => {
+  const posted = addPatrolCruiser(createTrafficState({ seed: 1, spawnCountdownSeconds: 99 }), {
+    distanceMeters: 100,
+    lateralMeters: 5.55,
+    speedMetersPerSecond: 0,
+    road: ROAD,
+  });
+  const commuter = createTrafficVehicle({
+    id: 90,
+    kind: 'commuter',
+    laneIndex: 1,
+    distanceMeters: 100,
+    speedMetersPerSecond: 0,
+  });
+  const result = stepTraffic({
+    state: { ...posted.state, vehicles: [...posted.state.vehicles, commuter] },
+    truck: truck({ position: { xMeters: 0, yMeters: 400 } }),
+    road: ROAD,
+    truckDimensions: TRUCK_DIMENSIONS,
+    dtSeconds: 0.1,
+  });
+
+  assert.deepEqual(
+    result.state.vehicles.map(vehicle => vehicle.kind),
+    ['patrol']
+  );
+});
+
+test('cruiser contact is reported once per cooldown and costs the truck nothing here', () => {
   const cruiser = createTrafficVehicle({
     id: 9,
     kind: 'patrol',
@@ -424,48 +583,36 @@ test('patrol contact causes a stronger cooldown-limited cargo hit without a take
     dtSeconds: 0.1,
   });
 
-  assert.ok(first.truck.cargoIntegrity < 1);
-  assert.equal(second.truck.cargoIntegrity, first.truck.cargoIntegrity);
-  assert.equal(second.state.takedowns, 0);
-  assert.equal(second.state.vehicles.length, 1);
-  assert.equal(first.state.vehicles[0]!.status, 'disengaging');
-  assert.ok(first.state.vehicles[0]!.patrolDisengageSecondsRemaining > 0);
+  const contact = first.events.find(event => event.kind === 'patrol-contact');
+  assert.equal(contact?.kind, 'patrol-contact');
   assert.ok(
-    second.state.vehicles[0]!.patrolDisengageSecondsRemaining <
-      first.state.vehicles[0]!.patrolDisengageSecondsRemaining
+    (contact?.impactSpeedMetersPerSecond ?? 0) >=
+      DEFAULT_TRAFFIC_TUNING.patrolContactImpactSpeedMetersPerSecond
   );
-  const trailerRearMeters =
-    first.truck.position.yMeters -
-    (TRUCK_DIMENSIONS.cabLengthMeters / 2 +
-      TRUCK_DIMENSIONS.trailerLengthMeters +
-      TRUCK_DIMENSIONS.hitchGapMeters);
-  assert.ok(first.state.vehicles[0]!.distanceMeters < trailerRearMeters);
-
-  const departed = stepTraffic({
-    state: second.state,
-    truck: second.truck,
-    road: ROAD,
-    truckDimensions: TRUCK_DIMENSIONS,
-    dtSeconds: DEFAULT_TRAFFIC_TUNING.patrolDisengageSeconds,
-  });
-  assert.equal(departed.state.vehicles.length, 0);
+  assert.equal(first.truck.cargoIntegrity, 1);
+  assert.equal(second.truck.cargoIntegrity, 1);
+  assert.equal(second.state.takedowns, 0);
+  assert.equal(second.events.filter(event => event.kind === 'patrol-contact').length, 0);
+  assert.equal(second.state.vehicles[0]!.status, 'driving');
 });
 
-test('patrol pacing target stays behind the trailer instead of inside it', () => {
-  let state = createTrafficState({
-    seed: 5,
-    vehicles: [
-      createTrafficVehicle({
-        id: 2,
-        kind: 'patrol',
-        laneIndex: 1,
-        distanceMeters: 60,
-        speedMetersPerSecond: 20,
-      }),
-    ],
-    spawnCountdownSeconds: 99,
+test('a commanded cruiser holds its ordered speed across many small steps', () => {
+  const posted = addPatrolCruiser(createTrafficState({ seed: 5, spawnCountdownSeconds: 99 }), {
+    distanceMeters: 60,
+    lateralMeters: 1.85,
+    speedMetersPerSecond: 20,
+    road: ROAD,
   });
+  let state = posted.state;
   let currentTruck = truck();
+  const command: PatrolVehicleCommand = {
+    vehicleId: posted.vehicleId,
+    targetLateralMeters: 1.85,
+    lateralRateMetersPerSecond: 3,
+    targetSpeedMetersPerSecond: 28,
+    targetHeadingOffsetRadians: 0,
+    headingRateRadiansPerSecond: 2,
+  };
 
   for (let index = 0; index < 240; index++) {
     const result = stepTraffic({
@@ -474,6 +621,7 @@ test('patrol pacing target stays behind the trailer instead of inside it', () =>
       road: ROAD,
       truckDimensions: TRUCK_DIMENSIONS,
       dtSeconds: 1 / 60,
+      patrolCommand: command,
     });
     state = result.state;
     currentTruck = {
@@ -486,12 +634,9 @@ test('patrol pacing target stays behind the trailer instead of inside it', () =>
   }
 
   const cruiser = state.vehicles[0]!;
-  const trailerRearMeters =
-    currentTruck.position.yMeters -
-    (TRUCK_DIMENSIONS.cabLengthMeters / 2 +
-      TRUCK_DIMENSIONS.trailerLengthMeters +
-      TRUCK_DIMENSIONS.hitchGapMeters);
-  assert.ok(cruiser.distanceMeters < trailerRearMeters - 1);
+  assert.ok(Math.abs(cruiser.speedMetersPerSecond - 28) < 1e-6);
+  assert.ok(Math.abs(cruiser.lateralMeters - 1.85) < 0.05);
+  assert.ok(cruiser.distanceMeters > 60);
 });
 
 test('a commuter rejects a lane change when the adjacent gap is occupied', () => {
@@ -572,28 +717,19 @@ test('traffic spawning is deterministic from its state checkpoint', () => {
   assert.equal(run().vehicles.length, 1);
 });
 
-test('traffic spawning limits patrol encounters to one active cruiser', () => {
-  const patrol = createTrafficVehicle({
-    id: 1,
-    kind: 'patrol',
-    laneIndex: 0,
+test('ambient spawning adds commuters around an encounter cruiser without replacing it', () => {
+  const posted = addPatrolCruiser(createTrafficState({ seed: 42, spawnCountdownSeconds: 0 }), {
     distanceMeters: 65,
+    lateralMeters: -5.55,
     speedMetersPerSecond: 20,
+    road: ROAD,
   });
   const result = stepTraffic({
-    state: createTrafficState({
-      seed: 42,
-      vehicles: [patrol],
-      spawnCountdownSeconds: 0,
-    }),
+    state: posted.state,
     truck: truck(),
     road: ROAD,
     truckDimensions: TRUCK_DIMENSIONS,
     dtSeconds: 0,
-    tuning: {
-      ...DEFAULT_TRAFFIC_TUNING,
-      patrolSpawnChance: 1,
-    },
   });
 
   assert.equal(result.state.vehicles.filter(vehicle => vehicle.kind === 'patrol').length, 1);
@@ -623,7 +759,6 @@ test('traffic spawning skips a fully occupied spawn window', () => {
     dtSeconds: 0,
     tuning: {
       ...DEFAULT_TRAFFIC_TUNING,
-      patrolSpawnChance: 0,
       spawnAheadMinMeters: 80,
       spawnAheadMaxMeters: 80,
     },

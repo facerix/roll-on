@@ -15,7 +15,7 @@ import {
 import { createChallengeIntermissionView } from '/src/game/challengeIntermissionView.js';
 import { startRoadGame } from '/src/game/roadGame.js';
 import { measureRoadViewport } from '/src/game/roadViewport.js';
-import { createRouteForSession } from '/src/game/sessionRoute.js';
+import { createRoadForSession } from '/src/game/sessionRoute.js';
 import type { StageRunState } from '/src/game/stageRun.js';
 
 function setupGame(): void {
@@ -39,10 +39,13 @@ function setupGame(): void {
     document.body.classList.add('is-playing');
     gameRoot = h('main', { id: 'game-root', className: 'roll-on-playfield' });
     document.body.appendChild(gameRoot);
+    const sessionRoad = createRoadForSession(session);
     activeGame = startRoadGame({
       root: gameRoot,
       viewport: measureRoadViewport(),
-      route: createRouteForSession(session),
+      route: sessionRoad.route,
+      pullouts: sessionRoad.pullouts,
+      patrolEncounters: sessionRoad.patrolEncounters,
       stageNumber: session.stage.stageNumber,
       initialCargoIntegrity: session.mode === 'challenge' ? session.carryover.cargoIntegrity : 1,
       initialFuelLevel: session.mode === 'challenge' ? session.carryover.fuelLevel : 1,

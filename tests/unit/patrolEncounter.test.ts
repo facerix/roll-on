@@ -100,13 +100,50 @@ function crossTrap(speedMetersPerSecond: number): StepOutcome {
   });
 }
 
-/** Drive a triggered trap encounter to the point where an attack side is chosen. */
-function pursuitInFlanking(overrides: FrameOverrides = {}): PatrolEncounterState {
+/**
+ * Take a closing pursuit through one whole attack attempt, which is what latches
+ * engagement and starts the escape clocks. Boxing in both sides aborts the swing
+ * mid-telegraph; an abort is still a completed attempt and records no avoid, so
+ * this leaves the encounter recovering with its counters untouched.
+ */
+function engage(state: PatrolEncounterState, routeDistanceMeters = 725): PatrolEncounterState {
+  const inAttackRange = { routeDistanceMeters, patrolGapMeters: 6 };
+  const flanking = step(state, inAttackRange).state;
+  assert.equal(getActivePatrolEncounter(flanking)?.phase, 'flanking');
+  const telegraphing = step(flanking, inAttackRange).state;
+  assert.equal(getActivePatrolEncounter(telegraphing)?.phase, 'telegraphing');
+
+  const aborted = step(telegraphing, {
+    ...inAttackRange,
+    leftClearanceMeters: 0,
+    rightClearanceMeters: 0,
+  }).state;
+  assert.equal(getActivePatrolEncounter(aborted)?.phase, 'recovering');
+  assert.equal(getActivePatrolEncounter(aborted)?.hasEngaged, true);
+  return aborted;
+}
+
+/** Drive a triggered trap into `closing` while the cruiser is still far back. */
+function pursuitApproaching(): PatrolEncounterState {
   const triggered = crossTrap(HIGH_TIER_SPEED).state;
   const closing = hold(triggered, DEFAULT_PATROL_ENCOUNTER_TUNING.pullOutSeconds, {
     routeDistanceMeters: 720,
     patrolGapMeters: 40,
   }).state;
+  assert.equal(getActivePatrolEncounter(closing)?.phase, 'closing');
+  return closing;
+}
+
+/** Drive a triggered trap encounter to the point where an attack side is chosen. */
+function pursuitInFlanking(overrides: FrameOverrides = {}): PatrolEncounterState {
+  const closing = hold(
+    engage(pursuitApproaching()),
+    DEFAULT_PATROL_ENCOUNTER_TUNING.recoverSeconds,
+    {
+      routeDistanceMeters: 728,
+      patrolGapMeters: 20,
+    }
+  ).state;
   assert.equal(getActivePatrolEncounter(closing)?.phase, 'closing');
   return step(closing, { routeDistanceMeters: 730, patrolGapMeters: 6, ...overrides }).state;
 }
@@ -156,6 +193,31 @@ test('crossing the trap line at exactly the high tier starts one pursuit', () =>
     later.state.encounters.filter(encounter => encounter.phase !== 'resolved').length,
     1
   );
+});
+
+test('finishing the pull-out announces one closing handoff', () => {
+  const triggered = crossTrap(HIGH_TIER_SPEED);
+  const almostClosed = hold(triggered.state, DEFAULT_PATROL_ENCOUNTER_TUNING.pullOutSeconds - 0.1, {
+    routeDistanceMeters: 740,
+    patrolGapMeters: 40,
+  });
+
+  assert.equal(getActivePatrolEncounter(almostClosed.state)?.phase, 'pulling-out');
+  assert.equal(almostClosed.events.filter(event => event.kind === 'closing-started').length, 0);
+
+  const closed = step(almostClosed.state, {
+    dtSeconds: 0.1,
+    routeDistanceMeters: 744,
+    patrolGapMeters: 44,
+  });
+  assert.equal(getActivePatrolEncounter(closed.state)?.phase, 'closing');
+  assert.deepEqual(
+    closed.events.filter(event => event.kind === 'closing-started'),
+    [{ kind: 'closing-started', encounterId: STAGE_1_TRAP.id }]
+  );
+
+  const later = step(closed.state, { routeDistanceMeters: 748, patrolGapMeters: 40 });
+  assert.equal(later.events.filter(event => event.kind === 'closing-started').length, 0);
 });
 
 test('one large fixed step across the trap line makes the same single decision', () => {
@@ -414,9 +476,97 @@ test('a decisive lead held for the dwell time ends the pursuit', () => {
   );
 });
 
+test('a cruiser still out of sight cannot lose the pursuit it has not yet joined', () => {
+  const approaching = pursuitApproaching();
+  const active = getActivePatrolEncounter(approaching);
+  assert.equal(active?.hasEngaged, false);
+
+  // Far behind, and far past the authored window end: neither escape may fire.
+  const outrun = hold(approaching, DEFAULT_PATROL_ENCOUNTER_TUNING.leadDwellSeconds * 3, {
+    routeDistanceMeters: 1_200,
+    patrolGapMeters: DEFAULT_PATROL_ENCOUNTER_TUNING.decisiveLeadMeters * 4,
+  });
+  assert.equal(getActivePatrolEncounter(outrun.state)?.phase, 'closing');
+  assert.equal(getActivePatrolEncounter(outrun.state)?.leadDwellSeconds, 0);
+  assert.deepEqual(
+    outrun.events.filter(event => event.kind === 'disengaged'),
+    []
+  );
+});
+
+test('the first attack attempt latches engagement and rebases the window from there', () => {
+  const engaged = engage(pursuitApproaching(), 900);
+  const active = getActivePatrolEncounter(engaged);
+  assert.equal(active?.hasEngaged, true);
+  assert.equal(
+    active?.windowEndDistanceMeters,
+    900 + (STAGE_1_TRAP.windowEndDistanceMeters - STAGE_1_TRAP.windowStartDistanceMeters)
+  );
+
+  // Later attempts neither un-engage nor rebase the window a second time.
+  const again = engage(
+    hold(engaged, DEFAULT_PATROL_ENCOUNTER_TUNING.recoverSeconds, {
+      routeDistanceMeters: 940,
+      patrolGapMeters: 20,
+    }).state,
+    1_000
+  );
+  const after = getActivePatrolEncounter(again);
+  assert.equal(after?.hasEngaged, true);
+  assert.equal(after?.windowEndDistanceMeters, 1_150);
+});
+
+test('an unengaged pursuit that reaches attack range is never resolved by the gap alone', () => {
+  // The rear view is barely seventeen metres deep, so any gap the player can see
+  // is already inside attack range. Closing to it must not end the encounter.
+  const closing = pursuitApproaching();
+  const inSight = hold(closing, DEFAULT_PATROL_ENCOUNTER_TUNING.leadDwellSeconds * 2, {
+    routeDistanceMeters: 1_200,
+    patrolGapMeters: DEFAULT_PATROL_ENCOUNTER_TUNING.flankGapMeters + 1,
+  });
+  assert.equal(getActivePatrolEncounter(inSight.state)?.hasEngaged, false);
+  assert.deepEqual(
+    inSight.events.filter(event => event.kind === 'disengaged'),
+    []
+  );
+});
+
+test('a pull-out cruiser sitting at the trigger line does not count as engaged', () => {
+  // The parked cruiser starts on the trigger line, so the gap opens near zero.
+  const triggered = crossTrap(HIGH_TIER_SPEED).state;
+  const stillPullingOut = step(triggered, { routeDistanceMeters: 706, patrolGapMeters: 1 }).state;
+  const active = getActivePatrolEncounter(stillPullingOut);
+  assert.equal(active?.phase, 'pulling-out');
+  assert.equal(active?.hasEngaged, false);
+});
+
+test('a decisive lead only counts once the cruiser has engaged', () => {
+  const engaged = engage(pursuitApproaching());
+  const sustained = hold(engaged, DEFAULT_PATROL_ENCOUNTER_TUNING.leadDwellSeconds, {
+    routeDistanceMeters: 820,
+    patrolGapMeters: DEFAULT_PATROL_ENCOUNTER_TUNING.decisiveLeadMeters,
+  });
+  assert.equal(getActivePatrolEncounter(sustained.state)?.phase, 'disengaging');
+  assert.equal(
+    sustained.events.some(event => event.kind === 'disengaged' && event.reason === 'decisive-lead'),
+    true
+  );
+});
+
+test('escape tuning that fires from inside attack range is rejected', () => {
+  assert.throws(
+    () =>
+      validatePatrolEncounterTuning({
+        ...DEFAULT_PATROL_ENCOUNTER_TUNING,
+        decisiveLeadMeters: DEFAULT_PATROL_ENCOUNTER_TUNING.flankGapMeters,
+      }),
+    /decisiveLeadMeters/
+  );
+});
+
 test('leaving the encounter window ends the pursuit even mid-attack', () => {
   const committed = commitAttack(pursuitInFlanking()).state;
-  const exited = step(committed, { routeDistanceMeters: 950, patrolGapMeters: 2 });
+  const exited = step(committed, { routeDistanceMeters: 990, patrolGapMeters: 2 });
   const encounter = getActivePatrolEncounter(exited.state);
   assert.equal(encounter?.phase, 'disengaging');
   assert.equal(encounter?.recordedAvoids, 0);
@@ -426,7 +576,7 @@ test('leaving the encounter window ends the pursuit even mid-attack', () => {
   );
 
   const stillDisengaging = step(exited.state, {
-    routeDistanceMeters: 955,
+    routeDistanceMeters: 995,
     patrolGapMeters: 0,
     hasPatrolContact: true,
   });
@@ -435,11 +585,11 @@ test('leaving the encounter window ends the pursuit even mid-attack', () => {
 
 test('a disengaged encounter resolves once and can never act again', () => {
   const exited = step(commitAttack(pursuitInFlanking()).state, {
-    routeDistanceMeters: 950,
+    routeDistanceMeters: 990,
     patrolGapMeters: 2,
   }).state;
   const resolved = hold(exited, DEFAULT_PATROL_ENCOUNTER_TUNING.disengageSeconds, {
-    routeDistanceMeters: 960,
+    routeDistanceMeters: 1_000,
     patrolGapMeters: 2,
   });
   assert.equal(getActivePatrolEncounter(resolved.state), null);
@@ -542,7 +692,7 @@ test('malformed encounter definitions, tuning, and frames fail explicitly', () =
 test('default tuning keeps the stage 1 window fair for two committed attempts', () => {
   const tuning = DEFAULT_PATROL_ENCOUNTER_TUNING;
   assert.equal(tuning.roadRageResponseDelaySeconds, 10);
-  assert.equal(tuning.decisiveLeadMeters, 60);
+  assert.equal(tuning.decisiveLeadMeters, 40);
   assert.equal(tuning.leadDwellSeconds, 1);
   assert.ok(tuning.telegraphSeconds >= tuning.minimumTelegraphSeconds);
   assert.ok(tuning.minimumTelegraphSeconds >= 0.5);

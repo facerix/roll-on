@@ -857,7 +857,7 @@ body.is-playing #main-foot {
 .roll-on-pause-toggle {
   position: absolute;
   top: 8px;
-  left: 8px;
+  right: 8px;
   min-height: 28px;
   border: 2px solid #a5f6fb;
   border-radius: 0;

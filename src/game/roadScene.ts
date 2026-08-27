@@ -1,5 +1,11 @@
 import type { Drawable, Scene } from '/src/engine/renderer.js';
-import { sampleRoad, sampleRoadWindow, type LaneMarkerSpan, type Road } from '/src/game/road.js';
+import {
+  getBarrierLateralMeters,
+  sampleRoad,
+  sampleRoadWindow,
+  type LaneMarkerSpan,
+  type Road,
+} from '/src/game/road.js';
 import { projectWorldPoint, type RoadCamera } from '/src/game/roadCamera.js';
 import { routeToWorld, worldToRoute } from '/src/game/route.js';
 import { getTruckTrailerCenter } from '/src/game/roadCollision.js';
@@ -98,6 +104,8 @@ export interface BuildRoadSceneOptions {
   readonly finishDistanceMeters?: number;
   /** Explicit route-space progress used by the presentation-only route preview. */
   readonly routePreviewDistanceMeters?: number;
+  /** Screen-space pursuit glare, drawn over the road but behind the truck. */
+  readonly patrolGlare?: readonly Drawable[];
 }
 
 export const DEFAULT_PARALLAX_LAYERS: readonly ParallaxLayerTuning[] = Object.freeze([
@@ -231,7 +239,9 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
     drawables.push(parallaxBand(options.camera, band));
   }
 
-  if (hasCurvature(options.road)) {
+  // An authored pullout makes the cross section vary with distance, so it needs
+  // the sampled path even when the route itself never bends.
+  if (hasCurvature(options.road) || options.road.pullouts.length > 0) {
     const focusDistance = getFocusDistanceAlongRoute(options);
     drawables.push(
       ...buildCurvedRoadDrawables(options.road, options.camera, tuning, focusDistance)
@@ -327,6 +337,8 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
     );
   }
 
+  if (options.patrolGlare) drawables.push(...options.patrolGlare);
+
   drawables.push(...buildTruckDrawables(options.camera, options.truck, options.truckDimensions));
 
   if (options.routePreviewDistanceMeters !== undefined) {
@@ -334,12 +346,17 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
       ...buildRoutePreviewDrawables({
         route: options.road.route,
         distanceAlongRouteMeters: options.routePreviewDistanceMeters,
+        // Bottom corner, just above the HUD: the top of the view is the road
+        // ahead, and the canvas already ends at the dashboard boundary.
         frame: {
           x:
             options.camera.viewportWidth -
             DEFAULT_ROUTE_PREVIEW_TUNING.edgeInsetPixels -
             DEFAULT_ROUTE_PREVIEW_TUNING.widthPixels,
-          y: DEFAULT_ROUTE_PREVIEW_TUNING.edgeInsetPixels,
+          y:
+            options.camera.viewportHeight -
+            DEFAULT_ROUTE_PREVIEW_TUNING.edgeInsetPixels -
+            DEFAULT_ROUTE_PREVIEW_TUNING.heightPixels,
           width: DEFAULT_ROUTE_PREVIEW_TUNING.widthPixels,
           height: DEFAULT_ROUTE_PREVIEW_TUNING.heightPixels,
         },
@@ -580,23 +597,25 @@ function barrierSegment(
   side: 'left' | 'right',
   color: string
 ): Drawable {
-  const lateral = side === 'left' ? road.leftBarrierLateralMeters : road.rightBarrierLateralMeters;
+  const previousLateral = getBarrierLateralMeters(road, side, previous.distanceAlongRouteMeters);
+  const currentLateral = getBarrierLateralMeters(road, side, current.distanceAlongRouteMeters);
   const halfWidth = 0.09;
+  const outwardHalfWidth = side === 'left' ? -halfWidth : halfWidth;
   const previousInner = routeToWorld(road.route, {
     distanceAlongRouteMeters: previous.distanceAlongRouteMeters,
-    lateralOffsetMeters: lateral - (side === 'left' ? -halfWidth : halfWidth),
+    lateralOffsetMeters: previousLateral - outwardHalfWidth,
   });
   const previousOuter = routeToWorld(road.route, {
     distanceAlongRouteMeters: previous.distanceAlongRouteMeters,
-    lateralOffsetMeters: lateral + (side === 'left' ? -halfWidth : halfWidth),
+    lateralOffsetMeters: previousLateral + outwardHalfWidth,
   });
   const currentInner = routeToWorld(road.route, {
     distanceAlongRouteMeters: current.distanceAlongRouteMeters,
-    lateralOffsetMeters: lateral - (side === 'left' ? -halfWidth : halfWidth),
+    lateralOffsetMeters: currentLateral - outwardHalfWidth,
   });
   const currentOuter = routeToWorld(road.route, {
     distanceAlongRouteMeters: current.distanceAlongRouteMeters,
-    lateralOffsetMeters: lateral + (side === 'left' ? -halfWidth : halfWidth),
+    lateralOffsetMeters: currentLateral + outwardHalfWidth,
   });
   return crossSectionQuad(camera, previousInner, previousOuter, currentOuter, currentInner, color);
 }

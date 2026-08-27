@@ -23,7 +23,21 @@ import {
 } from '/src/game/worldGeometry.js';
 
 export type TrafficVehicleKind = 'commuter' | 'patrol';
-export type TrafficVehicleStatus = 'driving' | 'disengaging' | 'disabled';
+export type TrafficVehicleStatus = 'driving' | 'disabled';
+
+/**
+ * Per-step motion order for one patrol cruiser. Traffic owns no patrol
+ * decisions: the encounter model chooses where the cruiser should be, and this
+ * command is the only way it moves.
+ */
+export interface PatrolVehicleCommand {
+  readonly vehicleId: number;
+  readonly targetLateralMeters: number;
+  readonly lateralRateMetersPerSecond: number;
+  readonly targetSpeedMetersPerSecond: number;
+  readonly targetHeadingOffsetRadians: number;
+  readonly headingRateRadiansPerSecond: number;
+}
 
 /**
  * Traffic state is still road-relative in this slice: `lateralMeters` is an
@@ -49,7 +63,6 @@ export interface TrafficVehicle {
   readonly massKilograms: number;
   readonly status: TrafficVehicleStatus;
   readonly disabledSecondsRemaining: number;
-  readonly patrolDisengageSecondsRemaining: number;
   /** Cartesian pose used by rendering and rigid-body contacts. */
   readonly worldPosition: WorldPoint;
   readonly worldVelocity: WorldVelocity;
@@ -89,14 +102,10 @@ export interface TrafficTuning {
   readonly patrolLengthMeters: number;
   readonly patrolAccelerationMetersPerSecondSquared: number;
   readonly patrolBrakingMetersPerSecondSquared: number;
-  readonly patrolCargoDamage: number;
-  readonly patrolRammingSpeedLossMetersPerSecond: number;
-  readonly patrolLateralSpeedMetersPerSecond: number;
   readonly laneChangeDurationSeconds: number;
   readonly minLaneChangeCooldownSeconds: number;
   readonly maxLaneChangeCooldownSeconds: number;
   readonly spawnIntervalSeconds: number;
-  readonly patrolSpawnChance: number;
   readonly spawnAheadMinMeters: number;
   readonly spawnAheadMaxMeters: number;
   readonly cullBehindMeters: number;
@@ -110,11 +119,9 @@ export interface TrafficTuning {
   readonly headingRecoveryRadiansPerSecond: number;
   readonly solverIterations: number;
   readonly plowImpactSpeedMetersPerSecond: number;
-  readonly patrolDamageImpactSpeedMetersPerSecond: number;
+  /** Impact speed above which a cruiser contact is worth reporting. */
+  readonly patrolContactImpactSpeedMetersPerSecond: number;
   readonly disabledLifetimeSeconds: number;
-  readonly patrolFollowGapMeters: number;
-  readonly patrolDisengageSeconds: number;
-  readonly patrolRetreatSpeedDeltaMetersPerSecond: number;
   readonly laneChangeClearanceMeters: number;
   readonly laneChangeRetrySeconds: number;
   readonly rigidBodyResponse: RigidBodyResponseTuning;
@@ -122,7 +129,11 @@ export interface TrafficTuning {
 
 export type TrafficEvent =
   | { readonly kind: 'road-rage'; readonly vehicleId: number }
-  | { readonly kind: 'patrol-ram'; readonly vehicleId: number };
+  | {
+      readonly kind: 'patrol-contact';
+      readonly vehicleId: number;
+      readonly impactSpeedMetersPerSecond: number;
+    };
 
 export interface StepTrafficOptions {
   readonly state: TrafficState;
@@ -132,6 +143,8 @@ export interface StepTrafficOptions {
   readonly dtSeconds: number;
   readonly truckRoutePosition?: RoutePosition;
   readonly tuning?: TrafficTuning;
+  /** Motion order for the one cruiser an active encounter controls, if any. */
+  readonly patrolCommand?: PatrolVehicleCommand;
 }
 
 export interface StepTrafficResult {
@@ -148,16 +161,12 @@ export const DEFAULT_TRAFFIC_TUNING: TrafficTuning = Object.freeze({
   commuterCargoDamage: 0.02,
   patrolWidthMeters: 2,
   patrolLengthMeters: 4.8,
-  patrolAccelerationMetersPerSecondSquared: 4,
+  patrolAccelerationMetersPerSecondSquared: 6,
   patrolBrakingMetersPerSecondSquared: 12,
-  patrolCargoDamage: 0.06,
-  patrolRammingSpeedLossMetersPerSecond: 1.5,
-  patrolLateralSpeedMetersPerSecond: 1.8,
   laneChangeDurationSeconds: 1.25,
   minLaneChangeCooldownSeconds: 4,
   maxLaneChangeCooldownSeconds: 9,
   spawnIntervalSeconds: 3.5,
-  patrolSpawnChance: 0.18,
   spawnAheadMinMeters: 65,
   spawnAheadMaxMeters: 105,
   cullBehindMeters: 50,
@@ -171,11 +180,8 @@ export const DEFAULT_TRAFFIC_TUNING: TrafficTuning = Object.freeze({
   headingRecoveryRadiansPerSecond: 1.2,
   solverIterations: 5,
   plowImpactSpeedMetersPerSecond: 4,
-  patrolDamageImpactSpeedMetersPerSecond: 2,
+  patrolContactImpactSpeedMetersPerSecond: 2,
   disabledLifetimeSeconds: 0.8,
-  patrolFollowGapMeters: 2,
-  patrolDisengageSeconds: 5,
-  patrolRetreatSpeedDeltaMetersPerSecond: 10,
   laneChangeClearanceMeters: 9,
   laneChangeRetrySeconds: 0.75,
   rigidBodyResponse: Object.freeze({
@@ -220,7 +226,6 @@ export function createTrafficVehicle(options: CreateTrafficVehicleOptions): Traf
         : DEFAULT_TRAFFIC_TUNING.patrolMassKilograms,
     status: 'driving',
     disabledSecondsRemaining: 0,
-    patrolDisengageSecondsRemaining: 0,
     worldPosition: { xMeters: lateralMeters, yMeters: options.distanceMeters },
     worldVelocity: velocityAlongHeading(0, options.speedMetersPerSecond),
   };
@@ -258,20 +263,17 @@ export function stepTraffic(options: StepTrafficOptions): StepTrafficResult {
     stepVehicle(
       vehicle,
       options.state.vehicles,
-      options.truck,
-      truckRoutePosition,
       options.road,
-      options.truckDimensions,
       options.dtSeconds,
       tuning,
-      rng
+      rng,
+      options.patrolCommand?.vehicleId === vehicle.id ? options.patrolCommand : null
     )
   );
 
   if (spawnCountdownSeconds <= 0) {
-    const spawned = spawnVehicle(
+    const spawned = spawnCommuter(
       nextVehicleId,
-      options.truck,
       truckRoutePosition,
       moved,
       options.road,
@@ -289,12 +291,13 @@ export function stepTraffic(options: StepTrafficOptions): StepTrafficResult {
     const relativeDistance = vehicle.distanceMeters - truckRoutePosition.distanceAlongRouteMeters;
     const isActive =
       vehicle.status === 'driving' ||
-      (vehicle.status === 'disengaging' && vehicle.patrolDisengageSecondsRemaining > 0) ||
       (vehicle.status === 'disabled' && vehicle.disabledSecondsRemaining > 0);
+    if (!isActive) return false;
+    // A cruiser belongs to its encounter, which removes it explicitly. Culling
+    // one by distance would delete a pursuit the encounter still owns.
+    if (vehicle.kind === 'patrol') return true;
     return (
-      isActive &&
-      relativeDistance >= -tuning.cullBehindMeters &&
-      relativeDistance <= tuning.cullAheadMeters
+      relativeDistance >= -tuning.cullBehindMeters && relativeDistance <= tuning.cullAheadMeters
     );
   });
   const collisionResult = resolveWorldContacts({
@@ -330,13 +333,11 @@ export function stepTraffic(options: StepTrafficOptions): StepTrafficResult {
 function stepVehicle(
   vehicle: TrafficVehicle,
   allVehicles: readonly TrafficVehicle[],
-  truck: TruckState,
-  truckRoutePosition: RoutePosition,
   road: Road,
-  truckDimensions: TruckFootprintDimensions,
   dtSeconds: number,
   tuning: TrafficTuning,
-  rng: RandomStream
+  rng: RandomStream,
+  patrolCommand: PatrolVehicleCommand | null
 ): TrafficVehicle {
   const collisionDamping = Math.exp(-tuning.collisionVelocityDampingPerSecond * dtSeconds);
   const angularDamping = Math.exp(-tuning.angularVelocityDampingPerSecond * dtSeconds);
@@ -376,48 +377,33 @@ function stepVehicle(
   }
 
   if (vehicle.kind === 'patrol') {
-    const disengageSecondsRemaining = Math.max(
-      0,
-      vehicle.patrolDisengageSecondsRemaining - dtSeconds
-    );
-    const isDisengaging = vehicle.status === 'disengaging';
-    const targetLaneIndex = nearestLaneIndex(
-      road,
-      isDisengaging ? vehicle.lateralMeters : truckRoutePosition.lateralOffsetMeters
-    );
-    const targetLateral = road.laneCenterOffsetsMeters[targetLaneIndex]!;
-    const trailerRearDistanceMeters =
-      truckRoutePosition.distanceAlongRouteMeters -
-      (truckDimensions.cabLengthMeters / 2 +
-        truckDimensions.trailerLengthMeters +
-        truckDimensions.hitchGapMeters);
-    const desiredDistanceMeters =
-      trailerRearDistanceMeters - tuning.patrolLengthMeters / 2 - tuning.patrolFollowGapMeters;
-    const gapError = desiredDistanceMeters - vehicle.distanceMeters;
-    const desiredSpeed = isDisengaging
-      ? Math.max(0, truck.speedMetersPerSecond - tuning.patrolRetreatSpeedDeltaMetersPerSecond)
-      : Math.max(0, truck.speedMetersPerSecond + clamp(gapError * 0.3, -4, 7));
+    // Without a command the cruiser holds whatever pose its encounter left it
+    // in, which is how a posted trap stays parked in its apron.
+    const targetLateral = patrolCommand?.targetLateralMeters ?? vehicle.lateralMeters;
+    const lateralRate = patrolCommand?.lateralRateMetersPerSecond ?? 0;
+    const targetSpeed = patrolCommand?.targetSpeedMetersPerSecond ?? vehicle.speedMetersPerSecond;
+    const targetHeadingOffset = patrolCommand?.targetHeadingOffsetRadians ?? headingOffsetRadians;
+    const headingRate = patrolCommand?.headingRateRadiansPerSecond ?? 0;
     const acceleration =
-      desiredSpeed < vehicle.speedMetersPerSecond
+      targetSpeed < vehicle.speedMetersPerSecond
         ? tuning.patrolBrakingMetersPerSecondSquared
         : tuning.patrolAccelerationMetersPerSecondSquared;
-    const speed = moveToward(vehicle.speedMetersPerSecond, desiredSpeed, acceleration * dtSeconds);
+    const speed = moveToward(vehicle.speedMetersPerSecond, targetSpeed, acceleration * dtSeconds);
     return finalizeRouteVehicle(
       {
         ...vehicle,
-        targetLaneIndex,
+        targetLaneIndex: nearestLaneIndex(road, targetLateral),
+        laneIndex: nearestLaneIndex(road, vehicle.lateralMeters),
         lateralMeters:
-          moveToward(
-            vehicle.lateralMeters,
-            targetLateral,
-            tuning.patrolLateralSpeedMetersPerSecond * dtSeconds
-          ) + collisionMotion.lateralMeters,
+          moveToward(vehicle.lateralMeters, targetLateral, lateralRate * dtSeconds) +
+          collisionMotion.lateralMeters,
         distanceMeters:
           vehicle.distanceMeters +
           (speed + vehicle.distanceCollisionVelocityMetersPerSecond) * dtSeconds,
         speedMetersPerSecond: speed,
-        patrolDisengageSecondsRemaining: disengageSecondsRemaining,
-        headingRadians: headingOffsetRadians + vehicle.angularVelocityRadiansPerSecond * dtSeconds,
+        headingRadians:
+          moveToward(headingOffsetRadians, targetHeadingOffset, headingRate * dtSeconds) +
+          vehicle.angularVelocityRadiansPerSecond * dtSeconds,
         angularVelocityRadiansPerSecond: vehicle.angularVelocityRadiansPerSecond * angularDamping,
         lateralCollisionVelocityMetersPerSecond:
           vehicle.lateralCollisionVelocityMetersPerSecond * collisionDamping,
@@ -513,23 +499,19 @@ function advanceLaneChange(
   };
 }
 
-function spawnVehicle(
+/** Ambient traffic is commuters only; cruisers exist because an encounter posts one. */
+function spawnCommuter(
   id: number,
-  truck: TruckState,
   truckRoutePosition: RoutePosition,
   vehicles: readonly TrafficVehicle[],
   road: Road,
   tuning: TrafficTuning,
   rng: RandomStream
 ): TrafficVehicle | null {
-  const wantsPatrol = rng.chance(tuning.patrolSpawnChance);
-  const hasActivePatrol = vehicles.some(vehicle => vehicle.kind === 'patrol');
-  const kind: TrafficVehicleKind = wantsPatrol && !hasActivePatrol ? 'patrol' : 'commuter';
   const ahead =
     tuning.spawnAheadMinMeters +
     rng.next() * (tuning.spawnAheadMaxMeters - tuning.spawnAheadMinMeters);
-  const distanceMeters =
-    truckRoutePosition.distanceAlongRouteMeters + (kind === 'patrol' ? -30 : ahead);
+  const distanceMeters = truckRoutePosition.distanceAlongRouteMeters + ahead;
   const availableLaneIndices = Array.from(
     { length: road.laneCount },
     (_, laneIndex) => laneIndex
@@ -543,14 +525,11 @@ function spawnVehicle(
   if (availableLaneIndices.length === 0) return null;
   const laneIndex = rng.pick(availableLaneIndices);
   const speed =
-    kind === 'patrol'
-      ? Math.max(18, truck.speedMetersPerSecond + 2)
-      : tuning.commuterMinSpeedMetersPerSecond +
-        rng.next() *
-          (tuning.commuterMaxSpeedMetersPerSecond - tuning.commuterMinSpeedMetersPerSecond);
+    tuning.commuterMinSpeedMetersPerSecond +
+    rng.next() * (tuning.commuterMaxSpeedMetersPerSecond - tuning.commuterMinSpeedMetersPerSecond);
   const initial = createTrafficVehicle({
     id,
-    kind,
+    kind: 'commuter',
     laneIndex,
     distanceMeters,
     speedMetersPerSecond: speed,
@@ -562,11 +541,120 @@ function spawnVehicle(
     {
       ...initial,
       lateralMeters: road.laneCenterOffsetsMeters[laneIndex]!,
-      massKilograms:
-        kind === 'commuter' ? tuning.commuterMassKilograms : tuning.patrolMassKilograms,
+      massKilograms: tuning.commuterMassKilograms,
     },
     road
   );
+}
+
+export interface AddPatrolCruiserOptions {
+  readonly distanceMeters: number;
+  readonly lateralMeters: number;
+  readonly speedMetersPerSecond: number;
+  readonly headingOffsetRadians?: number;
+  readonly road: Road;
+  readonly tuning?: TrafficTuning;
+}
+
+export interface AddPatrolCruiserResult {
+  readonly state: TrafficState;
+  readonly vehicleId: number;
+}
+
+/** Put one encounter-owned cruiser on the road at an explicit route pose. */
+export function addPatrolCruiser(
+  state: TrafficState,
+  options: AddPatrolCruiserOptions
+): AddPatrolCruiserResult {
+  const tuning = options.tuning ?? DEFAULT_TRAFFIC_TUNING;
+  validateTuning(tuning);
+  assertFinite('distanceMeters', options.distanceMeters);
+  assertFinite('lateralMeters', options.lateralMeters);
+  assertNonNegative('speedMetersPerSecond', options.speedMetersPerSecond);
+  const headingOffsetRadians = options.headingOffsetRadians ?? 0;
+  assertFinite('headingOffsetRadians', headingOffsetRadians);
+  // Several cruisers may exist at once — a posted trap can stay parked while a
+  // Road Rage response pursues. Only one may be *enforcing*, which the patrol
+  // encounter model guarantees; traffic stays a generic vehicle simulation.
+  const laneIndex = nearestLaneIndex(options.road, options.lateralMeters);
+  const initial = createTrafficVehicle({
+    id: state.nextVehicleId,
+    kind: 'patrol',
+    laneIndex,
+    distanceMeters: options.distanceMeters,
+    speedMetersPerSecond: options.speedMetersPerSecond,
+  });
+  const cruiser = finalizeRouteVehicle(
+    {
+      ...initial,
+      lateralMeters: options.lateralMeters,
+      headingRadians: headingOffsetRadians,
+      massKilograms: tuning.patrolMassKilograms,
+    },
+    options.road
+  );
+
+  return {
+    state: {
+      ...state,
+      vehicles: [...state.vehicles, cruiser],
+      nextVehicleId: state.nextVehicleId + 1,
+    },
+    vehicleId: cruiser.id,
+  };
+}
+
+export interface StagePatrolCruiserOptions {
+  readonly distanceMeters: number;
+  readonly speedMetersPerSecond: number;
+  readonly road: Road;
+}
+
+/**
+ * Perform the pursuit's one hidden continuity cheat. The cruiser keeps its
+ * lateral pull-out pose and heading offset, but sheds collision impulses so it
+ * resumes from the staged route position with the requested approach speed.
+ */
+export function stagePatrolCruiser(
+  state: TrafficState,
+  vehicleId: number,
+  options: StagePatrolCruiserOptions
+): TrafficState {
+  assertNonNegativeInteger('vehicleId', vehicleId);
+  assertFinite('distanceMeters', options.distanceMeters);
+  assertNonNegative('speedMetersPerSecond', options.speedMetersPerSecond);
+  const cruiser = state.vehicles.find(vehicle => vehicle.id === vehicleId);
+  if (cruiser?.kind !== 'patrol') {
+    throw new RangeError(`patrol cruiser ${vehicleId} does not exist`);
+  }
+  const routeHeadingRadians = sampleRoute(
+    options.road.route,
+    cruiser.distanceMeters
+  ).headingRadians;
+  const headingOffsetRadians = shortestHeadingDelta(cruiser.headingRadians, routeHeadingRadians);
+  const staged = finalizeRouteVehicle(
+    {
+      ...cruiser,
+      distanceMeters: options.distanceMeters,
+      speedMetersPerSecond: options.speedMetersPerSecond,
+      headingRadians: headingOffsetRadians,
+      angularVelocityRadiansPerSecond: 0,
+      lateralCollisionVelocityMetersPerSecond: 0,
+      distanceCollisionVelocityMetersPerSecond: 0,
+    },
+    options.road
+  );
+
+  return {
+    ...state,
+    vehicles: state.vehicles.map(vehicle => (vehicle.id === vehicleId ? staged : vehicle)),
+  };
+}
+
+/** Take an encounter's cruiser off the road once it has resolved. */
+export function removeTrafficVehicle(state: TrafficState, vehicleId: number): TrafficState {
+  assertNonNegativeInteger('vehicleId', vehicleId);
+  return { ...state, vehicles: state.vehicles.filter(vehicle => vehicle.id !== vehicleId) };
 }
 
 function isLaneGapClear(
@@ -861,25 +949,20 @@ function applyTrafficContactEffects(
       return disableVehicle(vehicle, options.tuning);
     }
 
+    // A cruiser contact is only reported. Whether it counts as a committed
+    // patrol hit, and what it costs, belongs to the encounter model.
     if (
       vehicle.kind === 'patrol' &&
       vehicle.status === 'driving' &&
-      vehicle.patrolDisengageSecondsRemaining === 0 &&
-      impactSpeed >= options.tuning.patrolDamageImpactSpeedMetersPerSecond &&
+      impactSpeed >= options.tuning.patrolContactImpactSpeedMetersPerSecond &&
       (contactCooldowns[String(vehicle.id)] ?? 0) === 0
     ) {
-      truck = damageTruck(
-        truck,
-        options.tuning.patrolCargoDamage,
-        options.tuning.patrolRammingSpeedLossMetersPerSecond
-      );
       contactCooldowns[String(vehicle.id)] = options.tuning.contactCooldownSeconds;
-      events.push({ kind: 'patrol-ram', vehicleId: vehicle.id });
-      return {
-        ...vehicle,
-        status: 'disengaging' as const,
-        patrolDisengageSecondsRemaining: options.tuning.patrolDisengageSeconds,
-      };
+      events.push({
+        kind: 'patrol-contact',
+        vehicleId: vehicle.id,
+        impactSpeedMetersPerSecond: impactSpeed,
+      });
     }
     return vehicle;
   });
@@ -1003,12 +1086,6 @@ function validateTuning(tuning: TrafficTuning): void {
     tuning.patrolAccelerationMetersPerSecondSquared
   );
   assertPositive('patrolBrakingMetersPerSecondSquared', tuning.patrolBrakingMetersPerSecondSquared);
-  assertRange('patrolCargoDamage', tuning.patrolCargoDamage, 0, 1);
-  assertNonNegative(
-    'patrolRammingSpeedLossMetersPerSecond',
-    tuning.patrolRammingSpeedLossMetersPerSecond
-  );
-  assertPositive('patrolLateralSpeedMetersPerSecond', tuning.patrolLateralSpeedMetersPerSecond);
   assertPositive('laneChangeDurationSeconds', tuning.laneChangeDurationSeconds);
   assertNonNegative('minLaneChangeCooldownSeconds', tuning.minLaneChangeCooldownSeconds);
   assertNonNegative('maxLaneChangeCooldownSeconds', tuning.maxLaneChangeCooldownSeconds);
@@ -1016,7 +1093,6 @@ function validateTuning(tuning: TrafficTuning): void {
     throw new RangeError('maxLaneChangeCooldownSeconds must be >= minLaneChangeCooldownSeconds');
   }
   assertPositive('spawnIntervalSeconds', tuning.spawnIntervalSeconds);
-  assertRange('patrolSpawnChance', tuning.patrolSpawnChance, 0, 1);
   assertNonNegative('spawnAheadMinMeters', tuning.spawnAheadMinMeters);
   assertNonNegative('spawnAheadMaxMeters', tuning.spawnAheadMaxMeters);
   if (tuning.spawnAheadMaxMeters < tuning.spawnAheadMinMeters) {
@@ -1034,16 +1110,10 @@ function validateTuning(tuning: TrafficTuning): void {
   assertPositiveInteger('solverIterations', tuning.solverIterations);
   assertNonNegative('plowImpactSpeedMetersPerSecond', tuning.plowImpactSpeedMetersPerSecond);
   assertNonNegative(
-    'patrolDamageImpactSpeedMetersPerSecond',
-    tuning.patrolDamageImpactSpeedMetersPerSecond
+    'patrolContactImpactSpeedMetersPerSecond',
+    tuning.patrolContactImpactSpeedMetersPerSecond
   );
   assertPositive('disabledLifetimeSeconds', tuning.disabledLifetimeSeconds);
-  assertNonNegative('patrolFollowGapMeters', tuning.patrolFollowGapMeters);
-  assertPositive('patrolDisengageSeconds', tuning.patrolDisengageSeconds);
-  assertPositive(
-    'patrolRetreatSpeedDeltaMetersPerSecond',
-    tuning.patrolRetreatSpeedDeltaMetersPerSecond
-  );
   assertPositive('laneChangeClearanceMeters', tuning.laneChangeClearanceMeters);
   assertPositive('laneChangeRetrySeconds', tuning.laneChangeRetrySeconds);
   validateRigidBodyResponseTuning(tuning.rigidBodyResponse);
@@ -1070,18 +1140,10 @@ function validateVehicle(vehicle: TrafficVehicle): void {
     vehicle.distanceCollisionVelocityMetersPerSecond
   );
   assertPositive('vehicle.massKilograms', vehicle.massKilograms);
-  if (
-    vehicle.status !== 'driving' &&
-    vehicle.status !== 'disengaging' &&
-    vehicle.status !== 'disabled'
-  ) {
+  if (vehicle.status !== 'driving' && vehicle.status !== 'disabled') {
     throw new TypeError(`Unknown traffic vehicle status: ${String(vehicle.status)}`);
   }
   assertNonNegative('vehicle.disabledSecondsRemaining', vehicle.disabledSecondsRemaining);
-  assertNonNegative(
-    'vehicle.patrolDisengageSecondsRemaining',
-    vehicle.patrolDisengageSecondsRemaining
-  );
   validatePoint('vehicle.worldPosition', vehicle.worldPosition);
   assertFinite('vehicle.worldVelocity.xMetersPerSecond', vehicle.worldVelocity.xMetersPerSecond);
   assertFinite('vehicle.worldVelocity.yMetersPerSecond', vehicle.worldVelocity.yMetersPerSecond);

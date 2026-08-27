@@ -252,9 +252,9 @@ Known deferred work created by this slice:
 
 Remaining M8.3 follow-up, in dependency order:
 
-1. Tag persisted results with their mode/score channel and generated route identity when the M8.5
-   tally and persistence slice lands after M8.4; do not mix Campaign and Challenge ordering. M8.3
-   deliberately does not initialize or write `DataStore` yet.
+1. Tag persisted results with their mode/score channel and complete generated stage identity when the
+   M8.6 tally and persistence slice lands after the M8.5 Challenge content contract; do not mix
+   Campaign and Challenge ordering. M8.3 deliberately does not initialize or write `DataStore` yet.
 2. Run the full automated and browser matrices, including successive Challenge stages, fresh-run
    isolation, phone controls, offline reload, and exact reproduction from recorded route identity.
 
@@ -298,7 +298,7 @@ Rejected alternatives: fully fixed Challenge routes lose the intended replay val
 generation risks unreadable combinations and makes encounter coordination harder to diagnose. The
 accepted compromise keeps one route identity per mode, one root Challenge seed, independent named
 subseeds, and the resolved definition in the active session for exact reproduction. Persistence of
-that identity is finalized by M8.5 rather than by M8.3.
+the complete generated stage identity is finalized by M8.6 rather than by M8.3.
 
 ### Challenge loop checkpoint — 2026-08-06
 
@@ -314,8 +314,8 @@ Browser verification drove a collision-heavy no-steer Challenge run through the 
 route: `STAGE 1 CLEARED` appeared at roughly `01:51`, the intermission showed `NEXT ROUTE: STAGE 2`,
 and continuing reached `STAGE 2` with `0%` cargo retained and the provisional fuel refill visible
 (`25%` carryover becoming approximately `50%` at stage start). No console errors or warnings were
-reported. Result persistence remains intentionally deferred until M8.5, after the M8.4 patrol pass,
-provides the score/result storage contract.
+reported. Result persistence remains intentionally deferred until M8.6, after the M8.4 patrol pass
+and the M8.5 Challenge content slice provide the complete score/result identity contract.
 
 Do not implement the truck-stop economy, upgrade catalog, or permanent garage progression during
 M8.3. The session model reserves those seams; this milestone only proves deterministic generated
@@ -325,240 +325,147 @@ routes and the multi-stage mode flow.
 
 The `DISPATCH` flow reaches the fixed Campaign route or a reproducible multi-stage Challenge run, and
 the hybrid decision is recorded with deterministic and browser evidence. Final tally, persistence,
-and high scores are M8.5 work after the M8.4 patrol pass; the full offline/browser matrix remains
-follow-up verification work until then.
+and high scores are M8.6 work after the M8.5 Challenge content slice; the full offline/browser matrix
+remains follow-up verification work until then.
 Experimental generator code that is not part of the decision is removed or kept behind an explicit
 development-only seam. Upgrade and shop content remains deferred while the session contract needed
 by it is explicit and tested.
 
-## M8.4 — Highway-patrol AI discovery and redesign
+## M8.4 — Highway-patrol AI redesign
 
-**Design gate completed with Rylee on 2026-08-07.** Patrols treat the truck as a valuable speeder:
-the route and fuel pressure make speeding attractive, while visible enforcement turns that choice
-into an avoidable driving encounter. The player succeeds by escaping, not by destroying the patrol.
-Replace the current implicit catch/pace/rear-contact behavior and ambient patrol spawn chance with
-the following explicit contract before tuning implementation details.
+**Status (2026-08-26):** The design is accepted and the Campaign implementation is in place with
+automated coverage. Targeted browser probes confirm that both the posted speed trap and a same-line
+Road Rage responder can reach and attack the truck. Rylee's native-size and phone-scale playtest
+signs off on patrol playability, presentation, and retained player agency. Direct composition-seam
+coverage now exercises the live `roadGame.ts` entry point; Challenge patrol generation moves to M8.5.
 
-### Encounter sources and precedence
+### Player-facing contract
 
-Stage 1's authored speed trap sits at the `700 m` entrance to the `700–950 m` patrol zone. A cruiser
-is parked perpendicular to the road in a right-side pullout, visible along the preceding section's
-final `75 m` straight. The pullout and a traversable opening must be authored explicitly; the
-current `2.5 m` shoulder and continuous barrier cannot physically contain or release a rotated
-`4.8 m` cruiser.
+- Stage 1 has one visible cruiser in a right-side pullout (`640–760 m`). Crossing its `700 m` trap
+  line at the shared `high` speed boundary (`30 m/s`, about `67 mph`) starts pursuit; a slower or
+  reverse pass resolves the trap without retriggering it.
+- A Road Rage incident schedules one response after exactly `10` simulation seconds. Responses do
+  not stack or reset, cannot create a second active pursuit, and are cancelled by terminal state.
+- Pursuit follows an explicit deterministic sequence: pull out or respond, close, choose a viable
+  side, telegraph, sideswipe, recover, and either repeat or disengage. Traffic and road edges can
+  block a side; ties resolve consistently, and a blocked setup is aborted without counting as an
+  avoid.
+- The first completed attack attempt latches engagement and rebases the authored `250 m` pursuit
+  window to the fight. After engagement, the player escapes by holding a `40 m` lead for `1 s`,
+  leaving that window, avoiding two committed attacks, or ending the stage.
+- Only contact during a committed sideswipe has patrol consequences, once per attack: `1.5 m/s`
+  speed loss, `3%` cargo damage, and a lateral/yaw impulse. Jackknifing or crashing must still emerge
+  through ordinary truck physics.
+- Red/blue glare, semantic `PATROL LEFT/RIGHT` HUD warnings, reduced-motion presentation, and debug
+  telemetry all derive from the encounter state; presentation owns no pursuit logic.
 
-Crossing the trap line at or above the dashboard's `high` speed tier activates pursuit. With the
-current `40 m/s` truck maximum, that boundary is `0.75`, or `30 m/s` (approximately `67 mph`). The
-simulation samples actual resolved truck speed at the route-distance crossing, never the cruise
-setpoint or a presentation-only needle value. Move the tier boundary into shared validated domain
-data so patrol detection and the speedometer cannot drift. A slower pass resolves the trap without
-pursuit, and reversing across the line cannot retrigger it.
+### Implementation summary
 
-A qualifying Road Rage incident schedules a response exactly `10` simulation seconds later. Only
-one response may be pending or pursuing at a time: another Road Rage incident neither stacks a
-response nor resets its timer, and an incident during an active patrol schedules nothing. A posted
-trap does not occupy that response slot until it activates. If a Road Rage response is already
-pending or pursuing when the player crosses the trap, it suppresses a second pursuit; the parked
-cruiser may remain part of the scene but cannot create another active encounter. Terminal stage
-state cancels pending or active enforcement consequences.
+- `speedTiers.ts` is the validated shared source for dashboard and enforcement thresholds.
+- Authored `RoadPullout` geometry widens the shoulder and barrier consistently for rendering and
+  collision. Stage 1's `3.6 m`-deep apron physically fits the parked cruiser and is carried through
+  the resolved `SessionRoad`.
+- `patrolEncounter.ts` owns the pure tagged state machine, trigger precedence, deterministic side
+  selection, avoid accounting, and resolution. `patrolPursuit.ts` translates live road and traffic
+  observations into cruiser commands and applies committed-hit effects. `traffic.ts` now provides
+  generic vehicle motion and contacts; the old ambient patrol spawn and implicit ram AI are gone.
+- A one-time off-screen handoff stages a pulling-out cruiser at a clear `24 m` gap so it re-enters
+  view promptly; bounded `8 m` fallback steps avoid overlapping traffic and fail loudly if no pose
+  is available.
+- Same-line responders begin flanking at `26 m`, use a `1.5 s` telegraph to reach the `3.2 m` side
+  offset, and fall back while retrying if neither side is viable. This prevents the cruiser from
+  pinning itself against the trailer before choosing a side.
+- The debug-only `?debug&routeFollow=1` route follower supports long patrol probes while leaving
+  throttle, braking, collisions, traffic, and patrol logic live. It is test instrumentation, not a
+  player assist or a substitute for manual acceptance.
 
-Campaign encounters use authored route windows. A Road Rage response outside such a window receives
-a deterministic bounded window derived from the truck's route distance when the response begins.
-Challenge uses its independent encounter seed and explicit stage difficulty; it must not consume or
-perturb route or ambient-traffic randomness.
+### Evidence and remaining work
 
-### Observable state model
+Unit and integration coverage exercises speed thresholds, trigger precedence, every legal state
+transition, side clearance, hit/avoid accounting, pullout geometry, traffic contacts, glare, the
+off-screen handoff, and same-line Road Rage approach. Direct `roadGame.ts` composition coverage now
+also proves that supplied pullouts and encounters reach the mounted simulation and that an owning
+terminal result suppresses fallback presentation. Browser probes have driven the Stage 1 cruiser
+through pullout, flank, telegraph, sideswipe, and release, and have confirmed that a same-line Road
+Rage cruiser gets alongside instead of remaining trapped behind the trailer.
 
-Use an explicit tagged patrol encounter state. Every active state exposes its source (`speed-trap`
-or `road-rage`), route window, timers, required and recorded avoids, and cruiser identity. Attack
-states also expose the chosen side. Debug telemetry names the current state and its next relevant
-condition.
+Before closing M8.4:
 
-| State | Meaning and legal progress |
-|---|---|
-| `posted` | The speed-trap cruiser is visible and waiting for one threshold crossing. |
-| `response-pending` | A Road Rage response counts down in fixed simulation time. |
-| `pulling-out` | A triggered speed-trap cruiser leaves its pullout; it cannot damage the truck. |
-| `closing` | The cruiser approaches from behind. A genuine player lead can already end pursuit. |
-| `flanking` | The cruiser evaluates clear attack positions and deterministically chooses a side. |
-| `telegraphing` | The chosen side is locked and signaled before the cruiser can inflict a hit. |
-| `sideswiping` | One committed lateral attack may either hit once or become one recorded avoid. |
-| `recovering` | The cruiser falls back and establishes room for another attack. |
-| `disengaging` | An escape condition has won; the cruiser retreats and cannot re-engage. |
-| `resolved` | The encounter is immutable and cannot trigger or apply consequences again. |
-
-The cruiser chooses tactically from the physically viable sides using route bounds, nearby traffic,
-curve geometry, and the truck's current route-relative position. Candidate evaluation and tie
-breaking are deterministic. Once `telegraphing` begins, the side is locked. If traffic closes that
-path before commitment, the cruiser aborts to `recovering` or `flanking`; an aborted setup is not an
-avoid, and the AI never forces an occupied attack corridor.
-
-The cruiser accelerates harder than the truck while closing but has a slightly lower maximum speed
-than the truck's normal `40 m/s` maximum. Hammering down can therefore create a real escape lead at
-the cost of fuel and safe cornering. Curves affect world pose and clearance without changing the
-route-space state rules.
-
-### Escape and contact rules
-
-Any one of these conditions succeeds immediately and transitions the patrol to `disengaging`:
-
-- The truck opens the configured decisive lead and maintains it for the configured dwell time.
-- The truck exits the active encounter's route-distance window. Stage 1 ends at `950 m`.
-- The patrol completes the required number of committed sideswipes without contact. Stage 1
-  requires `2`; later encounter definitions increase this value deliberately.
-- The stage reaches a terminal result.
-
-A committed attack counts as avoided only after its complete collision window passes without patrol
-contact. A hit does not increment the avoid count, but it does not erase earlier avoids. The
-required count belongs to the encounter definition—authored for Campaign and derived explicitly
-from Challenge stage difficulty—rather than being inferred from animation cadence.
-
-Only a cruiser in `sideswiping` may apply patrol gameplay consequences, and it may do so at most
-once per committed attack. A hit applies a lateral/yaw impulse that makes the trailer approach a
-jackknife through the ordinary truck model; it must not set `jackknifed` or `crashed` directly. It
-also applies a small immediate cargo nick and retains the existing immediate speed reduction.
-Closing, flanking, telegraphing, recovering, and disengaging contacts still receive ordinary rigid
-body separation but cannot masquerade as a committed patrol hit.
-
-### Warning and presentation
-
-Activating pursuit introduces a red-and-blue flashing glare at the bottom of the road view: behind
-the truck in scene terms and beneath the HUD layer. Its strength reflects cruiser proximity, and it
-may bias toward the locked attack side once the cruiser is alongside. It is a presentation of the
-simulation state, not another pursuit timer or proximity model.
-
-The glare cannot be the only warning. Semantic HUD status announces the patrol and the locked attack
-side, while debug telemetry exposes source, state, gap, route-window end, timer, avoid count, and
-chosen side. Reduced-motion presentation may replace rapid flashing with a steady alternating
-glow without changing the encounter.
-
-### Tests first
-
-- Crossing the Stage 1 trap below `high` resolves without pursuit; crossing at exactly `high` or
-  above enters `pulling-out` once. A large fixed-step crossing and reverse traversal produce the
-  same one-shot decision.
-- Patrol detection and the speedometer consume one shared `high` boundary, and invalid or drifting
-  tier definitions fail explicitly.
-- Road Rage schedules one response at exactly `10` simulation seconds. Additional incidents do not
-  stack or reset it, no response is added during another patrol, and terminal state cancels it.
-- Simultaneous or overlapping authored and Road Rage triggers follow one documented deterministic
-  precedence rule and never create two active cruisers.
-- Every tagged state accepts only its legal transitions. Equal checkpoints and input streams
-  reproduce states, timers, selected sides, attack outcomes, and disengagement exactly.
-- Tactical side selection rejects road edges and occupied corridors, uses a stable tie-break, locks
-  before telegraphing, and safely retries when neither side is viable.
-- An aborted setup records no avoid. A committed miss records exactly one; a hit records none and
-  does not reset earlier avoids. Stage 1 disengages on the second committed miss.
-- Decisive lead, patrol-window exit, required avoids, and terminal stage state each independently
-  win over further attack transitions and make later consequences impossible.
-- One committed hit applies exactly the injected speed loss, cargo nick, and physical lateral/yaw
-  impulse once. It uses normal articulation thresholds instead of assigning a truck status.
-- Patrol state and tactical clearance remain finite and deterministic on both bend directions and
-  in contacts with ambient traffic.
-- Campaign and Challenge use their own encounter identities and seeds; changing route, traffic, or
-  future shop randomness cannot perturb patrol decisions.
-- Glare intensity, side bias, semantic status, and reduced-motion mode derive purely from an
-  encounter snapshot and introduce no simulation state.
-
-### Initial tuning boundaries
-
-- Stage 1 trap line and pursuit window: `700–950 m`, with the parked cruiser readable from the
-  preceding `75 m` straight.
-- Detection: the shared `high` tier, initially `30 m/s`; equality triggers pursuit.
-- Road Rage response delay: exactly `10` simulation seconds.
-- Required avoids: `2` for Stage 1 and a validated positive explicit value for every later
-  encounter. The route-window escape remains available even when later stages require more avoids.
-- Decisive lead starting point: approximately `60 m`, sustained for about `1` second. Tune both
-  together so a collision impulse cannot produce a one-tick false escape.
-- Telegraph starting point: about `0.8` seconds and never below `0.5` seconds. At the threshold
-  speed, the `250 m` Stage 1 window must permit two fair committed attempts without shortening the
-  warning below that bound; if it cannot, revise encounter timing explicitly.
-- Cruiser maximum speed remains below the truck's normal maximum, while closing acceleration is
-  strong enough to threaten a player who stays near the detection boundary.
-- Immediate speed loss starts at the existing `1.5 m/s`. Cargo damage must be lower than the
-  current `6%` patrol ram, and one baseline hit must leave a normally aligned truck recoverable.
-- Lateral/yaw impulse is strong enough to demand correction but reaches jackknife only through the
-  same articulation and speed thresholds as other truck motion.
-
-### Accepted implementation order and ownership — 2026-08-07
-
-Rylee accepted a slice order of shared speed tiers, the pure encounter model, authored pullout
-geometry, cruiser motion and consequences, presentation, and finally Challenge seeding plus the
-playtest matrix. Pullout geometry lands **before** cruiser motion so the trap is physically real the
-first time a pursuit is playable.
-
-The cruiser keeps living in the traffic vehicle list so it reuses the existing rigid-body solver,
-commuter contacts, culling, and scene rendering. `patrolEncounter.ts` owns every decision and will
-hand traffic a per-step command; `traffic.ts` keeps only generic vehicle physics. Its current
-implicit patrol follow/ram behavior and ambient `patrolSpawnChance` are removed in the cruiser-motion
-slice, not before, so the game keeps running while the model lands.
-
-### Shared speed tier and encounter model checkpoint — 2026-08-07
-
-`src/game/speedTiers.ts` now owns the four dashboard tiers as validated domain data. The speedometer
-renders exactly those tiers instead of its own copy, and patrol detection resolves the `high`
-boundary through the same module, so the dial and a speed trap cannot drift apart. Gapped,
-overlapping, duplicated, or non-finite tier definitions fail at module initialization. Each boundary
-belongs to the faster tier, so `30 m/s` against the current `40 m/s` maximum counts as `high`.
-
-`src/game/patrolEncounter.ts` implements the tagged encounter model as pure, frame-driven state. It
-covers the posted trap's single forward-crossing decision, the exactly-`10 s` non-stacking Road Rage
-response, the documented precedence rule, the full `posted → … → resolved` phase set, deterministic
-tactical side selection with a stable left-favoring tie-break, avoid accounting, and the four escape
-conditions. Callers pass one observation frame per step — resolved truck speed, route distance,
-cruiser gap, per-side clearance, committed-attack contact, incident count, terminal flag — and apply
-the returned events. `tests/unit/patrolEncounter.test.ts` locks that contract; the project gate
-passes with `386` tests plus format, lint, typecheck, and build.
-
-Two rules emerged while implementing and are now explicit:
-
-- A cruiser that appears during a step does not advance a phase in that same step, because the
-  frame's gap, clearance, and contact values describe a road that did not yet contain it.
-- Escape conditions are evaluated before any attack progress, and at most one phase transition
-  occurs per step, so a single large fixed step cannot skip a telegraph or manufacture an avoid.
-
-Known deferred work created by this slice:
-
-- Nothing consumes the model yet: no cruiser motion, no consequences, no glare, no telemetry, and no
-  Stage 1 encounter definition. `traffic.ts` still runs the old ambient patrol.
-- Per-side clearance and committed-attack contact are injected observations. The geometry that
-  computes them honestly, including barrier and traffic occupancy, belongs to the pullout and
-  cruiser-motion slices.
-- Road Rage window length, required avoids, and phase durations are provisional; they are validated
-  and centrally tuned but not yet playtested.
-
-### Playable checkpoint
-
-Drive the following at native size and representative phone scales, with debug telemetry visible
-for diagnosis and then hidden for presentation judgment:
-
-1. Pass the posted cruiser just below and exactly at the `high` boundary.
-2. Escape by hammering down, by reaching `950 m`, and by avoiding two attacks as separate runs.
-3. Invite left and right attacks on straights and the patrol section's broad bend, both with clear
-   lanes and with ambient traffic blocking the cruiser's preferred side.
-4. Take a sideswipe while aligned and while already near the jackknife threshold; verify the speed
-   loss, cargo nick, physical instability, and retained player agency.
-5. Cause Road Rage early, near the authored trap, during pursuit, and within ten seconds of the
-   finish; verify countdown, precedence, non-stacking, and terminal cancellation.
-6. Replay an identical seeded run and compare trigger time, side choices, misses, hits, and escape.
-7. Confirm the parked cruiser, pullout, red/blue glare, side warning, map, controls, and urgent HUD
-   states remain legible without relying on color or rapid flashing alone.
+1. Manually play the threshold cases and all three escape paths at native and representative phone
+   sizes.
+2. Exercise left and right attacks on straights and bends, with open and traffic-blocked corridors,
+   and verify that a hit remains recoverable near the jackknife threshold.
+3. Verify Road Rage delay, precedence, non-stacking, and terminal cancellation, then replay an
+   identical seeded run for deterministic outcomes.
+4. Judge glare, side warnings, map/HUD overlap, reduced motion, attack cadence, hit severity, and
+   retained player agency; tune the current staging, flank, and rebased-window values if needed.
+5. Directly cover the `roadGame.ts` composition seam. ✅ Challenge encounters, seeded pullouts, and
+   stage-difficulty tuning are M8.5 work.
 
 ### Exit criterion
 
-Stage 1 presents one readable roadside speed trap whose pursuit can be escaped through speed,
-distance, or two demonstrated sideswipe avoids. Road Rage produces one delayed, bounded response
-without stacking. Every encounter phase and outcome is deterministic, visible in telemetry,
-communicated to the player, and covered by transition tests. Patrol hits create a recoverable
-driving crisis through ordinary physics plus bounded cargo and speed consequences. Native and phone
-playtests demonstrate that both attack sides are legible on straights and curves and that each
-escape path is genuinely achievable.
+Stage 1 presents a readable speed trap and one deterministic, observable pursuit that can be escaped
+by speed, distance, or two demonstrated avoids. Road Rage produces one delayed bounded response.
+Both attack sides are legible and fair on straights and bends, patrol hits create a recoverable
+driving crisis through ordinary physics, and native/phone playtests confirm the complete contract.
 
-## M8.5 — Final tally, persistence, and high scores
+## M8.5 — Challenge encounters, seeded pullouts, and difficulty progression
 
-Start this slice only after the M8.4 patrol design and implementation pass, with the M8.3 session and
-route identity contract in place. M6 supplies live/provisional score inputs and immutable terminal
-snapshots; M8.5 owns the durable result contract.
+Start this slice after the M8.4 patrol model and its direct `roadGame.ts` composition coverage are
+accepted. Keep Campaign's authored patrol definitions unchanged. Challenge owns deterministic
+generation of patrol encounters and roadside pullouts for each generated stage, using the existing
+independent `encounterSeed` rather than coupling enforcement choices to route, traffic, or shop
+randomness.
+
+Resolve the generated road features against the compiled route before starting the stage. Pullouts
+must satisfy the same physical clearance and taper constraints as authored pullouts; encounter
+windows must remain readable, valid for the selected route sections, and compatible with the patrol
+state machine's single-active-pursuit contract. Invalid or unsatisfiable feature sets fail loudly
+within a bounded attempt count instead of silently dropping an encounter or substituting geometry.
+
+Challenge difficulty may rise with stage number through an explicit, bounded policy: increase
+encounter pressure or route-feature demand only where the resulting recovery windows and attack
+fairness remain valid. Difficulty tuning must derive effective values from immutable base tuning and
+must not mutate Campaign defaults or global patrol constants. The resolved Challenge stage identity
+must retain enough feature data, alongside the route definition, for exact replay and bug reports.
+
+### Tests first
+
+- Equal Challenge stage identities produce equal patrol definitions and pullouts; representative
+  different encounter seeds produce different valid feature sets.
+- Changing route, traffic, or shop randomness does not perturb encounter or pullout generation, and
+  consuming one subsystem's random choices does not advance another subsystem.
+- Generated pullouts do not overlap, fit the route, preserve road-edge clearance, and pass the same
+  rendering/collision validation as authored pullouts.
+- Generated encounter windows fit their route sections, satisfy trigger precedence and active-patrol
+  constraints, and fail explicitly when the route cannot support the requested content.
+- Stage-number difficulty changes are deterministic, bounded, and preserve minimum approach,
+  recovery, side-clearance, and escape guarantees.
+- `createRoadForSession()` resolves the same complete Challenge road from the recorded stage
+  identity, and Campaign resolution remains byte-for-byte unchanged.
+- A representative multi-stage Challenge run exercises generated features without leaking temporary
+  state, changing score channels, or changing unrelated subsystem seeds.
+
+### Playable checkpoint
+
+Drive several recorded Challenge seeds at native and representative phone sizes. Confirm that
+pullouts are visible and physically usable, patrol warnings arrive with enough approach distance,
+generated encounters coordinate with bends and traffic, and increasing stage difficulty adds
+pressure without removing a recoverable escape. Replay at least one identical seed after a full
+stage transition and compare route, feature placement, patrol outcomes, and terminal state.
+
+### Exit criterion
+
+Challenge stages contain reproducible, validated patrol encounters and seeded pullouts resolved from
+the active generated route. Stage-number difficulty increases are explicit and fair, Campaign remains
+unchanged, and a recorded Challenge stage can reproduce its complete road-feature identity without
+depending on incidental random consumption.
+
+## M8.6 — Final tally, persistence, and high scores
+
+Start this slice only after the M8.5 Challenge content contract is stable, with the M8.3 session and
+route identity contracts in place. M6 supplies live/provisional score inputs and immutable terminal
+snapshots; M8.6 owns the durable result contract.
 
 Build the final tally from the locked terminal snapshot without re-simulating the run. Extend
 `DataStore` with a versioned run-result schema and explicit migration from the current `scores`
@@ -566,10 +473,11 @@ shape. Unknown or corrupt versions fail loudly rather than being guessed. Keep C
 Challenge score channels separate, with deterministic ordering and tie-breaking.
 
 Persist one final result per completed Campaign run or terminal Challenge run. Store the mode, score
-channel, root/session identity, and generated route identity, including the resolved route definition
-needed to reproduce Challenge geometry. Do not persist each intermediate Challenge stage unless the
-accepted result policy explicitly requires it. Render the tally and high-score table after reload on
-phone and desktop, with keyboard, touch, assistive-technology, and offline coverage.
+channel, root/session identity, and complete generated stage identity, including the resolved route
+definition plus Challenge road-feature definitions needed to reproduce geometry and encounters. Do
+not persist each intermediate Challenge stage unless the accepted result policy explicitly requires
+it. Render the tally and high-score table after reload on phone and desktop, with keyboard, touch,
+assistive-technology, and offline coverage.
 
 ### Tests first
 
@@ -578,14 +486,15 @@ phone and desktop, with keyboard, touch, assistive-technology, and offline cover
 - Unknown versions, invalid records, and non-finite score inputs fail explicitly.
 - Repeated completion/rendering persists exactly one final result.
 - Campaign and Challenge channels never mix, and ordering/tie-breaking is deterministic.
-- Persisted generated route identity round-trips to the same resolved route definition.
+- Persisted generated stage identity round-trips to the same resolved route and road-feature
+  definitions.
 - Empty, partially migrated, and full high-score tables render valid semantic states.
 
 ### Exit criterion
 
 A completed Campaign or terminal Challenge run produces one explainable tally, persists exactly once,
-and appears in the correct high-score channel after reload. A persisted generated route identity can
-reproduce the Challenge geometry used by the run.
+and appears in the correct high-score channel after reload. A persisted generated stage identity can
+reproduce the Challenge geometry and encounter configuration used by the run.
 
 ## Verification
 
@@ -602,8 +511,8 @@ pnpm build
 Browser checks cover native and scaled layouts, keyboard and touch controls, the complete revised
 route, map legibility in both candidate corners, finish/progress agreement, deterministic replay,
 traffic on every curve group, terminal states, and offline reload. Patrol-specific checks are added
-after the M8.4 design gate; tally, persistence, migration, high-score, and route-identity checks are
-added in M8.5.
+after the M8.4 design gate; Challenge feature and difficulty checks are added in M8.5; tally,
+persistence, migration, high-score, and complete stage-identity checks are added in M8.6.
 
 ## Completion checklist
 
@@ -615,5 +524,5 @@ added in M8.5.
 - [ ] Production route identity is reproducible for saved runs and bug reports.
 - [x] Rylee is consulted before patrol behavior tests or implementation are changed.
 - [ ] The accepted patrol model is deterministic, observable, tested, and playable.
-- [ ] Final tally, versioned persistence/migration, and channel-separated high scores pass after M8.4.
+- [ ] Final tally, versioned persistence/migration, and channel-separated high scores pass after M8.5.
 - [ ] Automated checks and the browser matrix pass without console or offline-cache regressions.

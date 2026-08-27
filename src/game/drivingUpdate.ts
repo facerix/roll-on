@@ -12,6 +12,7 @@ import type { Road } from '/src/game/road.js';
 import { worldToRoute, type RoutePosition } from '/src/game/route.js';
 import {
   buildTruckFootprint,
+  constrainTruckToRoad,
   DEFAULT_ROAD_COLLISION_TUNING,
   detectRoadBarrierImpact,
   resolveRoadBarrierContact,
@@ -114,8 +115,15 @@ export function stepDriving(options: StepDrivingOptions): StepDrivingResult {
     footprint,
     options.state.routePosition.distanceAlongRouteMeters
   );
-  const barrierResult = resolveRoadBarrierContact({
+  const constrainedTruck = constrainTruckToRoad({
+    road: options.road,
     truck: steppedTruck,
+    truckDimensions: options.truckDimensions,
+    impact: barrierImpact,
+    routeDistanceHintMeters: options.state.routePosition.distanceAlongRouteMeters,
+  });
+  const barrierResult = resolveRoadBarrierContact({
+    truck: constrainedTruck,
     impact: barrierImpact,
     contactState: options.state.barrierContactState,
     dtSeconds: options.dtSeconds,

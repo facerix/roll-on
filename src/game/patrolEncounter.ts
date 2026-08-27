@@ -53,6 +53,15 @@ interface PatrolEncounterCommon {
   readonly recordedAvoids: number;
   /** Seconds the truck has continuously held the decisive lead. */
   readonly leadDwellSeconds: number;
+  /**
+   * Whether the cruiser has completed its first attack attempt. Every escape
+   * clock is held until it has, so a pursuit can never be won during the
+   * approach — the stretch where the cruiser is still behind the camera and the
+   * player has nothing to react to. Distance alone is the wrong test: the rear
+   * view is only about seventeen metres deep, so a gap small enough to be on
+   * screen is already inside attack range. It latches once and never clears.
+   */
+  readonly hasEngaged: boolean;
 }
 
 export type PatrolEncounter =
@@ -103,6 +112,7 @@ export type PatrolEncounterEvent =
       readonly source: PatrolEncounterSource;
       readonly cruiserId: number;
     }
+  | { readonly kind: 'closing-started'; readonly encounterId: string }
   | { readonly kind: 'response-scheduled'; readonly secondsRemaining: number }
   | {
       readonly kind: 'response-cancelled';
@@ -183,13 +193,16 @@ export const DEFAULT_PATROL_ENCOUNTER_TUNING: PatrolEncounterTuning = Object.fre
   roadRageWindowLengthMeters: 400,
   roadRageRequiredAvoids: 2,
   pullOutSeconds: 1.5,
-  flankGapMeters: 12,
-  telegraphSeconds: 0.8,
+  // A same-line responder must begin moving sideways before its front reaches
+  // the trailer's rear. This gap includes the worst-case approach-speed gain
+  // over the time needed to clear the combined half-widths.
+  flankGapMeters: 26,
+  telegraphSeconds: 1.5,
   minimumTelegraphSeconds: 0.5,
   attackWindowSeconds: 0.9,
   recoverSeconds: 1.6,
   disengageSeconds: 2.5,
-  decisiveLeadMeters: 60,
+  decisiveLeadMeters: 40,
   leadDwellSeconds: 1,
   minimumSideClearanceMeters: 2.6,
 });
@@ -197,7 +210,13 @@ export const DEFAULT_PATROL_ENCOUNTER_TUNING: PatrolEncounterTuning = Object.fre
 /** Timers are compared with a tolerance so fixed steps land exactly on zero. */
 const TIMER_EPSILON_SECONDS = 1e-9;
 
-const DWELL_ELIGIBLE_PHASES: readonly PatrolEncounterPhase[] = [
+/**
+ * The phases in which the cruiser is chasing under its own power. Engagement and
+ * the lead dwell are both measured only here: during `pulling-out` the cruiser is
+ * still leaving its apron on the trigger line, where the gap reads near zero and
+ * would otherwise register as an engagement it has not made.
+ */
+const POWERED_PURSUIT_PHASES: readonly PatrolEncounterPhase[] = [
   'closing',
   'flanking',
   'telegraphing',
@@ -228,6 +247,7 @@ export function createPatrolEncounterState(
       requiredAvoids: definition.requiredAvoids,
       recordedAvoids: 0,
       leadDwellSeconds: 0,
+      hasEngaged: false,
       phase: 'posted' as const,
       triggerDistanceMeters: definition.triggerDistanceMeters!,
     });
@@ -313,6 +333,7 @@ export function stepPatrolEncounter(
         requiredAvoids: tuning.roadRageRequiredAvoids,
         recordedAvoids: 0,
         leadDwellSeconds: 0,
+        hasEngaged: false,
         phase: 'closing' as const,
       });
       encounters.push(encounter);
@@ -400,29 +421,31 @@ function advanceActiveEncounter(
     return toResolved(encounter, encounter.reason);
   }
 
-  const isDwellEligible = DWELL_ELIGIBLE_PHASES.includes(encounter.phase);
+  const isUnderPower = POWERED_PURSUIT_PHASES.includes(encounter.phase);
   const leadDwellSeconds =
-    isDwellEligible && frame.patrolGapMeters >= tuning.decisiveLeadMeters
+    encounter.hasEngaged && isUnderPower && frame.patrolGapMeters >= tuning.decisiveLeadMeters
       ? encounter.leadDwellSeconds + frame.dtSeconds
       : 0;
   const current = { ...encounter, leadDwellSeconds } as PatrolEncounter;
 
-  // Escape conditions outrank every further attack transition.
-  if (frame.routeDistanceMeters >= current.windowEndDistanceMeters) {
+  // Escape conditions outrank every further attack transition, but none of them
+  // can be met before the cruiser has had its first swing.
+  if (encounter.hasEngaged && frame.routeDistanceMeters >= current.windowEndDistanceMeters) {
     return disengage(current, 'window-exit', tuning, events);
   }
   if (current.recordedAvoids >= current.requiredAvoids) {
     return disengage(current, 'avoids-met', tuning, events);
   }
-  if (isDwellEligible && leadDwellSeconds >= tuning.leadDwellSeconds - TIMER_EPSILON_SECONDS) {
+  if (leadDwellSeconds >= tuning.leadDwellSeconds - TIMER_EPSILON_SECONDS) {
     return disengage(current, 'decisive-lead', tuning, events);
   }
 
   switch (current.phase) {
     case 'pulling-out':
-      return afterTimer(current, frame, () =>
-        Object.freeze({ ...stripPhaseFields(current), phase: 'closing' as const })
-      );
+      return afterTimer(current, frame, () => {
+        events.push({ kind: 'closing-started', encounterId: current.id });
+        return Object.freeze({ ...stripPhaseFields(current), phase: 'closing' as const });
+      });
     case 'closing':
       if (frame.patrolGapMeters > tuning.flankGapMeters) return Object.freeze(current);
       return Object.freeze({ ...stripPhaseFields(current), phase: 'flanking' as const });
@@ -439,7 +462,7 @@ function advanceActiveEncounter(
     case 'telegraphing': {
       if (clearanceOnSide(frame, current.chosenSide) < tuning.minimumSideClearanceMeters) {
         events.push({ kind: 'attack-aborted', encounterId: current.id });
-        return toRecovering(current, tuning);
+        return toRecovering(current, frame, tuning);
       }
       return afterTimer(current, frame, () => {
         events.push({
@@ -458,7 +481,7 @@ function advanceActiveEncounter(
     case 'sideswiping': {
       if (frame.hasPatrolContact) {
         events.push({ kind: 'attack-hit', encounterId: current.id, side: current.chosenSide });
-        return toRecovering(current, tuning);
+        return toRecovering(current, frame, tuning);
       }
       return afterTimer(current, frame, () => {
         const recordedAvoids = current.recordedAvoids + 1;
@@ -472,7 +495,7 @@ function advanceActiveEncounter(
         if (recordedAvoids >= current.requiredAvoids) {
           return disengage(avoided, 'avoids-met', tuning, events);
         }
-        return toRecovering(avoided, tuning);
+        return toRecovering(avoided, frame, tuning);
       });
     }
     case 'recovering':
@@ -539,9 +562,28 @@ function toDisengaging(
   });
 }
 
-function toRecovering(encounter: PatrolEncounter, tuning: PatrolEncounterTuning): PatrolEncounter {
+/**
+ * Every completed attack attempt — landed, dodged, or aborted — funnels through
+ * here, which makes it the one place the encounter can be called joined. The
+ * first pass latches engagement and rebases the band to start where the fight
+ * did, so the authored length measures the fight rather than the catch-up.
+ */
+function toRecovering(
+  encounter: PatrolEncounter,
+  frame: PatrolEncounterFrame,
+  tuning: PatrolEncounterTuning
+): PatrolEncounter {
+  const common = stripPhaseFields(encounter);
+  const windowLengthMeters = common.windowEndDistanceMeters - common.windowStartDistanceMeters;
+  const windowStartDistanceMeters = common.hasEngaged
+    ? common.windowStartDistanceMeters
+    : frame.routeDistanceMeters;
+
   return Object.freeze({
-    ...stripPhaseFields(encounter),
+    ...common,
+    hasEngaged: true,
+    windowStartDistanceMeters,
+    windowEndDistanceMeters: windowStartDistanceMeters + windowLengthMeters,
     phase: 'recovering' as const,
     phaseSecondsRemaining: tuning.recoverSeconds,
   });
@@ -566,6 +608,7 @@ function stripPhaseFields(encounter: PatrolEncounter): PatrolEncounterCommon {
     requiredAvoids: encounter.requiredAvoids,
     recordedAvoids: encounter.recordedAvoids,
     leadDwellSeconds: encounter.leadDwellSeconds,
+    hasEngaged: encounter.hasEngaged,
   };
 }
 
@@ -647,6 +690,11 @@ export function validatePatrolEncounterTuning(
   assertPositive('recoverSeconds', tuning.recoverSeconds);
   assertPositive('disengageSeconds', tuning.disengageSeconds);
   assertPositive('decisiveLeadMeters', tuning.decisiveLeadMeters);
+  if (tuning.decisiveLeadMeters <= tuning.flankGapMeters) {
+    throw new RangeError(
+      `decisiveLeadMeters must exceed flankGapMeters or a pursuit escapes from inside attack range, got ${tuning.decisiveLeadMeters} <= ${tuning.flankGapMeters}`
+    );
+  }
   assertPositive('leadDwellSeconds', tuning.leadDwellSeconds);
   assertPositive('minimumSideClearanceMeters', tuning.minimumSideClearanceMeters);
   return tuning;
@@ -686,6 +734,7 @@ function validateState(state: PatrolEncounterState): void {
     assertNonNegativeInteger('encounter.recordedAvoids', encounter.recordedAvoids);
     assertPositiveInteger('encounter.requiredAvoids', encounter.requiredAvoids);
     assertNonNegative('encounter.leadDwellSeconds', encounter.leadDwellSeconds);
+    assertBoolean('encounter.hasEngaged', encounter.hasEngaged);
     switch (encounter.phase) {
       case 'posted':
         assertFinite('encounter.triggerDistanceMeters', encounter.triggerDistanceMeters);

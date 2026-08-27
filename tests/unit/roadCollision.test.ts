@@ -1,10 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createDefaultStageRoute, createRoad, DEFAULT_ROAD_TUNING } from '../../src/game/road.ts';
+import {
+  createDefaultStageRoute,
+  createRoad,
+  DEFAULT_ROAD_TUNING,
+  STAGE_1_ROAD_PULLOUTS,
+} from '../../src/game/road.ts';
 import { createRoute, routeToWorld, sampleRoute } from '../../src/game/route.ts';
 import {
   buildTruckFootprint,
+  constrainTruckToRoad,
   detectRoadBarrierImpact,
   resolveRoadBarrierContact,
   type BarrierContactState,
@@ -69,6 +75,7 @@ function impact(side: RoadBarrierImpact['side'] = 'right'): RoadBarrierImpact {
     kind: 'barrier',
     side,
     penetrationMeters: 0.5,
+    separation: { xMeters: side === 'left' ? 0.5 : -0.5, yMeters: 0 },
     minYMeters: 90,
     maxYMeters: 110,
   };
@@ -182,6 +189,61 @@ test('curved barriers follow the route instead of world x', () => {
   assert.ok((impact?.penetrationMeters ?? 0) > 0);
 });
 
+test('barrier response translates the complete truck footprint back inside a straight road', () => {
+  const outside = truck({ position: { xMeters: 12, yMeters: 100 } });
+  const barrierImpact = detectRoadBarrierImpact(ROAD, buildTruckFootprint(outside, DIMENSIONS));
+  assert.equal(barrierImpact?.side, 'right');
+
+  const constrained = constrainTruckToRoad({
+    road: ROAD,
+    truck: outside,
+    truckDimensions: DIMENSIONS,
+    impact: barrierImpact,
+    routeDistanceHintMeters: 100,
+  });
+
+  assert.equal(detectRoadBarrierImpact(ROAD, buildTruckFootprint(constrained, DIMENSIONS)), null);
+  assert.ok(constrained.position.xMeters < outside.position.xMeters);
+});
+
+test('barrier response follows the local road normal through a curve', () => {
+  const distanceAlongRouteMeters = 70;
+  const routeHeadingRadians = sampleRoute(
+    CURVED_ROAD.route,
+    distanceAlongRouteMeters
+  ).headingRadians;
+  const outside = truck({
+    position: routeToWorld(CURVED_ROAD.route, {
+      distanceAlongRouteMeters,
+      lateralOffsetMeters: CURVED_ROAD.rightBarrierLateralMeters + 2,
+    }),
+    headingRadians: routeHeadingRadians,
+    trailerHeadingRadians: routeHeadingRadians,
+  });
+  const barrierImpact = detectRoadBarrierImpact(
+    CURVED_ROAD,
+    buildTruckFootprint(outside, DIMENSIONS),
+    distanceAlongRouteMeters
+  );
+
+  const constrained = constrainTruckToRoad({
+    road: CURVED_ROAD,
+    truck: outside,
+    truckDimensions: DIMENSIONS,
+    impact: barrierImpact,
+    routeDistanceHintMeters: distanceAlongRouteMeters,
+  });
+
+  assert.equal(
+    detectRoadBarrierImpact(
+      CURVED_ROAD,
+      buildTruckFootprint(constrained, DIMENSIONS),
+      distanceAlongRouteMeters
+    ),
+    null
+  );
+});
+
 test('an articulated trailer safely inside a curve does not strike a barrier through its AABB', () => {
   const distanceAlongRouteMeters = 483;
   const road = createRoad(DEFAULT_ROAD_TUNING, createDefaultStageRoute());
@@ -280,4 +342,26 @@ test('sustained barrier contact uses a cooldown so damage is frame-rate independ
   };
 
   assert.equal(runContact(1 / 60, 1).cargoIntegrity, runContact(1 / 30, 1).cargoIntegrity);
+});
+
+test('a pullout opens the barrier only where it is authored', () => {
+  const road = createRoad(DEFAULT_ROAD_TUNING, createDefaultStageRoute(), {
+    pullouts: STAGE_1_ROAD_PULLOUTS,
+  });
+  const footprintAt = (distanceAlongRouteMeters: number, lateralOffsetMeters: number) => {
+    const headingRadians = sampleRoute(road.route, distanceAlongRouteMeters).headingRadians;
+    return buildTruckFootprint(
+      truck({
+        position: routeToWorld(road.route, { distanceAlongRouteMeters, lateralOffsetMeters }),
+        headingRadians,
+        trailerHeadingRadians: headingRadians,
+      }),
+      DIMENSIONS
+    );
+  };
+
+  assert.equal(detectRoadBarrierImpact(road, footprintAt(700, 11), 700), null);
+  assert.equal(detectRoadBarrierImpact(road, footprintAt(900, 11), 900)?.side, 'right');
+  assert.equal(detectRoadBarrierImpact(road, footprintAt(700, 14), 700)?.side, 'right');
+  assert.equal(detectRoadBarrierImpact(road, footprintAt(700, -11), 700)?.side, 'left');
 });
