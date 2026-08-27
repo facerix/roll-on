@@ -556,8 +556,8 @@ persistence, migration, high-score, and complete stage-identity checks are added
 - [x] Stage 1 contains several intentional, tested road sections totaling `2,200 m`.
 - [x] Encounter bands are reviewed against the revised geometry.
 - [x] The fixed/generated/hybrid decision and its evidence are recorded.
-- [ ] Production route identity is reproducible for saved runs and bug reports.
+- [x] Production route identity is reproducible for saved runs and bug reports.
 - [x] Rylee is consulted before patrol behavior tests or implementation are changed.
-- [ ] The accepted patrol model is deterministic, observable, tested, and playable.
+- [x] The accepted patrol model is deterministic, observable, tested, and playable.
 - [ ] Final tally, versioned persistence/migration, and channel-separated high scores pass after M8.5.
 - [ ] Automated checks and the browser matrix pass without console or offline-cache regressions.
