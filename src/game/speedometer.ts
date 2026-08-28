@@ -1,6 +1,8 @@
 import { DIAL_MAX_ANGLE_DEGREES, DIAL_MIN_ANGLE_DEGREES } from '/src/game/gameHud.js';
+import { SPEED_TIERS, type SpeedTierName } from '/src/game/speedTiers.js';
 
-export type SpeedometerBandName = 'cruise' | 'caution' | 'high' | 'limit';
+/** The dial draws exactly the shared speed tiers; it never redefines them. */
+export type SpeedometerBandName = SpeedTierName;
 
 export interface SpeedometerBand {
   readonly name: SpeedometerBandName;
@@ -20,24 +22,13 @@ const TICK_OUTER_RADIUS = 40;
 const TICK_INNER_RADIUS = 36;
 const BAND_GAP_DEGREES = 2;
 
-const BAND_LEVELS: readonly Readonly<{
-  name: SpeedometerBandName;
-  minimumLevel: number;
-  maximumLevel: number;
-}>[] = [
-  { name: 'cruise', minimumLevel: 0, maximumLevel: 0.55 },
-  { name: 'caution', minimumLevel: 0.55, maximumLevel: 0.75 },
-  { name: 'high', minimumLevel: 0.75, maximumLevel: 0.9 },
-  { name: 'limit', minimumLevel: 0.9, maximumLevel: 1 },
-];
-
-export const SPEEDOMETER_BANDS: readonly SpeedometerBand[] = BAND_LEVELS.map(
+export const SPEEDOMETER_BANDS: readonly SpeedometerBand[] = SPEED_TIERS.map(
   ({ name, minimumLevel, maximumLevel }, index) => {
     const startAngleDegrees = mapSpeedLevelToDialAngleDegrees(minimumLevel);
     const endAngleDegrees = mapSpeedLevelToDialAngleDegrees(maximumLevel);
     const visibleStartAngle = startAngleDegrees + (index === 0 ? 0 : BAND_GAP_DEGREES / 2);
     const visibleEndAngle =
-      endAngleDegrees - (index === BAND_LEVELS.length - 1 ? 0 : BAND_GAP_DEGREES / 2);
+      endAngleDegrees - (index === SPEED_TIERS.length - 1 ? 0 : BAND_GAP_DEGREES / 2);
     return {
       name,
       minimumLevel,

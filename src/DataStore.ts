@@ -1,146 +1,108 @@
-// singleton class to manage the user's data
-
 import { v4WithTimestamp } from '/src/uuid.js';
+import {
+  createEmptyRunResultStore,
+  insertRunResult,
+  parseRunResultStore,
+  serializeRunResultStore,
+  type RunResultRecord,
+  type RunResultStore,
+} from '/src/game/runResults.js';
 
-/**
- * Minimum shape of a record. Apps consuming this template are expected to
- * extend it with their own fields; the store doesn't care what else lives on
- * the object, only that every record has an id.
- */
-export interface DataRecord {
-  id: string;
-  [key: string]: unknown;
-}
-
-export type ChangeType = 'init' | 'add' | 'update' | 'delete';
+export type DataRecord = RunResultRecord;
+export type ChangeType = 'init' | 'add' | 'delete';
 
 export interface DataStoreChangeDetail {
-  items: DataRecord[];
-  changeType: ChangeType;
-  affectedRecords: DataRecord | DataRecord[] | string[];
+  readonly items: readonly RunResultRecord[];
+  readonly changeType: ChangeType;
+  readonly affectedRecords: RunResultRecord | readonly string[];
 }
 
 let instance: DataStore | null = null;
 
+/** Versioned, immutable run-result persistence over the historical `scores` key. */
 class DataStore extends EventTarget {
-  #items: DataRecord[] = [];
-  #itemsById: Map<string, DataRecord> = new Map();
+  #store: RunResultStore = createEmptyRunResultStore();
+  #itemsById = new Map<string, RunResultRecord>();
 
   constructor() {
-    if (instance) {
-      throw new Error('New instance cannot be created!!');
-    }
+    if (instance) throw new Error('New DataStore instance cannot be created');
     super();
-
-    // Singleton: cache `this` so a second `new DataStore()` throws above.
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     instance = this;
   }
 
-  #loadRecordsFromJson(json: string): DataRecord[] {
-    try {
-      const records: unknown = JSON.parse(json);
-      if (!Array.isArray(records)) {
-        console.warn('[DataStore] Expected array JSON, falling back to empty list.');
-        return [];
-      }
-      records.forEach((item: DataRecord, index: number) => {
-        if (!item.id) {
-          records[index].id = v4WithTimestamp();
-        }
-      });
-      return records as DataRecord[];
-    } catch (error) {
-      console.warn('[DataStore] Failed to parse stored JSON, resetting items.', error);
-      try {
-        window.localStorage.setItem('scores', '[]');
-      } catch (storageError) {
-        console.warn('[DataStore] Failed to reset stored items.', storageError);
-      }
-      return [];
-    }
-  }
-
   async init(): Promise<void> {
-    let savedItemsJson = window.localStorage.getItem('scores');
-    if (!savedItemsJson) {
-      savedItemsJson = '[]';
-      window.localStorage.setItem('scores', savedItemsJson);
-    }
-    this.#items = this.#loadRecordsFromJson(savedItemsJson);
-    this.#reindex();
-
-    setTimeout(() => {
-      this.#emitChangeEvent('init', ['*']);
-    }, 0);
+    const saved = window.localStorage.getItem('scores');
+    this.#store =
+      saved === null
+        ? createEmptyRunResultStore()
+        : parseRunResultStore(saved, {
+            createId: v4WithTimestamp,
+            now: () => new Date().toISOString(),
+          });
+    this.#reindexAndSave();
+    setTimeout(() => this.#emitChangeEvent('init', ['*']), 0);
   }
 
   import(jsonData: string): void {
-    const newItems = this.#loadRecordsFromJson(jsonData);
-    Array.prototype.unshift.apply(this.#items, newItems);
-    this.#reindex();
-
-    setTimeout(() => {
-      this.#emitChangeEvent('init', ['*']);
-    }, 0);
+    const imported = parseRunResultStore(jsonData, {
+      createId: v4WithTimestamp,
+      now: () => new Date().toISOString(),
+    });
+    let merged = this.#store;
+    for (const result of [...imported.results].reverse()) {
+      merged = insertRunResult(merged, result);
+    }
+    this.#store = merged;
+    this.#reindexAndSave();
+    setTimeout(() => this.#emitChangeEvent('init', ['*']), 0);
   }
 
-  #saveItems(): void {
-    window.localStorage.setItem('scores', JSON.stringify(this.#items));
+  get items(): readonly RunResultRecord[] {
+    return this.#store.results;
+  }
+
+  getItemById(id: string): RunResultRecord | undefined {
+    return this.#itemsById.get(id);
+  }
+
+  /** Add once. An exact replay is a no-op; conflicting reuse of an id throws. */
+  addItem(record: RunResultRecord): void {
+    const next = insertRunResult(this.#store, record);
+    if (next === this.#store) return;
+    this.#store = next;
+    this.#reindexAndSave();
+    this.#emitChangeEvent('add', record);
+  }
+
+  addRunResult(record: RunResultRecord): void {
+    this.addItem(record);
+  }
+
+  deleteItem(id: string): void {
+    if (!this.#itemsById.has(id)) return;
+    this.#store = Object.freeze({
+      version: 1,
+      results: Object.freeze(this.#store.results.filter(result => result.id !== id)),
+    });
+    this.#reindexAndSave();
+    this.#emitChangeEvent('delete', [id]);
+  }
+
+  #reindexAndSave(): void {
+    this.#itemsById = new Map(this.#store.results.map(result => [result.id, result]));
+    window.localStorage.setItem('scores', serializeRunResultStore(this.#store));
   }
 
   #emitChangeEvent(
     changeType: ChangeType,
     affectedRecords: DataStoreChangeDetail['affectedRecords']
   ): void {
-    const changeEvent = new CustomEvent<DataStoreChangeDetail>('change', {
-      detail: {
-        items: this.#items,
-        changeType,
-        affectedRecords,
-      },
-    });
-    this.dispatchEvent(changeEvent);
-  }
-
-  #reindex(): void {
-    this.#itemsById = new Map();
-    this.#items.forEach(item => {
-      this.#itemsById.set(item.id, item);
-    });
-    this.#saveItems();
-  }
-
-  get items(): DataRecord[] {
-    return this.#items;
-  }
-
-  getItemById(id: string): DataRecord | undefined {
-    return this.#itemsById.get(id);
-  }
-
-  addItem(record: DataRecord): void {
-    record.id = v4WithTimestamp();
-    this.#items.unshift(record);
-    this.#reindex();
-    this.#emitChangeEvent('add', record);
-  }
-
-  updateItem(record: DataRecord): void {
-    const index = this.#items.findIndex(rec => rec.id === record.id);
-    if (index > -1) {
-      this.#items[index] = record;
-      this.#reindex();
-      this.#emitChangeEvent('update', record);
-    }
-  }
-
-  deleteItem(id: string): void {
-    if (this.#itemsById.has(id)) {
-      this.#items = this.#items.filter(r => r.id !== id);
-      this.#reindex();
-      this.#emitChangeEvent('delete', [id]);
-    }
+    this.dispatchEvent(
+      new CustomEvent<DataStoreChangeDetail>('change', {
+        detail: { items: this.#store.results, changeType, affectedRecords },
+      })
+    );
   }
 }
 

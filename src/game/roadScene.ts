@@ -1,5 +1,11 @@
 import type { Drawable, Scene } from '/src/engine/renderer.js';
-import { sampleRoad, sampleRoadWindow, type LaneMarkerSpan, type Road } from '/src/game/road.js';
+import {
+  getBarrierLateralMeters,
+  sampleRoad,
+  sampleRoadWindow,
+  type LaneMarkerSpan,
+  type Road,
+} from '/src/game/road.js';
 import { projectWorldPoint, type RoadCamera } from '/src/game/roadCamera.js';
 import { routeToWorld, worldToRoute } from '/src/game/route.js';
 import { getTruckTrailerCenter } from '/src/game/roadCollision.js';
@@ -9,6 +15,10 @@ import type { TrafficVehicle } from '/src/game/traffic.js';
 import { buildRoadDebugDrawables } from '/src/game/roadDebug.js';
 import type { RoadDistanceWindow } from '/src/game/road.js';
 import { shortestHeadingDelta } from '/src/game/worldGeometry.js';
+import {
+  buildRoutePreviewDrawables,
+  DEFAULT_ROUTE_PREVIEW_TUNING,
+} from '/src/game/routePreview.js';
 
 export const COMMUTER_SPRITES = Object.freeze([
   '/images/vehicles/commuter-blue.png',
@@ -36,6 +46,8 @@ export interface RoadSceneTuning {
   readonly roadColor: string;
   readonly barrierColor: string;
   readonly laneMarkerColor: string;
+  readonly leftRoadEdgeMarkerColor: string;
+  readonly rightRoadEdgeMarkerColor: string;
   readonly laneMarkerWidthMeters: number;
   readonly finishLineLightColor: string;
   readonly finishLineDarkColor: string;
@@ -90,6 +102,10 @@ export interface BuildRoadSceneOptions {
   readonly focusDistanceAlongRouteMeters?: number;
   /** Route-space finish trigger; the visible band ends exactly at this distance. */
   readonly finishDistanceMeters?: number;
+  /** Explicit route-space progress used by the presentation-only route preview. */
+  readonly routePreviewDistanceMeters?: number;
+  /** Screen-space pursuit glare, drawn over the road but behind the truck. */
+  readonly patrolGlare?: readonly Drawable[];
 }
 
 export const DEFAULT_PARALLAX_LAYERS: readonly ParallaxLayerTuning[] = Object.freeze([
@@ -116,7 +132,9 @@ export const DEFAULT_ROAD_SCENE_TUNING: RoadSceneTuning = Object.freeze({
   shoulderColor: '#5b5145',
   roadColor: '#30343b',
   barrierColor: '#d8d2c4',
-  laneMarkerColor: '#f6d96d',
+  laneMarkerColor: '#f4f4ea',
+  leftRoadEdgeMarkerColor: '#e8c547',
+  rightRoadEdgeMarkerColor: '#f4f4ea',
   laneMarkerWidthMeters: 0.18,
   finishLineLightColor: '#f7ecd7',
   finishLineDarkColor: '#050608',
@@ -221,7 +239,9 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
     drawables.push(parallaxBand(options.camera, band));
   }
 
-  if (hasCurvature(options.road)) {
+  // An authored pullout makes the cross section vary with distance, so it needs
+  // the sampled path even when the route itself never bends.
+  if (hasCurvature(options.road) || options.road.pullouts.length > 0) {
     const focusDistance = getFocusDistanceAlongRoute(options);
     drawables.push(
       ...buildCurvedRoadDrawables(options.road, options.camera, tuning, focusDistance)
@@ -245,6 +265,18 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
         options.road.leftRoadEdgeMeters,
         options.road.rightRoadEdgeMeters,
         tuning.roadColor
+      ),
+      roadEdgeMarker(
+        options.camera,
+        options.road.leftRoadEdgeMeters,
+        tuning.laneMarkerWidthMeters,
+        tuning.leftRoadEdgeMarkerColor
+      ),
+      roadEdgeMarker(
+        options.camera,
+        options.road.rightRoadEdgeMeters,
+        tuning.laneMarkerWidthMeters,
+        tuning.rightRoadEdgeMarkerColor
       ),
       barrier(options.camera, options.road.leftBarrierLateralMeters, tuning.barrierColor),
       barrier(options.camera, options.road.rightBarrierLateralMeters, tuning.barrierColor)
@@ -305,7 +337,32 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
     );
   }
 
+  if (options.patrolGlare) drawables.push(...options.patrolGlare);
+
   drawables.push(...buildTruckDrawables(options.camera, options.truck, options.truckDimensions));
+
+  if (options.routePreviewDistanceMeters !== undefined) {
+    drawables.push(
+      ...buildRoutePreviewDrawables({
+        route: options.road.route,
+        distanceAlongRouteMeters: options.routePreviewDistanceMeters,
+        // Bottom corner, just above the HUD: the top of the view is the road
+        // ahead, and the canvas already ends at the dashboard boundary.
+        frame: {
+          x:
+            options.camera.viewportWidth -
+            DEFAULT_ROUTE_PREVIEW_TUNING.edgeInsetPixels -
+            DEFAULT_ROUTE_PREVIEW_TUNING.widthPixels,
+          y:
+            options.camera.viewportHeight -
+            DEFAULT_ROUTE_PREVIEW_TUNING.edgeInsetPixels -
+            DEFAULT_ROUTE_PREVIEW_TUNING.heightPixels,
+          width: DEFAULT_ROUTE_PREVIEW_TUNING.widthPixels,
+          height: DEFAULT_ROUTE_PREVIEW_TUNING.heightPixels,
+        },
+      })
+    );
+  }
 
   return {
     clear: tuning.backgroundColor,
@@ -455,6 +512,24 @@ function buildCurvedRoadDrawables(
         current.roadEdges[0],
         tuning.roadColor
       ),
+      roadEdgeMarkerSegment(
+        camera,
+        road,
+        previous,
+        current,
+        'left',
+        tuning.laneMarkerWidthMeters,
+        tuning.leftRoadEdgeMarkerColor
+      ),
+      roadEdgeMarkerSegment(
+        camera,
+        road,
+        previous,
+        current,
+        'right',
+        tuning.laneMarkerWidthMeters,
+        tuning.rightRoadEdgeMarkerColor
+      ),
       barrierSegment(camera, road, previous, current, 'left', tuning.barrierColor),
       barrierSegment(camera, road, previous, current, 'right', tuning.barrierColor)
     );
@@ -522,23 +597,57 @@ function barrierSegment(
   side: 'left' | 'right',
   color: string
 ): Drawable {
-  const lateral = side === 'left' ? road.leftBarrierLateralMeters : road.rightBarrierLateralMeters;
+  const previousLateral = getBarrierLateralMeters(road, side, previous.distanceAlongRouteMeters);
+  const currentLateral = getBarrierLateralMeters(road, side, current.distanceAlongRouteMeters);
   const halfWidth = 0.09;
+  const outwardHalfWidth = side === 'left' ? -halfWidth : halfWidth;
   const previousInner = routeToWorld(road.route, {
     distanceAlongRouteMeters: previous.distanceAlongRouteMeters,
-    lateralOffsetMeters: lateral - (side === 'left' ? -halfWidth : halfWidth),
+    lateralOffsetMeters: previousLateral - outwardHalfWidth,
   });
   const previousOuter = routeToWorld(road.route, {
     distanceAlongRouteMeters: previous.distanceAlongRouteMeters,
-    lateralOffsetMeters: lateral + (side === 'left' ? -halfWidth : halfWidth),
+    lateralOffsetMeters: previousLateral + outwardHalfWidth,
   });
   const currentInner = routeToWorld(road.route, {
     distanceAlongRouteMeters: current.distanceAlongRouteMeters,
-    lateralOffsetMeters: lateral - (side === 'left' ? -halfWidth : halfWidth),
+    lateralOffsetMeters: currentLateral - outwardHalfWidth,
   });
   const currentOuter = routeToWorld(road.route, {
     distanceAlongRouteMeters: current.distanceAlongRouteMeters,
-    lateralOffsetMeters: lateral + (side === 'left' ? -halfWidth : halfWidth),
+    lateralOffsetMeters: currentLateral + outwardHalfWidth,
+  });
+  return crossSectionQuad(camera, previousInner, previousOuter, currentOuter, currentInner, color);
+}
+
+function roadEdgeMarkerSegment(
+  camera: RoadCamera,
+  road: Road,
+  previous: ReturnType<typeof sampleRoad>,
+  current: ReturnType<typeof sampleRoad>,
+  side: 'left' | 'right',
+  widthMeters: number,
+  color: string
+): Drawable {
+  const lateral = side === 'left' ? road.leftRoadEdgeMeters : road.rightRoadEdgeMeters;
+  const halfWidth = widthMeters / 2;
+  const inwardOffset = side === 'left' ? halfWidth : -halfWidth;
+  const outwardOffset = -inwardOffset;
+  const previousInner = routeToWorld(road.route, {
+    distanceAlongRouteMeters: previous.distanceAlongRouteMeters,
+    lateralOffsetMeters: lateral + inwardOffset,
+  });
+  const previousOuter = routeToWorld(road.route, {
+    distanceAlongRouteMeters: previous.distanceAlongRouteMeters,
+    lateralOffsetMeters: lateral + outwardOffset,
+  });
+  const currentInner = routeToWorld(road.route, {
+    distanceAlongRouteMeters: current.distanceAlongRouteMeters,
+    lateralOffsetMeters: lateral + inwardOffset,
+  });
+  const currentOuter = routeToWorld(road.route, {
+    distanceAlongRouteMeters: current.distanceAlongRouteMeters,
+    lateralOffsetMeters: lateral + outwardOffset,
   });
   return crossSectionQuad(camera, previousInner, previousOuter, currentOuter, currentInner, color);
 }
@@ -632,6 +741,28 @@ function barrier(camera: RoadCamera, lateralMeters: number, color: string): Draw
     yMeters: camera.focus.yMeters,
   });
   const width = Math.max(2, camera.pixelsPerMeter * 0.18);
+
+  return {
+    kind: 'rect',
+    x: center.x - width / 2,
+    y: 0,
+    w: width,
+    h: camera.viewportHeight,
+    color,
+  };
+}
+
+function roadEdgeMarker(
+  camera: RoadCamera,
+  lateralMeters: number,
+  widthMeters: number,
+  color: string
+): Drawable {
+  const center = projectWorldPoint(camera, {
+    xMeters: lateralMeters,
+    yMeters: camera.focus.yMeters,
+  });
+  const width = widthMeters * camera.pixelsPerMeter;
 
   return {
     kind: 'rect',

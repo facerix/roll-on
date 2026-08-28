@@ -5,6 +5,7 @@ import type {
   Drawable,
   OrientedSpriteDrawable,
   PolygonDrawable,
+  PolylineDrawable,
   RectDrawable,
 } from '../../src/engine/renderer.ts';
 import { buildRoadCamera } from '../../src/game/roadCamera.ts';
@@ -23,6 +24,7 @@ import { createTruckState, type TruckState } from '../../src/game/truck.ts';
 import { createTrafficVehicle } from '../../src/game/traffic.ts';
 import { createRoute, routeToWorld } from '../../src/game/route.ts';
 import { getTruckTrailerCenter } from '../../src/game/roadCollision.ts';
+import { DEFAULT_ROUTE_PREVIEW_TUNING } from '../../src/game/routePreview.ts';
 
 const ROAD = createRoad(DEFAULT_ROAD_TUNING);
 const VIEWPORT = { width: 320, height: 480 };
@@ -70,6 +72,17 @@ function polygons(drawables: readonly Drawable[]): PolygonDrawable[] {
   return drawables.filter((d): d is PolygonDrawable => d.kind === 'polygon');
 }
 
+function polylines(drawables: readonly Drawable[]): PolylineDrawable[] {
+  return drawables.filter((d): d is PolylineDrawable => d.kind === 'polyline');
+}
+
+function lastIndexOfKind(drawables: readonly Drawable[], kind: Drawable['kind']): number {
+  for (let index = drawables.length - 1; index >= 0; index -= 1) {
+    if (drawables[index]!.kind === kind) return index;
+  }
+  return -1;
+}
+
 test('road scene emits drawables in back-to-front order', () => {
   const scene = sceneFor(truckAt(0));
   const colors = scene.drawables.flatMap(drawable => ('color' in drawable ? [drawable.color] : []));
@@ -85,13 +98,37 @@ test('road scene emits drawables in back-to-front order', () => {
   assert.equal(colors[firstShoulderIndex], DEFAULT_ROAD_SCENE_TUNING.shoulderColor);
   assert.equal(colors[firstShoulderIndex + 1], DEFAULT_ROAD_SCENE_TUNING.shoulderColor);
   assert.equal(colors[firstShoulderIndex + 2], DEFAULT_ROAD_SCENE_TUNING.roadColor);
-  assert.equal(colors[firstShoulderIndex + 3], DEFAULT_ROAD_SCENE_TUNING.barrierColor);
-  assert.equal(colors[firstShoulderIndex + 4], DEFAULT_ROAD_SCENE_TUNING.barrierColor);
+  assert.equal(colors[firstShoulderIndex + 3], DEFAULT_ROAD_SCENE_TUNING.leftRoadEdgeMarkerColor);
+  assert.equal(colors[firstShoulderIndex + 4], DEFAULT_ROAD_SCENE_TUNING.rightRoadEdgeMarkerColor);
+  assert.equal(colors[firstShoulderIndex + 5], DEFAULT_ROAD_SCENE_TUNING.barrierColor);
+  assert.equal(colors[firstShoulderIndex + 6], DEFAULT_ROAD_SCENE_TUNING.barrierColor);
   assert.ok(colors.includes(DEFAULT_ROAD_SCENE_TUNING.laneMarkerColor));
   assert.deepEqual(
     scene.drawables.slice(-2).map(drawable => drawable.kind),
     ['oriented-sprite', 'oriented-sprite']
   );
+});
+
+test('straight Stage 1 road uses white dashed dividers and yellow-left/white-right edge lines', () => {
+  const scene = sceneFor(truckAt(0));
+  const roadEdgeColors = rects(scene.drawables)
+    .filter(
+      drawable =>
+        drawable.h === VIEWPORT.height &&
+        [
+          DEFAULT_ROAD_SCENE_TUNING.leftRoadEdgeMarkerColor,
+          DEFAULT_ROAD_SCENE_TUNING.rightRoadEdgeMarkerColor,
+        ].includes(drawable.color)
+    )
+    .map(drawable => drawable.color);
+
+  assert.deepEqual(roadEdgeColors, [
+    DEFAULT_ROAD_SCENE_TUNING.leftRoadEdgeMarkerColor,
+    DEFAULT_ROAD_SCENE_TUNING.rightRoadEdgeMarkerColor,
+  ]);
+  assert.equal(DEFAULT_ROAD_SCENE_TUNING.leftRoadEdgeMarkerColor, '#e8c547');
+  assert.equal(DEFAULT_ROAD_SCENE_TUNING.rightRoadEdgeMarkerColor, '#f4f4ea');
+  assert.equal(DEFAULT_ROAD_SCENE_TUNING.laneMarkerColor, '#f4f4ea');
 });
 
 test('lane marker drawables repeat from world cadence and shift with camera distance', () => {
@@ -154,6 +191,57 @@ test('finish line is a checkered route-space band spanning the road at the autho
   assert.equal(
     Math.max(...ys),
     camera.anchorY - (10 - DEFAULT_ROAD_SCENE_TUNING.finishLineDepthMeters) * camera.pixelsPerMeter
+  );
+});
+
+test('route preview is an explicit top-right overlay driven by route-space progress', () => {
+  const route = createDefaultStageRoute();
+  const road = createRoad(DEFAULT_ROAD_TUNING, route);
+  const distanceAlongRouteMeters = 500;
+  const truck = truckAt(distanceAlongRouteMeters);
+  const camera = buildRoadCamera(truck.position, VIEWPORT, CAMERA_TUNING);
+  const scene = buildRoadScene({
+    road,
+    camera,
+    truck,
+    truckDimensions: TRUCK_DIMENSIONS,
+    routePreviewDistanceMeters: distanceAlongRouteMeters,
+  });
+  const previewLines = polylines(scene.drawables).filter(drawable =>
+    [
+      DEFAULT_ROUTE_PREVIEW_TUNING.routeShadowColor,
+      DEFAULT_ROUTE_PREVIEW_TUNING.routeColor,
+      DEFAULT_ROUTE_PREVIEW_TUNING.completedColor,
+    ].includes(drawable.color)
+  );
+  const frame = rects(scene.drawables).find(
+    drawable => drawable.color === DEFAULT_ROUTE_PREVIEW_TUNING.frameColor
+  );
+
+  assert.ok(frame);
+  assert.equal(
+    frame.x,
+    VIEWPORT.width -
+      DEFAULT_ROUTE_PREVIEW_TUNING.edgeInsetPixels -
+      DEFAULT_ROUTE_PREVIEW_TUNING.widthPixels
+  );
+  assert.equal(
+    frame.y,
+    VIEWPORT.height -
+      DEFAULT_ROUTE_PREVIEW_TUNING.edgeInsetPixels -
+      DEFAULT_ROUTE_PREVIEW_TUNING.heightPixels,
+    'the preview sits in the bottom corner, clear of the road ahead'
+  );
+  // The rear approach is where a patrol first shows up, so the inset must stay
+  // outside the travel lanes rather than merely outside the canvas centre.
+  assert.ok(
+    frame.x >= camera.anchorX + road.rightRoadEdgeMeters * camera.pixelsPerMeter,
+    `the preview must not cover the travel lanes, got x ${frame.x}`
+  );
+  assert.equal(previewLines.length, 3);
+  assert.ok(
+    lastIndexOfKind(scene.drawables, 'polyline') >
+      lastIndexOfKind(scene.drawables, 'oriented-sprite')
   );
 });
 
@@ -384,6 +472,12 @@ test('curved road scene emits finite sampled polygons in back-to-front mesh orde
   );
   assert.equal(mesh[0]!.color, DEFAULT_ROAD_SCENE_TUNING.shoulderColor);
   assert.ok(mesh.some(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.roadColor));
+  assert.ok(
+    mesh.some(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.leftRoadEdgeMarkerColor)
+  );
+  assert.ok(
+    mesh.some(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.rightRoadEdgeMarkerColor)
+  );
   assert.ok(mesh.some(polygon => polygon.color === DEFAULT_ROAD_SCENE_TUNING.laneMarkerColor));
 });
 

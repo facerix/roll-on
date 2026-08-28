@@ -12,7 +12,7 @@ Living implementation plan. Pairs with `roll_on_game_design_document.md` (the *w
   orthographic debug mode.
 - **Art**: programmer-art placeholders remain through M6. Production art begins only after the
   pseudo-3D projection and representative compositions are accepted.
-- **PoC scope**: Stage 1 (Interstate 80) playable end-to-end. No shop, no weapons, no other stages.
+- **PoC scope**: Stage 1 (Interstate 40) playable end-to-end. No shop, no weapons, no other stages.
 - **Discipline**: TDD. Every system lands with failing-first tests that exercise its pure logic.
 
 ---
@@ -76,7 +76,7 @@ See `docs/m2-plan.md` for the sub-milestone implementation plan.
 - [ ] **World bounds + barriers**: hitting a barrier hurts integrity (and triggers crash if jackknifed).
   - *Test*: collision detection between truck AABB and barrier segments.
 
-Exit criterion: driving Interstate 80 feels like a road, not a void.
+Exit criterion: driving Interstate 40 feels like a road, not a void.
 
 ---
 
@@ -192,15 +192,17 @@ contracts.
 - [x] **Finish and failure lifecycle**: a checkered route-space marker ends at 2,200 m; exact-once
   completion and crash/out-of-fuel failure freeze gameplay, hide driving controls, and show semantic
   terminal dialogs with fresh retry and title actions.
-- [ ] **Score tally**: extend the locked completion snapshot into the explainable final tally.
+- [x] **Score tally**: the locked completion snapshot now produces a component-by-component final
+  tally with explicit distance, cargo, diesel, Road Rage, and bonus values.
 
 **Deferred visualization and art:** M6 retains existing dev art and the orthographic debug view. The
 first post-M6 milestone owns the pseudo-3D projection, compatible vehicle art, horizon/roadside
 composition, road treatment, effects, and final camera-aware HUD as one system.
-- [ ] **Persistence**: extend `DataStore` schema for versioned runs (date, score, integrity,
-  fuel-remaining, takedowns). Migration from current `scores` shape.
+- [x] **Persistence**: `DataStore` now owns versioned immutable run results (date, score, complete
+  terminal/session identity) with explicit migration from the original `scores` array.
   - *Test*: migration is idempotent; old shape upgrades cleanly.
-- [ ] **High-score table** wired to the existing screen.
+- [x] **High-score table** is wired into terminal results and Dispatch with separate Campaign and
+  Challenge channels.
 - [ ] **Responsive browser matrix**: title → play → finish → tally → scores on representative phone
   and desktop viewports with identical gameplay geometry.
 

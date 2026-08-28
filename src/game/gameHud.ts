@@ -46,6 +46,13 @@ export interface GameHudRunStats {
   readonly isStageComplete: boolean;
   /** Always-on cruise setpoint controlled by the gas and brake actions. */
   readonly cruiseTargetSpeedMetersPerSecond: number;
+  /** Semantic patrol warning, so the pursuit never relies on the glare alone. */
+  readonly patrolWarning?: GameHudPatrolWarning;
+}
+
+export interface GameHudPatrolWarning {
+  readonly isPursuing: boolean;
+  readonly attackSide: 'left' | 'right' | null;
 }
 
 export const DEFAULT_GAME_HUD_UNIT_SYSTEM: GameHudUnitSystem = 'imperial';
@@ -91,6 +98,7 @@ export function buildGameHudSnapshot(
   assertUnitSystem(runStats.unitSystem);
   assertBoolean('isStageComplete', runStats.isStageComplete);
   assertNonNegative('cruiseTargetSpeedMetersPerSecond', runStats.cruiseTargetSpeedMetersPerSecond);
+  assertPatrolWarning(runStats.patrolWarning);
   if (runStats.cruiseTargetSpeedMetersPerSecond > tuning.maxForwardSpeedMetersPerSecond) {
     throw new RangeError(
       `cruiseTargetSpeedMetersPerSecond must not exceed ${tuning.maxForwardSpeedMetersPerSecond}, got ${runStats.cruiseTargetSpeedMetersPerSecond}`
@@ -187,16 +195,37 @@ export function resolveCargoIntegritySeverity(cargoIntegrityLevel: number): Carg
 /**
  * One visible status prevents competing alerts from hiding each other. The
  * stage lifecycle wins, then terminal truck state, recoverable control state,
- * fuel, and finally a transient event. The event text remains separately
- * visible for its detail.
+ * an active pursuit, fuel, and finally a transient event. The event text
+ * remains separately visible for its detail.
  */
 function resolveStatusText(truck: TruckState, fumes: boolean, runStats: GameHudRunStats): string {
   if (runStats.isStageComplete) return 'STAGE COMPLETE';
   if (truck.status === 'crashed') return 'CRASHED';
   if (truck.status === 'jackknifed') return 'JACKKNIFED';
+  const patrol = runStats.patrolWarning;
+  if (patrol?.isPursuing === true) {
+    if (patrol.attackSide === 'left') return 'PATROL LEFT';
+    if (patrol.attackSide === 'right') return 'PATROL RIGHT';
+    return 'PATROL';
+  }
   if (fumes) return 'FUMES';
   if (runStats.eventText.length > 0) return 'EVENT';
   return 'DRIVING';
+}
+
+function assertPatrolWarning(warning: GameHudPatrolWarning | undefined): void {
+  if (warning === undefined) return;
+  if (typeof warning !== 'object' || warning === null) {
+    throw new TypeError('patrolWarning must be an object');
+  }
+  assertBoolean('patrolWarning.isPursuing', warning.isPursuing);
+  if (
+    warning.attackSide !== null &&
+    warning.attackSide !== 'left' &&
+    warning.attackSide !== 'right'
+  ) {
+    throw new TypeError(`Unknown patrol attack side: ${String(warning.attackSide)}`);
+  }
 }
 
 function formatSpeed(speedMetersPerSecond: number, unitSystem: GameHudUnitSystem): string {

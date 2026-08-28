@@ -1,7 +1,7 @@
 # Milestone 2 Plan — Scrolling Road + Camera
 
 This plan expands Milestone 2 from `roadmap.md`. Its purpose is to replace the M1 blank-canvas
-truck test with a deterministic top-down Interstate 80 slice: lanes, shoulders, camera anchoring,
+truck test with a deterministic top-down Interstate 40 slice: lanes, shoulders, camera anchoring,
 the first real 2D game presentation layer, and barrier consequences.
 
 ## Outcome
@@ -42,7 +42,7 @@ scoring, and stage timelines can reason in world units instead of pixels.
 - Traffic, enemies, plow-over behavior, and takedowns (Milestone 4).
 - Fuel pressure, Fumes state, and fuel HUD (Milestone 3).
 - Stage length, finish line, and score persistence (Milestone 5).
-- Procedural route variety beyond a straight Interstate 80 placeholder.
+- Procedural route variety beyond a straight Interstate 40 placeholder.
 - Curves, elevation, ramps, intersections, construction zones, or multi-stage biomes.
 - Final pixel art, neon sunset polish, CRT effects, particles, audio, or shader work. M2 should
   create the renderer structure those can plug into, not finish the art pass.
@@ -207,7 +207,7 @@ If a new drawable kind is needed, update renderer exhaustiveness tests with the 
 
 ### Playable checkpoint
 
-Driving at speed should feel like moving along Interstate 80 rather than across a void or a physics
+Driving at speed should feel like moving along Interstate 40 rather than across a void or a physics
 debug canvas. The player should be able to tell which lane they occupy without debug telemetry.
 
 ### Implementation note

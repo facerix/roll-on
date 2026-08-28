@@ -1,7 +1,12 @@
-import type { Road } from '/src/game/road.js';
-import { worldToRoute } from '/src/game/route.js';
+import { getBarrierLateralMeters, type Road } from '/src/game/road.js';
+import { sampleRoute, worldToRoute } from '/src/game/route.js';
 import type { TruckImpact, TruckState } from '/src/game/truck.js';
-import { headingToUnitVector, validatePoint, type WorldPoint } from '/src/game/worldGeometry.js';
+import {
+  headingToUnitVector,
+  validatePoint,
+  type WorldPoint,
+  type WorldVector,
+} from '/src/game/worldGeometry.js';
 
 export type BarrierSide = 'left' | 'right';
 
@@ -36,9 +41,19 @@ export interface RoadBarrierImpact {
   readonly kind: 'barrier';
   readonly side: BarrierSide;
   readonly penetrationMeters: number;
+  /** Minimum world-space translation that moves the deepest sampled point inward. */
+  readonly separation: WorldVector;
   /** World-space extent of the contacting body along the road. */
   readonly minYMeters: number;
   readonly maxYMeters: number;
+}
+
+export interface ConstrainTruckToRoadOptions {
+  readonly road: Road;
+  readonly truck: TruckState;
+  readonly truckDimensions: TruckFootprintDimensions;
+  readonly impact: RoadBarrierImpact | null;
+  readonly routeDistanceHintMeters: number;
 }
 
 export interface RoadCollisionTuning {
@@ -69,6 +84,9 @@ export const DEFAULT_ROAD_COLLISION_TUNING: RoadCollisionTuning = Object.freeze(
   cargoDamagePerBarrierHit: 0.08,
   barrierDamageCooldownSeconds: 0.5,
 });
+
+const BARRIER_SEPARATION_EPSILON_METERS = 0.000_001;
+const MAX_BARRIER_SEPARATION_ITERATIONS = 16;
 
 /**
  * Place the trailer from the actual articulated connection: the cab rear is
@@ -131,7 +149,9 @@ export function detectRoadBarrierImpact(
   for (const body of bodies) {
     validateFootprint(body);
     const bounds = footprintBounds(body);
-    if (isStraightRoute(road)) {
+    // The straight shortcut compares world x against constant bounds, which an
+    // authored pullout makes untrue; those roads take the route-space path.
+    if (isStraightRoute(road) && !hasPullouts(road)) {
       const impact = detectStraightBarrierImpact(road, bounds);
       if (impact !== null) strongest = strongerImpact(strongest, impact);
       continue;
@@ -145,13 +165,37 @@ export function detectRoadBarrierImpact(
         hintDistanceAlongRouteMeters: hint,
         searchRadiusMeters: 100,
       });
-      const leftPenetration = road.leftBarrierLateralMeters - projection.lateralOffsetMeters;
-      const rightPenetration = projection.lateralOffsetMeters - road.rightBarrierLateralMeters;
+      const leftBarrierMeters = getBarrierLateralMeters(
+        road,
+        'left',
+        projection.distanceAlongRouteMeters
+      );
+      const rightBarrierMeters = getBarrierLateralMeters(
+        road,
+        'right',
+        projection.distanceAlongRouteMeters
+      );
+      const leftPenetration = leftBarrierMeters - projection.lateralOffsetMeters;
+      const rightPenetration = projection.lateralOffsetMeters - rightBarrierMeters;
       if (leftPenetration > 0) {
-        strongest = strongerImpact(strongest, barrierImpact('left', leftPenetration, bounds));
+        const normal = sampleRoute(road.route, projection.distanceAlongRouteMeters).normal;
+        strongest = strongerImpact(
+          strongest,
+          barrierImpact('left', leftPenetration, bounds, {
+            xMeters: normal.xMeters * leftPenetration,
+            yMeters: normal.yMeters * leftPenetration,
+          })
+        );
       }
       if (rightPenetration > 0) {
-        strongest = strongerImpact(strongest, barrierImpact('right', rightPenetration, bounds));
+        const normal = sampleRoute(road.route, projection.distanceAlongRouteMeters).normal;
+        strongest = strongerImpact(
+          strongest,
+          barrierImpact('right', rightPenetration, bounds, {
+            xMeters: -normal.xMeters * rightPenetration,
+            yMeters: -normal.yMeters * rightPenetration,
+          })
+        );
       }
     }
   }
@@ -164,26 +208,76 @@ function detectStraightBarrierImpact(road: Road, box: WorldAabb): RoadBarrierImp
   const rightPenetration = box.maxXMeters - road.rightBarrierLateralMeters;
   if (leftPenetration <= 0 && rightPenetration <= 0) return null;
   return leftPenetration >= rightPenetration
-    ? barrierImpact('left', leftPenetration, box)
-    : barrierImpact('right', rightPenetration, box);
+    ? barrierImpact('left', leftPenetration, box, {
+        xMeters: leftPenetration,
+        yMeters: 0,
+      })
+    : barrierImpact('right', rightPenetration, box, {
+        xMeters: -rightPenetration,
+        yMeters: 0,
+      });
 }
 
 function barrierImpact(
   side: BarrierSide,
   penetrationMeters: number,
-  box: WorldAabb
+  box: WorldAabb,
+  separation: WorldVector
 ): RoadBarrierImpact {
   return {
     kind: 'barrier',
     side,
     penetrationMeters,
+    separation,
     minYMeters: box.minYMeters,
     maxYMeters: box.maxYMeters,
   };
 }
 
+/**
+ * Translate the articulated truck as one body until every sampled footprint
+ * point is inside the barriers. Repeated projection matters on bends because
+ * the cab and trailer can contact normals at different route distances.
+ */
+export function constrainTruckToRoad(options: ConstrainTruckToRoadOptions): TruckState {
+  validateRoad(options.road);
+  validateTruck(options.truck);
+  validateDimensions(options.truckDimensions);
+  assertFinite('routeDistanceHintMeters', options.routeDistanceHintMeters);
+
+  let constrained = options.truck;
+  let impact = options.impact;
+  for (let iteration = 0; iteration < MAX_BARRIER_SEPARATION_ITERATIONS; iteration++) {
+    if (impact === null) return constrained;
+    validateBarrierImpact(impact);
+
+    const separationLengthMeters = Math.hypot(impact.separation.xMeters, impact.separation.yMeters);
+    const epsilonScale = BARRIER_SEPARATION_EPSILON_METERS / separationLengthMeters;
+    constrained = {
+      ...constrained,
+      position: {
+        xMeters: constrained.position.xMeters + impact.separation.xMeters * (1 + epsilonScale),
+        yMeters: constrained.position.yMeters + impact.separation.yMeters * (1 + epsilonScale),
+      },
+    };
+    impact = detectRoadBarrierImpact(
+      options.road,
+      buildTruckFootprint(constrained, options.truckDimensions),
+      options.routeDistanceHintMeters
+    );
+  }
+
+  throw new Error(
+    `Failed to constrain truck to road after ${MAX_BARRIER_SEPARATION_ITERATIONS} separation iterations`
+  );
+}
+
 function isStraightRoute(road: Road): boolean {
   return road.route.segments.every(segment => segment.curvaturePerMeter === 0);
+}
+
+function hasPullouts(road: Road): boolean {
+  return (road.pullouts?.length ?? 0) > 0;
 }
 
 function aabbCorners(box: WorldAabb): readonly WorldPoint[] {
@@ -386,6 +480,19 @@ function validateFootprint(body: WorldFootprint): void {
     return;
   }
   validateAabb(body);
+}
+
+function validateBarrierImpact(impact: RoadBarrierImpact): void {
+  if (typeof impact !== 'object' || impact === null || impact.kind !== 'barrier') {
+    throw new TypeError('RoadBarrierImpact must be a barrier impact object');
+  }
+  if (impact.side !== 'left' && impact.side !== 'right') {
+    throw new TypeError(`Unknown barrier side: ${String(impact.side)}`);
+  }
+  assertPositive('impact.penetrationMeters', impact.penetrationMeters);
+  validatePoint('impact.separation', impact.separation);
+  const separationLengthMeters = Math.hypot(impact.separation.xMeters, impact.separation.yMeters);
+  assertPositive('impact separation length', separationLengthMeters);
 }
 
 function validateAabb(box: WorldAabb): void {
