@@ -91,7 +91,7 @@ kept the complete rig, route preview, HUD, pause control, and touch controls usa
 console. Maximum-speed feel and outside-player comprehension remain part of the playable checkpoint
 rather than being inferred from the geometry tests.
 
-## Deliverable 2 — Direct, explicit driving controls
+## Deliverable 2 — Direct, explicit driving controls ✅
 
 Make throttle and service brake direct inputs by default:
 
@@ -123,6 +123,37 @@ braking, collision recovery, and sustained driving for fatigue as well as compre
 
 A first-time player can predict truck acceleration, braking, coasting, and cruise behavior from the
 visible labels without being told about an invisible setpoint.
+
+### Implementation checkpoint
+
+The run now begins with cruise inactive and no hidden speed target. Held keyboard or touch Gas and
+Brake inputs pass directly to the truck, and releasing both produces the established long coast.
+`C` and a dedicated touch Cruise button toggle retained-speed control. Engagement captures the
+truck's current speed; Gas temporarily overrides that target and resumes it on release; Brake
+cancels cruise and remains an immediate service-brake input. A second Cruise command also
+disengages without applying a hidden pedal.
+
+The accepted stage opening preserves that control honesty without presenting a dead road. A pure
+opening policy places the truck in the right-center lane with `10 m/s` of initial momentum and
+cruise still inactive. One far-lane commuter begins alongside the trailer and another begins in the
+forward sightline; both pull away and hold their lanes through a six-second grace period before
+ordinary seeded traffic spawning resumes. A non-blocking `STAGE N — ROLL ON!` DOM sting clears
+after `0.9 s` while controls and simulation remain live. An empty carried fuel tank receives no
+free momentum.
+
+The HUD now renders `CRUISE OFF` and hides the dial marker and unit while cruise is inactive. An
+active cruise state shows its captured target and marker. The input adapter keeps cruise as the
+same edge-triggered action for keyboard and touch, so key repeat, a held finger, blur, detach,
+pause, and terminal input shutdown cannot manufacture repeated toggles or strand a held action.
+
+Tests cover direct throttle, direct braking, coasting, explicit capture, toggle-off, throttle
+override and resume, brake cancellation, keyboard/touch action parity, inactive and active HUD
+snapshots, deterministic route-relative opening poses, initial traffic visibility and non-overlap,
+carried resources, and live `roadGame` wiring. Browser checks at `1280 × 720`, forced-touch
+`374 × 516`, and forced-touch landscape `720 × 374` kept the opening sting, HUD, traffic, and all
+five touch controls usable with a clean console. The first portrait placement put Cruise over the
+trailer; the accepted layout moves it above Gas to preserve the central sightline. Sustained-driving
+fatigue and first-time player comprehension remain part of the outside playable checkpoint.
 
 ## Deliverable 3 — Wide-screen arcade sidecars
 

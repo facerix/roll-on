@@ -41,6 +41,11 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
   cache fallback) or versioning each watch build as one atomic cache generation. **M6 closeout**:
   resolve this before the end-to-end browser matrix; stale/fresh module mixtures invalidate
   playtest evidence.
+- **Rotated-camera visibility telemetry**: `getVisibleWorldDistanceRange()` derives its result from
+  world `y` and the camera's vertical extent, while `roadGame` labels that debug line as a route
+  visibility range. It is exact on the opening straight but misleading after the route and camera
+  rotate through a bend. Gameplay framing does not consume the value. Replace it with a route-local
+  projected window, or rename the diagnostic so it cannot be mistaken for route distance.
 
 ## Risks to monitor
 
@@ -61,8 +66,14 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
 
 - **Horn visibility for the Stage 1 PoC** (2026-08-03): defer horn mechanics beyond M6 and do not
   show a control that has no gameplay effect. The touch pad exposes steering, brake, and throttle
-  only. Preserve the abstract `horn` action and Space binding as an implementation seam for the
-  eventual limited-use lane-clearing weapon; neither is required to complete Stage 1.
+  plus the later explicit cruise toggle. Preserve the abstract `horn` action and Space binding as
+  an implementation seam for the eventual limited-use lane-clearing weapon; neither is required to
+  complete Stage 1.
+
+- **Direct pedals and explicit cruise** (2026-08-28): begin every run with cruise inactive. Gas and
+  Brake are direct held inputs; `C` and the touch Cruise button capture the current speed. Gas
+  overrides and resumes the retained target, while Brake or a second Cruise command disengages it.
+  The HUD says `CRUISE OFF` and hides its marker whenever that retained state is inactive.
 
 - **Road Rage scoring direction** (2026-08-03): plowing through commuter traffic is a collision
   penalty, not a bonus. Continue tracking each qualifying collision and showing its Road Rage event,

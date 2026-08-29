@@ -23,11 +23,11 @@ export function createGameHudView(): GameHudView {
   speedometer.ariaHidden = 'true';
   const speedValue = value('speed', 'roll-on-hud-speed-value', '0');
   const speedUnit = value('speed-unit', 'roll-on-hud-speed-unit', 'MPH');
-  const cruiseSpeed = value('cruise', 'roll-on-hud-compact-value', '0');
+  const cruiseSpeed = value('cruise', 'roll-on-hud-compact-value', 'OFF');
   const cruiseSpeedUnit = h('span', {
     className: 'roll-on-hud-compact-unit',
     dataset: { field: 'cruise-unit' },
-    textContent: 'MPH',
+    textContent: '',
   });
   const speedWell = instrumentWell('speed', 'SPEED', [
     speedometer,
@@ -131,7 +131,12 @@ export function createGameHudView(): GameHudView {
     {
       className: 'roll-on-hud',
       ariaLabel: 'Driving status',
-      dataset: { unitSystem: 'imperial', cargoSeverity: 'intact', fumes: 'false' },
+      dataset: {
+        unitSystem: 'imperial',
+        cargoSeverity: 'intact',
+        fumes: 'false',
+        cruiseActive: 'false',
+      },
     },
     [instruments, messages]
   );
@@ -142,13 +147,16 @@ export function createGameHudView(): GameHudView {
       root.dataset.unitSystem = snapshot.unitSystem;
       root.dataset.cargoSeverity = snapshot.cargoIntegritySeverity;
       root.dataset.fumes = String(snapshot.isFuelInFumes);
+      root.dataset.cruiseActive = String(snapshot.isCruiseActive);
 
       speedValue.textContent = snapshot.speedText;
       speedValue.ariaLabel = `${snapshot.speedText} ${snapshot.speedUnitText}`;
       speedUnit.textContent = snapshot.speedUnitText;
       cruiseSpeed.textContent = snapshot.cruiseSpeedText;
-      cruiseSpeed.ariaLabel = `Cruise target ${snapshot.cruiseSpeedText} ${snapshot.speedUnitText}`;
-      cruiseSpeedUnit.textContent = snapshot.speedUnitText;
+      cruiseSpeed.ariaLabel = snapshot.isCruiseActive
+        ? `Cruise target ${snapshot.cruiseSpeedText} ${snapshot.speedUnitText}`
+        : 'Cruise control off';
+      cruiseSpeedUnit.textContent = snapshot.isCruiseActive ? snapshot.speedUnitText : '';
       speedometer.style.setProperty(
         '--roll-on-speed-angle',
         `${mapSpeedLevelToDialAngleDegrees(snapshot.speedLevel)}deg`

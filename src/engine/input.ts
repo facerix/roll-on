@@ -34,7 +34,7 @@
  */
 
 /** The full set of abstract actions. Add a new one here + bind it below. */
-export type Action = 'throttle' | 'brake' | 'steerLeft' | 'steerRight' | 'horn';
+export type Action = 'throttle' | 'brake' | 'steerLeft' | 'steerRight' | 'horn' | 'cruise';
 
 /** Map of action → KeyboardEvent.code strings that trigger it. */
 export type Bindings = Readonly<Record<Action, readonly string[]>>;
@@ -45,6 +45,7 @@ export const DEFAULT_BINDINGS: Bindings = {
   steerLeft: ['ArrowLeft', 'KeyA'],
   steerRight: ['ArrowRight', 'KeyD'],
   horn: ['Space'],
+  cruise: ['KeyC'],
 };
 
 export interface InputAdapterOptions {

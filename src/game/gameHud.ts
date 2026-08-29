@@ -9,6 +9,7 @@ export interface GameHudSnapshot {
   readonly speedText: string;
   readonly speedUnitText: 'MPH' | 'KM/H';
   readonly speedMetersPerSecondText: string;
+  readonly isCruiseActive: boolean;
   readonly cruiseSpeedText: string;
   readonly speedLevel: number;
   readonly cruiseSpeedLevel: number;
@@ -44,7 +45,8 @@ export interface GameHudRunStats {
   readonly unitSystem: GameHudUnitSystem;
   /** Reserved for the M6.5 lifecycle; it only affects presentation here. */
   readonly isStageComplete: boolean;
-  /** Always-on cruise setpoint controlled by the gas and brake actions. */
+  /** Explicit retained-speed state; an inactive target is never presented as live. */
+  readonly isCruiseActive: boolean;
   readonly cruiseTargetSpeedMetersPerSecond: number;
   /** Semantic patrol warning, so the pursuit never relies on the glare alone. */
   readonly patrolWarning?: GameHudPatrolWarning;
@@ -81,6 +83,7 @@ export function buildGameHudSnapshot(
     stageNumber: 1,
     unitSystem: DEFAULT_GAME_HUD_UNIT_SYSTEM,
     isStageComplete: false,
+    isCruiseActive: false,
     cruiseTargetSpeedMetersPerSecond: 0,
   }
 ): GameHudSnapshot {
@@ -97,6 +100,7 @@ export function buildGameHudSnapshot(
   assertPositiveInteger('stageNumber', runStats.stageNumber);
   assertUnitSystem(runStats.unitSystem);
   assertBoolean('isStageComplete', runStats.isStageComplete);
+  assertBoolean('isCruiseActive', runStats.isCruiseActive);
   assertNonNegative('cruiseTargetSpeedMetersPerSecond', runStats.cruiseTargetSpeedMetersPerSecond);
   assertPatrolWarning(runStats.patrolWarning);
   if (runStats.cruiseTargetSpeedMetersPerSecond > tuning.maxForwardSpeedMetersPerSecond) {
@@ -115,7 +119,7 @@ export function buildGameHudSnapshot(
     tuning.maxForwardSpeedMetersPerSecond
   );
   const cruiseSpeedLevel = normalizeLevel(
-    runStats.cruiseTargetSpeedMetersPerSecond,
+    runStats.isCruiseActive ? runStats.cruiseTargetSpeedMetersPerSecond : 0,
     tuning.maxForwardSpeedMetersPerSecond
   );
   const routeProgress = normalizeLevel(runStats.routeDistanceMeters, runStats.routeLengthMeters);
@@ -130,7 +134,10 @@ export function buildGameHudSnapshot(
     speedText: formatSpeed(truck.speedMetersPerSecond, runStats.unitSystem),
     speedUnitText: runStats.unitSystem === 'imperial' ? 'MPH' : 'KM/H',
     speedMetersPerSecondText: `${truck.speedMetersPerSecond.toFixed(1)} m/s`,
-    cruiseSpeedText: formatSpeed(runStats.cruiseTargetSpeedMetersPerSecond, runStats.unitSystem),
+    isCruiseActive: runStats.isCruiseActive,
+    cruiseSpeedText: runStats.isCruiseActive
+      ? formatSpeed(runStats.cruiseTargetSpeedMetersPerSecond, runStats.unitSystem)
+      : 'OFF',
     speedLevel,
     cruiseSpeedLevel,
     cargoIntegrityText: `${Math.round(truck.cargoIntegrity * 100)}%`,

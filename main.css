@@ -334,6 +334,10 @@ body.is-playing #main-foot {
   }
 }
 
+.roll-on-hud[data-cruise-active='false'] .roll-on-speedometer-cruise-marker {
+  opacity: 0;
+}
+
 .roll-on-hud-speed-primary {
   position: absolute;
   inset: auto 0 20px 20px;
@@ -683,6 +687,72 @@ body.is-playing #main-foot {
 @keyframes roll-on-hud-warning-pulse {
   50% {
     opacity: 0.5;
+  }
+}
+
+.roll-on-stage-intro {
+  position: absolute;
+  inset: 0 0 var(--roll-on-hud-height) 0;
+  z-index: 20;
+  display: grid;
+  place-content: center;
+  pointer-events: none;
+  color: #f7ecd7;
+  font-family: 'BigSquareDots', 'Courier New', Courier, monospace;
+  text-align: center;
+  text-shadow: 0 3px 0 #050608;
+  animation: roll-on-stage-intro 900ms steps(6, end) both;
+}
+
+.roll-on-stage-intro[hidden] {
+  display: none;
+}
+
+.roll-on-stage-intro::before {
+  content: '';
+  position: absolute;
+  inset: calc(50% - 42px) 54px;
+  z-index: -1;
+  border-block: 3px double #f6d96d;
+  background: rgba(12, 12, 46, 0.78);
+}
+
+.roll-on-stage-intro-kicker {
+  margin: 0 0 5px;
+  color: #e88a2a;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+}
+
+.roll-on-stage-intro h2 {
+  margin: 0;
+  color: #fff4a8;
+  font-size: 27px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+}
+
+@keyframes roll-on-stage-intro {
+  0% {
+    opacity: 0;
+    transform: scale(1.12);
+  }
+
+  18%,
+  72% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roll-on-stage-intro {
+    animation: none;
   }
 }
 

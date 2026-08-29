@@ -5,8 +5,8 @@ import {
   stepCruiseControl,
   type CruiseControlState,
 } from '/src/game/cruiseControl.js';
-import { createFuelState, DEFAULT_FUEL_TUNING, isFuelInFumes } from '/src/game/fuel.js';
-import { stepDriving, ZERO_FUEL_BURN, type DrivingState } from '/src/game/drivingUpdate.js';
+import { DEFAULT_FUEL_TUNING, isFuelInFumes } from '/src/game/fuel.js';
+import { stepDriving, type DrivingState } from '/src/game/drivingUpdate.js';
 import { mountGame } from '/src/game/mount.js';
 import { createRoad, DEFAULT_ROAD_TUNING, type RoadPullout } from '/src/game/road.js';
 import {
@@ -39,7 +39,6 @@ import {
 } from '/src/game/stageRun.js';
 import {
   addPatrolCruiser,
-  createTrafficState,
   removeTrafficVehicle,
   stagePatrolCruiser,
   stepTraffic,
@@ -69,7 +68,9 @@ import {
   buildPatrolGlareSnapshot,
   type PatrolGlareSnapshot,
 } from '/src/game/patrolGlare.js';
-import { createTruckState, DEFAULT_TRUCK_TUNING, type TruckControls } from '/src/game/truck.js';
+import { buildStageOpening } from '/src/game/stageOpening.js';
+import { createStageIntroView } from '/src/game/stageIntroView.js';
+import { DEFAULT_TRUCK_TUNING, type TruckControls } from '/src/game/truck.js';
 import { buildTruckTelemetry, formatTruckTelemetry } from '/src/game/truckTelemetry.js';
 
 const BARRIER_FLASH_DURATION_SECONDS = 0.18;
@@ -97,6 +98,8 @@ export interface StartRoadGameOptions {
   readonly stageNumber: number;
   readonly initialCargoIntegrity?: number;
   readonly initialFuelLevel?: number;
+  /** Deterministic ambient/opening traffic stream for this stage. */
+  readonly trafficSeed?: number;
   readonly onRetry: () => void;
   readonly onExitToTitle: () => void;
   /** Return null when the caller owns navigation, or details to enrich the built-in terminal. */
@@ -113,11 +116,18 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
     trailerLengthMeters: DEFAULT_TRUCK_TUNING.trailerWheelbaseMeters,
     hitchGapMeters: -1.1,
   };
-  let drivingState: DrivingState = createInitialDrivingState({
-    cargoIntegrity: options.initialCargoIntegrity,
-    fuelLevel: options.initialFuelLevel,
+  const opening = buildStageOpening({
+    road,
+    ...(options.initialCargoIntegrity === undefined
+      ? {}
+      : { initialCargoIntegrity: options.initialCargoIntegrity }),
+    ...(options.initialFuelLevel === undefined
+      ? {}
+      : { initialFuelLevel: options.initialFuelLevel }),
+    ...(options.trafficSeed === undefined ? {} : { trafficSeed: options.trafficSeed }),
   });
-  let trafficState: TrafficState = createTrafficState();
+  let drivingState: DrivingState = opening.drivingState;
+  let trafficState: TrafficState = opening.trafficState;
   let patrolState: PatrolEncounterState = createPatrolEncounterState({
     definitions: options.patrolEncounters ?? [],
   });
@@ -144,6 +154,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
     onRetry: options.onRetry,
     onExitToTitle: options.onExitToTitle,
   });
+  const stageIntro = createStageIntroView(options.stageNumber);
   let pauseMenu: PauseMenuView | null = null;
   postParkedCruisers();
   updateHud();
@@ -152,14 +163,15 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
     root: options.root,
     update: (dt, input) => {
       if (isPaused) return;
+      stageIntro.step(dt);
       elapsedRunSeconds = advanceElapsedRunSeconds(elapsedRunSeconds, dt, stageRun);
       if (stageRun.phase !== 'running') return;
       const previousRouteDistanceMeters = drivingState.routePosition.distanceAlongRouteMeters;
       const cruiseStep = stepCruiseControl(cruiseControl, {
-        gas: input.isActive('throttle') ? 1 : 0,
+        throttle: input.isActive('throttle') ? 1 : 0,
         brake: input.isActive('brake') ? 1 : 0,
+        toggleCruise: input.wasPressed('cruise'),
         currentSpeedMetersPerSecond: drivingState.truck.speedMetersPerSecond,
-        dtSeconds: dt,
       });
       cruiseControl = cruiseStep.state;
       const controls: TruckControls = {
@@ -260,6 +272,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       }
       updateHud();
       if (didTerminate) {
+        stageIntro.hide();
         pauseMenu?.hide();
         mountedGame.setInteractionEnabled(false);
         const resultDetails = options.onStageResult?.(stageRun);
@@ -303,7 +316,11 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         `traffic: ${trafficState.vehicles.length} active, ${trafficState.takedowns} takedowns`,
         `patrol: ${describePatrolTelemetry()}`,
         `steering: ${debugRouteFollow ? 'route follower' : 'player'}`,
-        `cruise: ${cruiseControl.targetSpeedMetersPerSecond.toFixed(1)} m/s`,
+        `cruise: ${
+          cruiseControl.isActive
+            ? `${cruiseControl.targetSpeedMetersPerSecond.toFixed(1)} m/s`
+            : 'off'
+        }`,
         `score: ${buildCurrentScore()}`,
         `stage: ${stageRun.phase}${stageRun.failureReason ? ` (${stageRun.failureReason})` : ''}`,
       ];
@@ -360,6 +377,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
   }
 
   mountedGame.stage.appendChild(hud.root);
+  mountedGame.stage.appendChild(stageIntro.root);
   mountedGame.stage.appendChild(terminal.root);
   pauseMenu = createPauseMenuView({
     onPause: () => {
@@ -379,6 +397,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
     dispose() {
       mountedGame.dispose();
       hud.root.remove();
+      stageIntro.dispose();
       terminal.dispose();
       pauseMenu?.dispose();
     },
@@ -587,35 +606,12 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         stageNumber: options.stageNumber,
         unitSystem: DEFAULT_GAME_HUD_UNIT_SYSTEM,
         isStageComplete: stageRun.phase === 'completed',
+        isCruiseActive: cruiseControl.isActive,
         cruiseTargetSpeedMetersPerSecond: cruiseControl.targetSpeedMetersPerSecond,
         patrolWarning: { isPursuing: patrolGlare.isVisible, attackSide: patrolAttackSide },
       })
     );
   }
-}
-
-function createInitialDrivingState(
-  initial: {
-    readonly cargoIntegrity?: number;
-    readonly fuelLevel?: number;
-  } = {}
-): DrivingState {
-  return {
-    truck: createTruckState({
-      position: { xMeters: 0, yMeters: 0 },
-      headingRadians: 0,
-      speedMetersPerSecond: 0,
-      yawRateRadiansPerSecond: 0,
-      trailerHeadingRadians: 0,
-      massKilograms: 36_287,
-      cargoIntegrity: initial.cargoIntegrity ?? 1,
-      status: 'driving',
-    }),
-    routePosition: { distanceAlongRouteMeters: 0, lateralOffsetMeters: 0 },
-    fuel: createFuelState({ level: initial.fuelLevel }),
-    barrierContactState: { cooldownRemainingSeconds: 0 },
-    lastFuelBurn: ZERO_FUEL_BURN,
-  };
 }
 
 function isWorldFixedCamera(): boolean {

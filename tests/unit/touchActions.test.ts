@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 import { TOUCH_PAD_ACTIONS, TouchActionTracker } from '../../src/engine/touchActions.ts';
 
 test('touch pad exposes only implemented driving actions', () => {
-  assert.deepEqual(TOUCH_PAD_ACTIONS, ['steerLeft', 'steerRight', 'brake', 'throttle']);
+  assert.deepEqual(TOUCH_PAD_ACTIONS, ['steerLeft', 'steerRight', 'brake', 'throttle', 'cruise']);
   assert.equal(TOUCH_PAD_ACTIONS.includes('horn' as never), false);
 });
 

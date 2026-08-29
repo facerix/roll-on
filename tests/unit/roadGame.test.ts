@@ -203,6 +203,15 @@ function keyDown(code: string): Event {
   return event;
 }
 
+function keyUp(code: string): Event {
+  const event = new Event('keyup');
+  Object.defineProperties(event, {
+    code: { value: code },
+    repeat: { value: false },
+  });
+  return event;
+}
+
 async function withRoadGame<T>(
   callback: (root: FakeElement, raf: RafHarness, startRoadGame: StartRoadGame) => T
 ): Promise<T> {
@@ -336,6 +345,66 @@ test('roadGame derives each rendered camera from the truck current speed', async
   });
 });
 
+test('roadGame starts with direct pedals and only retains speed after an explicit cruise command', async () => {
+  await withRoadGame(async (root, raf, startRoadGame) => {
+    const game = startRoadGame({
+      root: root as unknown as HTMLElement,
+      viewport: { width: 800, height: 500 },
+      route: straightTestRoute(5_000),
+      stageNumber: 1,
+      onRetry: () => {},
+      onExitToTitle: () => {},
+    });
+    const keyboard = globalThis.window as unknown as FakeWindow;
+
+    raf.advance(0);
+    raf.advance(STEP_MS);
+    const debugHud = walk(root).find(element => element.className === 'roll-on-debug-hud');
+    assert.ok(debugHud);
+    const initialSpeed = speedFromDebug(debugHud.textContent);
+    assert.ok(initialSpeed > 0, 'the opening must already be rolling');
+    assert.match(debugHud.textContent, /cruise: off/);
+    assert.equal(field(root, 'cruise').textContent, 'OFF');
+    const intro = walk(root).find(element => element.className === 'roll-on-stage-intro');
+    assert.ok(intro);
+    assert.equal(intro.hidden, false);
+    assert.deepEqual(
+      intro.children.map(child => child.textContent),
+      ['STAGE 1', 'ROLL ON!']
+    );
+
+    keyboard.dispatchEvent(keyDown('ArrowUp'));
+    for (let frame = 2; frame <= 180; frame += 1) raf.advance(frame * STEP_MS);
+    const speedUnderThrottle = speedFromDebug(debugHud.textContent);
+    assert.ok(speedUnderThrottle > initialSpeed, 'held gas must accelerate the truck directly');
+    assert.equal(intro.hidden, true, 'the non-blocking opening banner must clear itself');
+
+    keyboard.dispatchEvent(keyUp('ArrowUp'));
+    for (let frame = 181; frame <= 240; frame += 1) raf.advance(frame * STEP_MS);
+    const coastingSpeed = speedFromDebug(debugHud.textContent);
+    assert.ok(
+      coastingSpeed < speedUnderThrottle,
+      'released gas must coast without a hidden target'
+    );
+    assert.equal(field(root, 'cruise').textContent, 'OFF');
+
+    keyboard.dispatchEvent(keyDown('KeyC'));
+    raf.advance(241 * STEP_MS);
+    keyboard.dispatchEvent(keyUp('KeyC'));
+    raf.advance(242 * STEP_MS);
+    assert.doesNotMatch(debugHud.textContent, /cruise: off/);
+    assert.notEqual(field(root, 'cruise').textContent, 'OFF');
+
+    keyboard.dispatchEvent(keyDown('ArrowDown'));
+    raf.advance(243 * STEP_MS);
+    raf.advance(244 * STEP_MS);
+    assert.match(debugHud.textContent, /cruise: off/);
+    assert.equal(field(root, 'cruise').textContent, 'OFF');
+
+    game.dispose();
+  });
+});
+
 test('roadGame delegates terminal ownership and suppresses its fallback terminal view', async () => {
   await withRoadGame(async (root, raf, startRoadGame) => {
     let resultCount = 0;
@@ -378,4 +447,10 @@ function cameraDebugValues(text: string): {
   const match = /camera: anchor \d+,(\d+) @ ([\d.]+) px\/m/.exec(text);
   assert.ok(match, `expected camera telemetry, got ${text}`);
   return { anchorY: Number(match[1]), pixelsPerMeter: Number(match[2]) };
+}
+
+function speedFromDebug(text: string): number {
+  const match = /speed: ([\d.]+) m\/s/.exec(text);
+  assert.ok(match, `expected speed telemetry, got ${text}`);
+  return Number(match[1]);
 }
