@@ -126,11 +126,38 @@ class FakeCustomElements {
   }
 }
 
+class FakeMediaQueryList extends EventTarget {
+  matches = false;
+  changeListenerCount = 0;
+
+  override addEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions
+  ): void {
+    if (type === 'change') this.changeListenerCount += 1;
+    super.addEventListener(type, callback, options);
+  }
+
+  override removeEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions
+  ): void {
+    if (type === 'change') this.changeListenerCount -= 1;
+    super.removeEventListener(type, callback, options);
+  }
+}
+
 class FakeWindow extends EventTarget {
   readonly location = { href: 'http://localhost/?debug&routeFollow=1' };
+  readonly finePointerMedia = new FakeMediaQueryList();
+  readonly otherMedia = new FakeMediaQueryList();
 
-  matchMedia(): MediaQueryList {
-    return { matches: false } as MediaQueryList;
+  matchMedia(query: string): MediaQueryList {
+    return (
+      query === '(pointer: fine)' ? this.finePointerMedia : (this.otherMedia as unknown)
+    ) as MediaQueryList;
   }
 }
 
@@ -213,7 +240,12 @@ function keyUp(code: string): Event {
 }
 
 async function withRoadGame<T>(
-  callback: (root: FakeElement, raf: RafHarness, startRoadGame: StartRoadGame) => T
+  callback: (
+    root: FakeElement,
+    raf: RafHarness,
+    startRoadGame: StartRoadGame,
+    fakeWindow: FakeWindow
+  ) => T
 ): Promise<T> {
   const names = [
     'document',
@@ -254,7 +286,7 @@ async function withRoadGame<T>(
 
   try {
     const { startRoadGame } = await import('../../src/game/roadGame.ts');
-    return await callback(new FakeElement('main'), raf, startRoadGame);
+    return await callback(new FakeElement('main'), raf, startRoadGame, fakeWindow);
   } finally {
     for (const name of names) {
       const descriptor = previous.get(name);
@@ -265,7 +297,7 @@ async function withRoadGame<T>(
 }
 
 test('roadGame composes authored pullouts and patrol encounters into live gameplay', async () => {
-  await withRoadGame(async (root, raf, startRoadGame) => {
+  await withRoadGame(async (root, raf, startRoadGame, fakeWindow) => {
     const game = startRoadGame({
       root: root as unknown as HTMLElement,
       viewport: { width: 800, height: 500 },
@@ -301,6 +333,19 @@ test('roadGame composes authored pullouts and patrol encounters into live gamepl
     const context = walk(root).find(element => element.tagName === 'CANVAS')?.context;
     assert.ok(context);
     assert.ok(context.imageSources.includes(PATROL_SPRITE));
+    const sidecarRoots = walk(root).filter(
+      element => element.className === 'roll-on-arcade-sidecars'
+    );
+    assert.equal(sidecarRoots.length, 1);
+    assert.equal(sidecarRoots[0]?.children.length, 2);
+    assert.equal(fakeWindow.finePointerMedia.changeListenerCount, 1);
+    fakeWindow.dispatchEvent(new Event('resize'));
+    fakeWindow.dispatchEvent(new Event('resize'));
+    assert.equal(
+      walk(root).filter(element => element.className === 'roll-on-arcade-sidecars').length,
+      1,
+      'resize must update the existing sidecars rather than append another pair'
+    );
 
     const throttle = keyDown('ArrowUp');
     (globalThis.window as unknown as FakeWindow).dispatchEvent(throttle);
@@ -315,6 +360,7 @@ test('roadGame composes authored pullouts and patrol encounters into live gamepl
     assert.ok(raf.pendingCount() > 0, 'the mounted game remains live after pursuit starts');
     game.dispose();
     assert.equal(raf.pendingCount(), 0);
+    assert.equal(fakeWindow.finePointerMedia.changeListenerCount, 0);
   });
 });
 
@@ -436,6 +482,11 @@ test('roadGame delegates terminal ownership and suppresses its fallback terminal
     const terminal = walk(root).find(element => element.className === 'roll-on-run-terminal');
     assert.ok(terminal);
     assert.equal(terminal.hidden, true);
+    assert.equal(
+      walk(root).filter(element => element.className.split(' ').includes('roll-on-sidecar')).length,
+      2,
+      'terminal flow must not duplicate sidecars'
+    );
     game.dispose();
   });
 });

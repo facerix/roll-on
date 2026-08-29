@@ -155,7 +155,7 @@ five touch controls usable with a clean console. The first portrait placement pu
 trailer; the accepted layout moves it above Gas to preserve the central sightline. Sustained-driving
 fatigue and first-time player comprehension remain part of the outside playable checkpoint.
 
-## Deliverable 3 — Wide-screen arcade sidecars
+## Deliverable 3 — Wide-screen arcade sidecars ✅
 
 Use the unused horizontal space around the fixed stage on sufficiently wide fine-pointer layouts:
 
@@ -188,6 +188,32 @@ road, HUD, pause control, route preview, and touch targets must remain unobstruc
 
 Desktop players immediately see how to drive and what success requires, while mobile players retain
 complete parity and the central game remains the strongest visual focus.
+
+### Implementation checkpoint
+
+The live road mount now owns one semantic sidecar pair alongside the fixed stage. A pure layout
+policy requires a fine primary pointer, at least `240 CSS px` in each centered side rail, and at
+least `480 CSS px` of displayed stage height. Eligible cards use up to `288 CSS px` of each rail;
+the stage fit remains the unchanged output of `calculateStageLayout()`, and neither card contributes
+to simulation or canvas presentation. Resize and primary-pointer changes update the existing nodes.
+Disposal removes the pointer and resize listeners with the shell.
+
+The left driver's card documents steering, held Gas, held service Brake, coasting, explicit Cruise,
+and Pause with keycaps. Every listed action has the existing touch or in-stage equivalent. The right
+Dispatch card repeats the HUD/run contract: reach the route end, protect cargo, watch fuel, avoid a
+crash or empty tank, and avoid Road Rage score loss. Neither card owns a live instrument. Cabinet
+screws, the existing truck sprites, and the cargo-crate sprite provide restrained pixel detail;
+forced-colors presentation removes decorative layers and uses system colors. The cards introduce no
+motion of their own.
+
+Tests cover fine/coarse pointer policy, the exact space threshold, safe areas, deterministic
+non-mutating placement, fixed-stage independence, content parity, semantic structure, repeated
+resize, terminal flow, and listener cleanup. Browser checks kept both cards readable and clear of
+the stage at `1280 × 720`, the exact `960 × 720` threshold, and a non-integer `1100 × 700` stage
+scale. At `959 × 720` they leave the accessibility tree and the stage remains centered. Forced-touch
+portrait `374 × 516` and landscape `720 × 374` layouts kept sidecars absent and all five controls,
+HUD, route preview, and Pause usable. Pause/Resume focus remained correct and the checked layouts had
+clean consoles. Repeat family playtesting remains the outside exit check for the overall follow-up.
 
 ## Delivery order
 

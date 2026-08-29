@@ -1,5 +1,6 @@
 import { DEFAULT_GAME_HUD_UNIT_SYSTEM, buildGameHudSnapshot } from '/src/game/gameHud.js';
 import { createGameHudView } from '/src/game/gameHudView.js';
+import { createArcadeSidecars } from '/src/game/arcadeSidecars.js';
 import {
   createCruiseControlState,
   stepCruiseControl,
@@ -155,12 +156,14 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
     onExitToTitle: options.onExitToTitle,
   });
   const stageIntro = createStageIntroView(options.stageNumber);
+  const arcadeSidecars = createArcadeSidecars(options.stageNumber);
   let pauseMenu: PauseMenuView | null = null;
   postParkedCruisers();
   updateHud();
 
   const mountedGame = mountGame({
     root: options.root,
+    arcadeSidecars: arcadeSidecars.root,
     update: (dt, input) => {
       if (isPaused) return;
       stageIntro.step(dt);
