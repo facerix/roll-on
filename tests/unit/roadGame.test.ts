@@ -309,6 +309,33 @@ test('roadGame composes authored pullouts and patrol encounters into live gamepl
   });
 });
 
+test('roadGame derives each rendered camera from the truck current speed', async () => {
+  await withRoadGame(async (root, raf, startRoadGame) => {
+    const game = startRoadGame({
+      root: root as unknown as HTMLElement,
+      viewport: { width: 800, height: 500 },
+      route: straightTestRoute(5_000),
+      stageNumber: 1,
+      onRetry: () => {},
+      onExitToTitle: () => {},
+    });
+
+    raf.advance(0);
+    raf.advance(STEP_MS);
+    const debugHud = walk(root).find(element => element.className === 'roll-on-debug-hud');
+    assert.ok(debugHud);
+    const initialCamera = cameraDebugValues(debugHud.textContent);
+
+    (globalThis.window as unknown as FakeWindow).dispatchEvent(keyDown('ArrowUp'));
+    for (let frame = 2; frame <= 600; frame += 1) raf.advance(frame * STEP_MS);
+    const fastCamera = cameraDebugValues(debugHud.textContent);
+
+    assert.ok(fastCamera.pixelsPerMeter < initialCamera.pixelsPerMeter - 2);
+    assert.ok(fastCamera.anchorY > initialCamera.anchorY);
+    game.dispose();
+  });
+});
+
 test('roadGame delegates terminal ownership and suppresses its fallback terminal view', async () => {
   await withRoadGame(async (root, raf, startRoadGame) => {
     let resultCount = 0;
@@ -343,3 +370,12 @@ test('roadGame delegates terminal ownership and suppresses its fallback terminal
     game.dispose();
   });
 });
+
+function cameraDebugValues(text: string): {
+  readonly anchorY: number;
+  readonly pixelsPerMeter: number;
+} {
+  const match = /camera: anchor \d+,(\d+) @ ([\d.]+) px\/m/.exec(text);
+  assert.ok(match, `expected camera telemetry, got ${text}`);
+  return { anchorY: Number(match[1]), pixelsPerMeter: Number(match[2]) };
+}

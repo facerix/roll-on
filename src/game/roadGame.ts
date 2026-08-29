@@ -78,6 +78,7 @@ const TRAFFIC_EVENT_DURATION_SECONDS = 0.9;
 const INTEGRITY_SCORE_MULTIPLIER = 2_000;
 const ROAD_RAGE_PENALTY = 250;
 const BASE_POINTS_PER_METER = 10;
+const ROAD_CAMERA_ORIENTATION_RESPONSE_PER_SECOND = 4;
 /** How far behind the truck an unowned cruiser may fall before it is removed. */
 const RELEASED_CRUISER_CULL_BEHIND_METERS = 60;
 
@@ -105,7 +106,6 @@ export interface StartRoadGameOptions {
 export function startRoadGame(options: StartRoadGameOptions): RoadGame {
   const road = createRoad(DEFAULT_ROAD_TUNING, options.route, { pullouts: options.pullouts ?? [] });
   const finishDistanceMeters = road.route.totalLengthMeters;
-  const cameraTuning = buildRoadCameraTuning(road, options.viewport);
   const truckDimensions: RoadSceneTruckDimensions = {
     cabWidthMeters: 2.6,
     cabLengthMeters: 5.2,
@@ -215,7 +215,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
           sampleRoute(road.route, drivingState.routePosition.distanceAlongRouteMeters)
             .headingRadians,
           dt,
-          cameraTuning.orientationResponsePerSecond ?? 4
+          ROAD_CAMERA_ORIENTATION_RESPONSE_PER_SECOND
         );
       }
       const trafficEvent = trafficResult.events.at(-1);
@@ -269,12 +269,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       }
     },
     debugLines: () => {
-      const camera = buildRoadCamera(
-        drivingState.truck.position,
-        options.viewport,
-        cameraTuning,
-        cameraRotationRadians
-      );
+      const camera = buildCurrentCamera();
       const visibleRange = getVisibleWorldDistanceRange(camera);
       return [
         ...formatTruckTelemetry(buildTruckTelemetry(drivingState.truck, DEFAULT_TRUCK_TUNING)),
@@ -314,12 +309,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       ];
     },
     buildScene: () => {
-      const camera = buildRoadCamera(
-        drivingState.truck.position,
-        options.viewport,
-        cameraTuning,
-        cameraRotationRadians
-      );
+      const camera = buildCurrentCamera();
       return buildRoadScene({
         road,
         camera,
@@ -354,6 +344,21 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       });
     },
   });
+
+  function buildCurrentCamera() {
+    const cameraTuning = buildRoadCameraTuning(road, options.viewport, {
+      speedMetersPerSecond: drivingState.truck.speedMetersPerSecond,
+      maximumSpeedMetersPerSecond: DEFAULT_TRUCK_TUNING.maxForwardSpeedMetersPerSecond,
+      truckDimensions,
+    });
+    return buildRoadCamera(
+      drivingState.truck.position,
+      options.viewport,
+      cameraTuning,
+      cameraRotationRadians
+    );
+  }
+
   mountedGame.stage.appendChild(hud.root);
   mountedGame.stage.appendChild(terminal.root);
   pauseMenu = createPauseMenuView({

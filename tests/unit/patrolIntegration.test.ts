@@ -59,7 +59,11 @@ const STEP_SECONDS = 1 / 60;
  */
 const REAR_VIEW_DEPTH_METERS = (() => {
   const viewport = measureRoadViewport();
-  const camera = buildRoadCameraTuning(ROAD, viewport);
+  const camera = buildRoadCameraTuning(ROAD, viewport, {
+    speedMetersPerSecond: 0,
+    maximumSpeedMetersPerSecond: DEFAULT_TRUCK_TUNING.maxForwardSpeedMetersPerSecond,
+    truckDimensions: TRUCK_DIMENSIONS,
+  });
   return (viewport.height - camera.anchorY) / camera.pixelsPerMeter;
 })();
 
