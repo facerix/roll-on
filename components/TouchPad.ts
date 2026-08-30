@@ -7,7 +7,7 @@
  *   |         |
  *   |←       →|   portrait: steer at thumb height
  *   |         |
- *   |     [c] |   cruise toggle
+ *   |  [h][c] |   horn, cruise toggle
  *   |  [b][g] |   brake, gas
  *   |---------|
  *
@@ -56,7 +56,7 @@ type TouchPadAction = (typeof TOUCH_PAD_ACTIONS)[number];
 
 interface ControlAppearance {
   /** Slot in the layout grid; drives placement, size and colour. */
-  readonly role: 'steer-left' | 'steer-right' | 'brake' | 'gas' | 'cruise';
+  readonly role: 'steer-left' | 'steer-right' | 'brake' | 'gas' | 'horn' | 'cruise';
   readonly label: string;
   /** Visible face: text for pedals, an arrow glyph for the steer controls. */
   readonly glyph: 'arrow-left' | 'arrow-right' | 'text';
@@ -67,6 +67,7 @@ const CONTROL_APPEARANCE: Readonly<Record<TouchPadAction, ControlAppearance>> = 
   steerRight: { role: 'steer-right', label: 'Steer right', glyph: 'arrow-right' },
   brake: { role: 'brake', label: 'Brake', glyph: 'text' },
   throttle: { role: 'gas', label: 'Gas', glyph: 'text' },
+  horn: { role: 'horn', label: 'Horn', glyph: 'text' },
   cruise: { role: 'cruise', label: 'Cruise', glyph: 'text' },
 });
 
@@ -256,6 +257,21 @@ button svg {
   color: #7ed9f1;
 }
 
+[data-role='horn'] {
+  top: calc(
+    var(--pad-road-bottom) - var(--pad-pedal-size) - var(--pad-cruise-size) -
+      var(--pad-control-inset) - var(--pad-half-gap)
+  );
+  right: calc(
+    100% - var(--pad-stage-center-x) + var(--pad-half-gap) +
+      (var(--pad-pedal-size) - var(--pad-cruise-size)) / 2
+  );
+  width: var(--pad-cruise-size);
+  height: var(--pad-cruise-size);
+  color: #f6d96d;
+}
+
+[data-role='horn'] .label,
 [data-role='cruise'] .label {
   font-size: clamp(0.46rem, 1.7vmin, 0.7rem);
   letter-spacing: 0.08em;
@@ -285,6 +301,15 @@ button svg {
         var(--pad-half-gap)
     );
     left: calc(var(--pad-right-thumb-x) - var(--pad-cruise-size) / 2);
+  }
+
+  [data-role='horn'] {
+    top: calc(
+      var(--pad-landscape-control-y) - var(--pad-pedal-size) / 2 - var(--pad-cruise-size) -
+        var(--pad-half-gap)
+    );
+    right: auto;
+    left: calc(var(--pad-left-thumb-x) - var(--pad-cruise-size) / 2);
   }
 
   [data-role='steer-left'] {

@@ -64,11 +64,13 @@ Add a new entry whenever we punt on something. Each entry: what, why deferred, w
   diesel residuals and a `2,500`-point dry-tank completion bonus. The terminal exposes every
   component and the constants remain isolated in `finalTally.ts` for later playtest tuning.
 
-- **Horn visibility for the Stage 1 PoC** (2026-08-03): defer horn mechanics beyond M6 and do not
-  show a control that has no gameplay effect. The touch pad exposes steering, brake, and throttle
-  plus the later explicit cruise toggle. Preserve the abstract `horn` action and Space binding as
-  an implementation seam for the eventual limited-use lane-clearing weapon; neither is required to
-  complete Stage 1.
+- **Air Horn lane clearance** (2026-08-29): `Space` and the dedicated touch button ask the nearest
+  driving commuter up to `35 m` ahead in the truck's current lane to move aside. The commuter uses
+  the ordinary safe lane-change path, preferring the right lane and falling back left. Patrol cars
+  never respond. A successful clearance starts a `3 s` recharge; blocked and no-target attempts
+  preserve the charge. Success sends three expanding amber wavefronts ahead of the cab; recharge,
+  blocked, and no-target attempts show a compact broken red-orange pulse. Reduced-motion mode holds
+  the geometry steady and fades it. Explicit HUD feedback remains, while audio stays deferred.
 
 - **Direct pedals and explicit cruise** (2026-08-28): begin every run with cruise inactive. Gas and
   Brake are direct held inputs; `C` and the touch Cruise button capture the current speed. Gas

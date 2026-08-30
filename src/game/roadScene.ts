@@ -106,6 +106,8 @@ export interface BuildRoadSceneOptions {
   readonly routePreviewDistanceMeters?: number;
   /** Screen-space pursuit glare, drawn over the road but behind the truck. */
   readonly patrolGlare?: readonly Drawable[];
+  /** Screen-space horn response, drawn over the truck so every outcome reads immediately. */
+  readonly hornEffect?: readonly Drawable[];
 }
 
 export const DEFAULT_PARALLAX_LAYERS: readonly ParallaxLayerTuning[] = Object.freeze([
@@ -340,6 +342,8 @@ export function buildRoadScene(options: BuildRoadSceneOptions): Scene {
   if (options.patrolGlare) drawables.push(...options.patrolGlare);
 
   drawables.push(...buildTruckDrawables(options.camera, options.truck, options.truckDimensions));
+
+  if (options.hornEffect) drawables.push(...options.hornEffect);
 
   if (options.routePreviewDistanceMeters !== undefined) {
     drawables.push(

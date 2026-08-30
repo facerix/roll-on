@@ -21,6 +21,7 @@ class FakeCanvasContext {
   lineWidth = 1;
   imageSmoothingEnabled = true;
   readonly imageSources: string[] = [];
+  readonly strokeColors: string[] = [];
 
   fillRect(_x: number, _y: number, _width: number, _height: number): void {}
   beginPath(): void {}
@@ -28,7 +29,9 @@ class FakeCanvasContext {
   lineTo(_x: number, _y: number): void {}
   closePath(): void {}
   fill(): void {}
-  stroke(): void {}
+  stroke(): void {
+    this.strokeColors.push(this.strokeStyle);
+  }
   save(): void {}
   restore(): void {}
   translate(_x: number, _y: number): void {}
@@ -447,6 +450,39 @@ test('roadGame starts with direct pedals and only retains speed after an explici
     assert.match(debugHud.textContent, /cruise: off/);
     assert.equal(field(root, 'cruise').textContent, 'OFF');
 
+    game.dispose();
+  });
+});
+
+test('roadGame consumes horn presses and preserves the charge when no commuter can move', async () => {
+  await withRoadGame(async (root, raf, startRoadGame) => {
+    const game = startRoadGame({
+      root: root as unknown as HTMLElement,
+      viewport: { width: 800, height: 500 },
+      route: straightTestRoute(5_000),
+      stageNumber: 1,
+      onRetry: () => {},
+      onExitToTitle: () => {},
+    });
+    const keyboard = globalThis.window as unknown as FakeWindow;
+
+    raf.advance(0);
+    raf.advance(STEP_MS);
+    keyboard.dispatchEvent(keyDown('Space'));
+    raf.advance(2 * STEP_MS);
+
+    assert.equal(field(root, 'event').textContent, 'HORN - NO TARGET');
+    const context = walk(root).find(element => element.tagName === 'CANVAS')?.context;
+    assert.ok(context);
+    assert.ok(
+      context.strokeColors.some(color => color.startsWith('rgba(255, 95, 31,')),
+      'a failed horn attempt must render its red broken-wave response'
+    );
+    const debugHud = walk(root).find(element => element.className === 'roll-on-debug-hud');
+    assert.ok(debugHud);
+    assert.match(debugHud.textContent, /horn: ready/);
+
+    keyboard.dispatchEvent(keyUp('Space'));
     game.dispose();
   });
 });

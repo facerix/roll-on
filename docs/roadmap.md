@@ -217,7 +217,11 @@ production visualization and art are not.
 - Proper pseudo-3D highway visualization, compatible heading-bucket vehicle art, the Stage 1
   desert-sunset visual language, effects, and final camera-aware HUD composition.
 - Fuel tanker slipstream draft mechanic.
-- Weapons: Cowcatcher → Air Horn → Cargo Dropper → Smokestack Flamethrowers (in that order — defensive before offensive).
+- [x] **Air Horn**: Space/touch asks the nearest same-lane commuter within 35 m to make a safe
+  adjacent-lane change, with a 3-second successful-use recharge, outcome-specific canvas
+  wavefronts, reduced-motion treatment, and no audio dependency.
+- Remaining weapons: Cowcatcher → Cargo Dropper → Smokestack Flamethrowers (defensive before
+  offensive).
 - Pit Stop intermission shop + currency.
 - Stages 2–5 (Construction → PNW → Desert → Mega-Pileup).
 - Audio (WebAudio engine rumble synced to speed, music tracks, voice warnings).

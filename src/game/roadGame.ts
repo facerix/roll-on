@@ -7,6 +7,13 @@ import {
   type CruiseControlState,
 } from '/src/game/cruiseControl.js';
 import { DEFAULT_FUEL_TUNING, isFuelInFumes } from '/src/game/fuel.js';
+import { createHornState, stepHorn, type HornStatus } from '/src/game/horn.js';
+import {
+  buildHornEffectDrawables,
+  createHornEffect,
+  stepHornEffect,
+  type HornEffectSnapshot,
+} from '/src/game/hornEffect.js';
 import { stepDriving, type DrivingState } from '/src/game/drivingUpdate.js';
 import { mountGame } from '/src/game/mount.js';
 import { createRoad, DEFAULT_ROAD_TUNING, type RoadPullout } from '/src/game/road.js';
@@ -146,6 +153,8 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
   let isPaused = false;
   let stageRun = createStageRunState();
   let cruiseControl: CruiseControlState = createCruiseControlState();
+  let hornState = createHornState();
+  let hornEffect: HornEffectSnapshot | null = null;
   const worldFixedCamera = isWorldFixedCamera();
   const debugMode = isDebugMode();
   const debugRouteFollow = isDebugRouteFollowMode();
@@ -169,6 +178,7 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
       stageIntro.step(dt);
       elapsedRunSeconds = advanceElapsedRunSeconds(elapsedRunSeconds, dt, stageRun);
       if (stageRun.phase !== 'running') return;
+      hornEffect = stepHornEffect(hornEffect, dt);
       const previousRouteDistanceMeters = drivingState.routePosition.distanceAlongRouteMeters;
       const cruiseStep = stepCruiseControl(cruiseControl, {
         throttle: input.isActive('throttle') ? 1 : 0,
@@ -196,6 +206,18 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         truckDimensions,
       });
       drivingState = result.state;
+      const hornRequested = input.wasPressed('horn');
+      const hornResult = stepHorn({
+        state: hornState,
+        activate: hornRequested,
+        dtSeconds: dt,
+        traffic: trafficState,
+        truckRoutePosition: drivingState.routePosition,
+        road,
+      });
+      hornState = hornResult.state;
+      trafficState = hornResult.traffic;
+      if (hornRequested) hornEffect = createHornEffect(hornResult.status);
       const trafficResult = stepTraffic({
         state: trafficState,
         truck: drivingState.truck,
@@ -238,6 +260,12 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         trafficEventSeconds = TRAFFIC_EVENT_DURATION_SECONDS;
         trafficEventText =
           trafficEvent.kind === 'road-rage' ? `ROAD RAGE -${ROAD_RAGE_PENALTY}` : 'PATROL RAM';
+      } else if (hornRequested) {
+        trafficEventSeconds = TRAFFIC_EVENT_DURATION_SECONDS;
+        trafficEventText = describeHornStatus(
+          hornResult.status,
+          hornState.cooldownRemainingSeconds
+        );
       } else {
         trafficEventSeconds = Math.max(0, trafficEventSeconds - dt);
         if (trafficEventSeconds === 0) trafficEventText = '';
@@ -324,6 +352,11 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
             ? `${cruiseControl.targetSpeedMetersPerSecond.toFixed(1)} m/s`
             : 'off'
         }`,
+        `horn: ${
+          hornState.cooldownRemainingSeconds === 0
+            ? 'ready'
+            : `${hornState.cooldownRemainingSeconds.toFixed(2)} s`
+        }`,
         `score: ${buildCurrentScore()}`,
         `stage: ${stageRun.phase}${stageRun.failureReason ? ` (${stageRun.failureReason})` : ''}`,
       ];
@@ -361,6 +394,16 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
           elapsedSeconds: elapsedRunSeconds,
           reducedMotion: prefersReducedMotion(),
         }),
+        hornEffect:
+          hornEffect === null
+            ? []
+            : buildHornEffectDrawables({
+                snapshot: hornEffect,
+                camera,
+                truck: drivingState.truck,
+                cabLengthMeters: truckDimensions.cabLengthMeters,
+                reducedMotion: prefersReducedMotion(),
+              }),
       });
     },
   });
@@ -614,6 +657,21 @@ export function startRoadGame(options: StartRoadGameOptions): RoadGame {
         patrolWarning: { isPursuing: patrolGlare.isVisible, attackSide: patrolAttackSide },
       })
     );
+  }
+}
+
+function describeHornStatus(status: HornStatus, cooldownRemainingSeconds: number): string {
+  switch (status) {
+    case 'cleared':
+      return 'HORN - MOVE OVER';
+    case 'cooldown':
+      return `HORN RECHARGING ${Math.ceil(cooldownRemainingSeconds)}S`;
+    case 'blocked':
+      return 'HORN - LANE BLOCKED';
+    case 'no-target':
+      return 'HORN - NO TARGET';
+    case 'idle':
+      throw new Error('requested horn cannot report idle');
   }
 }
 

@@ -122,7 +122,7 @@ test('sidecar layout respects safe areas and rejects corrupt geometry loudly', (
 test('sidecar copy maps every keyboard action to an in-stage or touch equivalent', () => {
   assert.deepEqual(
     ARCADE_SIDECAR_CONTENT.controls.map(control => control.action),
-    ['steer', 'throttle', 'brake', 'cruise', 'pause']
+    ['steer', 'throttle', 'brake', 'horn', 'cruise', 'pause']
   );
   assert.ok(ARCADE_SIDECAR_CONTENT.controls.every(control => control.touchEquivalent.length > 0));
   assert.deepEqual(ARCADE_SIDECAR_CONTENT.objectives, [
@@ -141,7 +141,7 @@ test('sidecar keycaps use the static arcade button treatment without losing kbd 
     const elements = flatten(createArcadeSidecars(1).root as unknown as FakeElement);
     const keycaps = elements.filter(element => element.tagName === 'kbd');
 
-    assert.equal(keycaps.length, 10);
+    assert.equal(keycaps.length, 11);
     assert.ok(keycaps.every(element => element.className.split(' ').includes('arcade-button')));
   });
 });
@@ -166,10 +166,11 @@ test('sidecars are semantic sibling cards with truthful stage and control copy',
     );
     assert.deepEqual(
       elements.filter(element => element.tagName === 'kbd').map(element => element.textContent),
-      ['◀︎', '▶︎', 'A', 'D', '▲︎', 'W', '▼︎', 'S', 'C', 'ESC']
+      ['◀︎', '▶︎', 'A', 'D', '▲︎', 'W', '▼︎', 'S', 'SPACE', 'C', 'ESC']
     );
     assert.ok(elements.some(element => element.textContent === 'HOLD FOR THROTTLE'));
     assert.ok(elements.some(element => element.textContent === 'BRAKE CANCELS CRUISE'));
+    assert.ok(elements.some(element => element.textContent === '3 SECOND RECHARGE'));
     assert.ok(elements.some(element => element.textContent === 'STAGE 3'));
   });
 });

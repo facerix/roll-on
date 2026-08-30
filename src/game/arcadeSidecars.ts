@@ -6,7 +6,7 @@ const MINIMUM_STAGE_DISPLAY_HEIGHT_PIXELS = 480;
 const CARD_EDGE_GUTTER_PIXELS = 16;
 const MAXIMUM_CARD_WIDTH_PIXELS = 288;
 
-export type ArcadeSidecarAction = 'steer' | 'throttle' | 'brake' | 'cruise' | 'pause';
+export type ArcadeSidecarAction = 'steer' | 'throttle' | 'brake' | 'horn' | 'cruise' | 'pause';
 
 export interface ArcadeSidecarControl {
   readonly action: ArcadeSidecarAction;
@@ -54,6 +54,14 @@ export const ARCADE_SIDECAR_CONTENT: ArcadeSidecarContent = Object.freeze({
       instruction: 'HOLD FOR SERVICE BRAKE',
       notes: Object.freeze(['BRAKE CANCELS CRUISE']),
       touchEquivalent: 'Brake button',
+    }),
+    Object.freeze({
+      action: 'horn',
+      label: 'HORN',
+      keys: Object.freeze(['SPACE']),
+      instruction: 'CLEAR THE CAR AHEAD',
+      notes: Object.freeze(['3 SECOND RECHARGE']),
+      touchEquivalent: 'Horn button',
     }),
     Object.freeze({
       action: 'cruise',

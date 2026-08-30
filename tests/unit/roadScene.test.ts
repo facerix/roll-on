@@ -109,6 +109,36 @@ test('road scene emits drawables in back-to-front order', () => {
   );
 });
 
+test('horn feedback draws over the truck so the response cannot disappear behind the rig', () => {
+  const truck = truckAt(0);
+  const camera = buildRoadCamera(truck.position, VIEWPORT, CAMERA_TUNING);
+  const hornEffect: readonly Drawable[] = [
+    {
+      kind: 'polyline',
+      points: [
+        { x: 140, y: 320 },
+        { x: 160, y: 300 },
+        { x: 180, y: 320 },
+      ],
+      width: 3,
+      color: 'horn-test',
+    },
+  ];
+  const scene = buildRoadScene({
+    road: ROAD,
+    camera,
+    truck,
+    truckDimensions: TRUCK_DIMENSIONS,
+    hornEffect,
+  });
+
+  assert.deepEqual(
+    scene.drawables.slice(-3).map(drawable => drawable.kind),
+    ['oriented-sprite', 'oriented-sprite', 'polyline']
+  );
+  assert.equal(scene.drawables.at(-1), hornEffect[0]);
+});
+
 test('straight Stage 1 road uses white dashed dividers and yellow-left/white-right edge lines', () => {
   const scene = sceneFor(truckAt(0));
   const roadEdgeColors = rects(scene.drawables)
