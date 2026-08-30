@@ -52,6 +52,7 @@ function setupGame(): void {
       pullouts: sessionRoad.pullouts,
       patrolEncounters: sessionRoad.patrolEncounters,
       stageNumber: session.stage.stageNumber,
+      ...('trafficSeed' in session.stage ? { trafficSeed: session.stage.trafficSeed } : {}),
       initialCargoIntegrity: session.mode === 'challenge' ? session.carryover.cargoIntegrity : 1,
       initialFuelLevel: session.mode === 'challenge' ? session.carryover.fuelLevel : 1,
       onRetry: () => startGame(retrySession(session)),

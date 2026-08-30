@@ -1,20 +1,20 @@
 import { DEFAULT_TRUCK_TUNING, type TruckControls, type TruckTuning } from '/src/game/truck.js';
 
 export interface CruiseControlState {
+  readonly isActive: boolean;
   readonly targetSpeedMetersPerSecond: number;
 }
 
 export interface CruiseControlInput {
-  readonly gas: number;
+  readonly throttle: number;
   readonly brake: number;
+  /** One down-edge from keyboard or touch; held/repeat state is irrelevant. */
+  readonly toggleCruise: boolean;
   readonly currentSpeedMetersPerSecond: number;
-  readonly dtSeconds: number;
 }
 
 export interface CruiseControlTuning {
-  readonly initialTargetSpeedMetersPerSecond: number;
   readonly maximumTargetSpeedMetersPerSecond: number;
-  readonly targetAdjustmentMetersPerSecondSquared: number;
   readonly fullControlErrorMetersPerSecond: number;
 }
 
@@ -24,11 +24,7 @@ export interface CruiseControlStep {
 }
 
 export const DEFAULT_CRUISE_CONTROL_TUNING: CruiseControlTuning = Object.freeze({
-  // Start at the established fuel-efficient cruise ratio: 50% of top speed.
-  initialTargetSpeedMetersPerSecond: 20,
   maximumTargetSpeedMetersPerSecond: 40,
-  // Full pedal travel moves the setpoint by roughly 22 mph each second.
-  targetAdjustmentMetersPerSecondSquared: 10,
   fullControlErrorMetersPerSecond: 4,
 });
 
@@ -37,8 +33,9 @@ export function createCruiseControlState(
   tuning: CruiseControlTuning = DEFAULT_CRUISE_CONTROL_TUNING
 ): CruiseControlState {
   validateTuning(tuning);
-  const targetSpeedMetersPerSecond =
-    initial.targetSpeedMetersPerSecond ?? tuning.initialTargetSpeedMetersPerSecond;
+  const isActive = initial.isActive ?? false;
+  const targetSpeedMetersPerSecond = initial.targetSpeedMetersPerSecond ?? 0;
+  if (typeof isActive !== 'boolean') throw new TypeError('isActive must be boolean');
   assertFinite('targetSpeedMetersPerSecond', targetSpeedMetersPerSecond);
   if (
     targetSpeedMetersPerSecond < 0 ||
@@ -48,13 +45,14 @@ export function createCruiseControlState(
       `targetSpeedMetersPerSecond must be in [0, ${tuning.maximumTargetSpeedMetersPerSecond}], got ${targetSpeedMetersPerSecond}`
     );
   }
-  return { targetSpeedMetersPerSecond };
+  return { isActive, targetSpeedMetersPerSecond };
 }
 
 /**
- * Adjust the always-on cruise setpoint and derive the physical pedal inputs
- * that pursue it. Gas and brake change the setpoint; they are not passed
- * through to the drivetrain, so releasing them retains the requested speed.
+ * Keep the physical pedals honest while adding an explicit retained-speed
+ * state. Inactive cruise passes both pedals through. Active cruise is
+ * temporarily overridden by throttle, resumes its captured target on
+ * release, and is cancelled by any service-brake input.
  */
 export function stepCruiseControl(
   state: CruiseControlState,
@@ -64,44 +62,50 @@ export function stepCruiseControl(
 ): CruiseControlStep {
   validateTuning(tuning);
   validateTruckTuning(truckTuning);
-  createCruiseControlState(state, tuning);
-  validateUnit('gas', input.gas);
+  const validState = createCruiseControlState(state, tuning);
+  validateUnit('throttle', input.throttle);
   validateUnit('brake', input.brake);
+  if (typeof input.toggleCruise !== 'boolean') {
+    throw new TypeError('toggleCruise must be boolean');
+  }
   assertFinite('currentSpeedMetersPerSecond', input.currentSpeedMetersPerSecond);
-  assertFinite('dtSeconds', input.dtSeconds);
   if (input.currentSpeedMetersPerSecond < 0) {
     throw new RangeError(
       `currentSpeedMetersPerSecond must be non-negative, got ${input.currentSpeedMetersPerSecond}`
     );
   }
-  if (input.dtSeconds < 0) {
-    throw new RangeError(`dtSeconds must be non-negative, got ${input.dtSeconds}`);
-  }
 
-  const targetAdjustment =
-    (input.gas - input.brake) * tuning.targetAdjustmentMetersPerSecondSquared * input.dtSeconds;
-  const targetSpeedMetersPerSecond = clamp(
-    state.targetSpeedMetersPerSecond + targetAdjustment,
-    0,
-    tuning.maximumTargetSpeedMetersPerSecond
-  );
-  const nextState = { targetSpeedMetersPerSecond };
-
-  if (targetSpeedMetersPerSecond === 0) {
+  // Braking always wins over a simultaneous cruise command and reaches the
+  // truck unchanged. This makes both emergency response and cancellation
+  // predictable from the visible Brake label.
+  if (input.brake > 0) {
     return {
-      state: nextState,
-      controls: {
-        throttle: 0,
-        brake: clamp(
-          input.currentSpeedMetersPerSecond / tuning.fullControlErrorMetersPerSecond,
-          0,
-          1
-        ),
-      },
+      state: { ...validState, isActive: false },
+      controls: { throttle: input.throttle, brake: input.brake },
     };
   }
 
-  const speedError = targetSpeedMetersPerSecond - input.currentSpeedMetersPerSecond;
+  const nextState = input.toggleCruise
+    ? validState.isActive
+      ? { ...validState, isActive: false }
+      : {
+          isActive: true,
+          targetSpeedMetersPerSecond: clamp(
+            input.currentSpeedMetersPerSecond,
+            0,
+            tuning.maximumTargetSpeedMetersPerSecond
+          ),
+        }
+    : validState;
+
+  if (!nextState.isActive || input.throttle > 0) {
+    return {
+      state: nextState,
+      controls: { throttle: input.throttle, brake: 0 },
+    };
+  }
+
+  const speedError = nextState.targetSpeedMetersPerSecond - input.currentSpeedMetersPerSecond;
   if (speedError < 0) {
     return {
       state: nextState,
@@ -112,10 +116,10 @@ export function stepCruiseControl(
     };
   }
 
-  // Feed-forward throttle exactly offsets the truck model's rolling drag at
-  // the setpoint. Proportional correction then closes any remaining gap.
+  // Feed-forward throttle offsets rolling drag at the target. Proportional
+  // correction closes the remaining gap after a hill, impact, or override.
   const targetSpeedRatio = clamp(
-    targetSpeedMetersPerSecond / truckTuning.maxForwardSpeedMetersPerSecond,
+    nextState.targetSpeedMetersPerSecond / truckTuning.maxForwardSpeedMetersPerSecond,
     0,
     1
   );
@@ -136,17 +140,6 @@ export function stepCruiseControl(
 
 function validateTuning(tuning: CruiseControlTuning): void {
   assertPositive('maximumTargetSpeedMetersPerSecond', tuning.maximumTargetSpeedMetersPerSecond);
-  assertFinite('initialTargetSpeedMetersPerSecond', tuning.initialTargetSpeedMetersPerSecond);
-  if (
-    tuning.initialTargetSpeedMetersPerSecond < 0 ||
-    tuning.initialTargetSpeedMetersPerSecond > tuning.maximumTargetSpeedMetersPerSecond
-  ) {
-    throw new RangeError('initialTargetSpeedMetersPerSecond must fit within the target range');
-  }
-  assertPositive(
-    'targetAdjustmentMetersPerSecondSquared',
-    tuning.targetAdjustmentMetersPerSecondSquared
-  );
   assertPositive('fullControlErrorMetersPerSecond', tuning.fullControlErrorMetersPerSecond);
 }
 

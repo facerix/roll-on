@@ -87,7 +87,7 @@ test('unbound keys are ignored entirely', () => {
   const { target, input } = build();
   target.emit('keydown', keyEvent('KeyQ'));
   // KeyQ isn't bound to any action.
-  const actions: Action[] = ['throttle', 'brake', 'steerLeft', 'steerRight', 'horn'];
+  const actions: Action[] = ['throttle', 'brake', 'steerLeft', 'steerRight', 'horn', 'cruise'];
   for (const a of actions) assert.equal(input.isActive(a), false);
 });
 
@@ -100,6 +100,18 @@ test('multiple keys bound to the same action both work (e.g. arrows + WASD)', ()
 
   target.emit('keydown', keyEvent('ArrowUp'));
   assert.equal(input.isActive('throttle'), true);
+});
+
+test('C exposes cruise as a one-shot action', () => {
+  const { target, input } = build();
+  target.emit('keydown', keyEvent('KeyC'));
+
+  assert.equal(input.isActive('cruise'), true);
+  assert.equal(input.wasPressed('cruise'), true);
+
+  input.beginFrame();
+  target.emit('keydown', keyEvent('KeyC', { repeat: true }));
+  assert.equal(input.wasPressed('cruise'), false);
 });
 
 test('wasPressed latches once per physical press and clears on beginFrame', () => {
@@ -207,6 +219,19 @@ test('setVirtual drives isActive and latches press/release edges', () => {
   input.setVirtual('throttle', false);
   assert.equal(input.isActive('throttle'), false);
   assert.equal(input.wasReleased('throttle'), true);
+});
+
+test('touch cruise produces the same one-shot edge as keyboard cruise', () => {
+  const { input } = build();
+  input.setVirtual('cruise', true);
+  assert.equal(input.wasPressed('cruise'), true);
+
+  input.beginFrame();
+  assert.equal(input.wasPressed('cruise'), false, 'a held touch is not a second toggle');
+
+  input.setVirtual('cruise', false);
+  input.setVirtual('cruise', true);
+  assert.equal(input.wasPressed('cruise'), true, 'a fresh tap toggles again');
 });
 
 test('a redundant setVirtual does not re-latch a press', () => {

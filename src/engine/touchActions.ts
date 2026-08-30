@@ -31,6 +31,8 @@ export const TOUCH_PAD_ACTIONS = Object.freeze([
   'steerRight',
   'brake',
   'throttle',
+  'horn',
+  'cruise',
 ] as const satisfies readonly Action[]);
 
 /** A logical hold/release edge for one action. */

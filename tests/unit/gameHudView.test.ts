@@ -83,6 +83,7 @@ function snapshot(overrides: Partial<GameHudSnapshot> = {}): GameHudSnapshot {
     speedText: '89',
     speedUnitText: 'MPH',
     speedMetersPerSecondText: '40.0 m/s',
+    isCruiseActive: true,
     cruiseSpeedText: '56',
     speedLevel: 1,
     cruiseSpeedLevel: 0.625,
@@ -137,6 +138,9 @@ test('HUD wireframe is one labelled section with five semantic instrument wells'
   assert.equal(speedometer.tagName, 'SVG');
   assert.equal(speedometer.attributes.get('viewBox'), '0 0 104 68');
   assert.equal(speedometer.ariaHidden, 'true');
+  assert.equal(field(root, 'cruise').textContent, 'OFF');
+  assert.equal(field(root, 'cruise-unit').textContent, '');
+  assert.equal(root.dataset.cruiseActive, 'false');
 
   const cargoIcons = withClass(root, 'roll-on-hud-cargo-icon');
   assert.equal(cargoIcons.length, 1);
@@ -192,6 +196,17 @@ test('HUD update mutates stable nodes and exposes every visual value as text', (
   assert.equal(root.dataset.unitSystem, 'imperial');
   assert.equal(root.dataset.cargoSeverity, 'critical');
   assert.equal(root.dataset.fumes, 'true');
+  assert.equal(root.dataset.cruiseActive, 'true');
+});
+
+test('inactive cruise reads OFF and hides the dial marker state', () => {
+  const view = createGameHudView();
+  const root = view.root as unknown as FakeElement;
+  view.update(snapshot({ isCruiseActive: false, cruiseSpeedText: 'OFF', cruiseSpeedLevel: 0 }));
+
+  assert.equal(field(root, 'cruise').textContent, 'OFF');
+  assert.equal(field(root, 'cruise').ariaLabel, 'Cruise control off');
+  assert.equal(root.dataset.cruiseActive, 'false');
 });
 
 test('instrument values are not live regions during rapid updates', () => {

@@ -8,93 +8,117 @@ import {
 } from '../../src/game/cruiseControl.ts';
 import { DEFAULT_TRUCK_TUNING, createTruckState, stepTruck } from '../../src/game/truck.ts';
 
-test('cruise control starts at the efficient highway setpoint', () => {
-  assert.deepEqual(createCruiseControlState(), { targetSpeedMetersPerSecond: 20 });
+test('cruise control starts inactive without a hidden speed target', () => {
+  assert.deepEqual(createCruiseControlState(), {
+    isActive: false,
+    targetSpeedMetersPerSecond: 0,
+  });
 });
 
-test('gas and brake adjust the target and releasing both pedals retains it', () => {
+test('inactive cruise passes held throttle and brake directly to the truck', () => {
   const initial = createCruiseControlState();
-  const raised = stepCruiseControl(initial, {
-    gas: 1,
+  const throttle = stepCruiseControl(initial, {
+    throttle: 0.75,
     brake: 0,
+    toggleCruise: false,
     currentSpeedMetersPerSecond: 20,
-    dtSeconds: 0.5,
   });
-  const held = stepCruiseControl(raised.state, {
-    gas: 0,
+  const brake = stepCruiseControl(throttle.state, {
+    throttle: 0,
+    brake: 0.6,
+    toggleCruise: false,
+    currentSpeedMetersPerSecond: 20,
+  });
+  const coast = stepCruiseControl(brake.state, {
+    throttle: 0,
     brake: 0,
+    toggleCruise: false,
     currentSpeedMetersPerSecond: 20,
-    dtSeconds: 1,
-  });
-  const lowered = stepCruiseControl(held.state, {
-    gas: 0,
-    brake: 1,
-    currentSpeedMetersPerSecond: 20,
-    dtSeconds: 0.25,
   });
 
-  assert.equal(raised.state.targetSpeedMetersPerSecond, 25);
-  assert.equal(held.state.targetSpeedMetersPerSecond, 25);
-  assert.equal(lowered.state.targetSpeedMetersPerSecond, 22.5);
+  assert.deepEqual(throttle.controls, { throttle: 0.75, brake: 0 });
+  assert.deepEqual(brake.controls, { throttle: 0, brake: 0.6 });
+  assert.deepEqual(coast.controls, { throttle: 0, brake: 0 });
+  assert.equal(coast.state.isActive, false);
 });
 
-test('opposed pedals cancel target adjustment and target speed clamps to truck limits', () => {
-  const initial = createCruiseControlState({ targetSpeedMetersPerSecond: 39 });
-  const opposed = stepCruiseControl(initial, {
-    gas: 1,
-    brake: 1,
-    currentSpeedMetersPerSecond: 20,
-    dtSeconds: 1,
-  });
-  const maximum = stepCruiseControl(opposed.state, {
-    gas: 1,
+test('engaging cruise captures the current speed and exposes an active state', () => {
+  const engaged = stepCruiseControl(createCruiseControlState(), {
+    throttle: 0,
     brake: 0,
-    currentSpeedMetersPerSecond: 20,
-    dtSeconds: 10,
-  });
-  const minimum = stepCruiseControl(maximum.state, {
-    gas: 0,
-    brake: 1,
-    currentSpeedMetersPerSecond: 20,
-    dtSeconds: 10,
+    toggleCruise: true,
+    currentSpeedMetersPerSecond: 23.5,
   });
 
-  assert.equal(opposed.state.targetSpeedMetersPerSecond, 39);
-  assert.equal(maximum.state.targetSpeedMetersPerSecond, 40);
-  assert.equal(minimum.state.targetSpeedMetersPerSecond, 0);
+  assert.deepEqual(engaged.state, {
+    isActive: true,
+    targetSpeedMetersPerSecond: 23.5,
+  });
+  assert.ok(engaged.controls.throttle > 0, 'controller offsets rolling resistance');
+  assert.equal(engaged.controls.brake, 0);
 });
 
-test('released pedals generate throttle or brake to pursue and hold the retained target', () => {
-  const target = createCruiseControlState({ targetSpeedMetersPerSecond: 25 });
-  const below = stepCruiseControl(target, {
-    gas: 0,
-    brake: 0,
-    currentSpeedMetersPerSecond: 15,
-    dtSeconds: 1 / 60,
+test('a second cruise command disengages without applying a hidden pedal', () => {
+  const disengaged = stepCruiseControl(
+    createCruiseControlState({ isActive: true, targetSpeedMetersPerSecond: 25 }),
+    {
+      throttle: 0,
+      brake: 0,
+      toggleCruise: true,
+      currentSpeedMetersPerSecond: 25,
+    }
+  );
+
+  assert.equal(disengaged.state.isActive, false);
+  assert.deepEqual(disengaged.controls, { throttle: 0, brake: 0 });
+});
+
+test('throttle overrides active cruise and release resumes the captured target', () => {
+  const cruise = createCruiseControlState({
+    isActive: true,
+    targetSpeedMetersPerSecond: 25,
   });
-  const above = stepCruiseControl(target, {
-    gas: 0,
+  const overridden = stepCruiseControl(cruise, {
+    throttle: 1,
     brake: 0,
-    currentSpeedMetersPerSecond: 30,
-    dtSeconds: 1 / 60,
-  });
-  const atTarget = stepCruiseControl(target, {
-    gas: 0,
-    brake: 0,
+    toggleCruise: false,
     currentSpeedMetersPerSecond: 25,
-    dtSeconds: 1 / 60,
+  });
+  const resumed = stepCruiseControl(overridden.state, {
+    throttle: 0,
+    brake: 0,
+    toggleCruise: false,
+    currentSpeedMetersPerSecond: 27,
   });
 
-  assert.ok(below.controls.throttle > 0);
-  assert.equal(below.controls.brake, 0);
-  assert.equal(above.controls.throttle, 0);
-  assert.ok(above.controls.brake > 0);
-  assert.ok(atTarget.controls.throttle > 0, 'controller offsets rolling resistance');
-  assert.equal(atTarget.controls.brake, 0);
+  assert.deepEqual(overridden.controls, { throttle: 1, brake: 0 });
+  assert.deepEqual(overridden.state, cruise);
+  assert.equal(resumed.state.isActive, true);
+  assert.equal(resumed.state.targetSpeedMetersPerSecond, 25);
+  assert.ok(resumed.controls.brake > 0, 'release resumes the captured target');
 });
 
-test('the truck converges on its cruise target without a held gas input', () => {
-  const cruise = createCruiseControlState({ targetSpeedMetersPerSecond: 25 });
+test('any service-brake input cancels cruise and remains direct', () => {
+  const cruise = createCruiseControlState({
+    isActive: true,
+    targetSpeedMetersPerSecond: 25,
+  });
+  const cancelled = stepCruiseControl(cruise, {
+    throttle: 0,
+    brake: 0.4,
+    toggleCruise: true,
+    currentSpeedMetersPerSecond: 25,
+  });
+
+  assert.equal(cancelled.state.isActive, false);
+  assert.deepEqual(cancelled.controls, { throttle: 0, brake: 0.4 });
+});
+
+test('an active controller converges on its captured target without a held throttle', () => {
+  const cruise = createCruiseControlState({
+    isActive: true,
+    targetSpeedMetersPerSecond: 25,
+  });
   let truck = createTruckState({
     position: { xMeters: 0, yMeters: 0 },
     headingRadians: 0,
@@ -108,10 +132,10 @@ test('the truck converges on its cruise target without a held gas input', () => 
 
   for (let tick = 0; tick < 20 * 60; tick += 1) {
     const result = stepCruiseControl(cruise, {
-      gas: 0,
+      throttle: 0,
       brake: 0,
+      toggleCruise: false,
       currentSpeedMetersPerSecond: truck.speedMetersPerSecond,
-      dtSeconds: 1 / 60,
     });
     truck = stepTruck(truck, { ...result.controls, steering: 0 }, 1 / 60, DEFAULT_TRUCK_TUNING);
   }
@@ -128,10 +152,10 @@ test('cruise control rejects corrupt state, input, and tuning', () => {
   assert.throws(
     () =>
       stepCruiseControl(createCruiseControlState(), {
-        gas: 1.1,
+        throttle: 1.1,
         brake: 0,
+        toggleCruise: false,
         currentSpeedMetersPerSecond: 0,
-        dtSeconds: 1,
       }),
     RangeError
   );
@@ -139,8 +163,8 @@ test('cruise control rejects corrupt state, input, and tuning', () => {
     () =>
       stepCruiseControl(
         createCruiseControlState(),
-        { gas: 0, brake: 0, currentSpeedMetersPerSecond: 0, dtSeconds: -1 },
-        { ...DEFAULT_CRUISE_CONTROL_TUNING, targetAdjustmentMetersPerSecondSquared: 0 }
+        { throttle: 0, brake: 0, toggleCruise: false, currentSpeedMetersPerSecond: 0 },
+        { ...DEFAULT_CRUISE_CONTROL_TUNING, fullControlErrorMetersPerSecond: 0 }
       ),
     RangeError
   );

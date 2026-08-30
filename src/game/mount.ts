@@ -28,6 +28,7 @@ import { Canvas2DRenderer } from '/src/engine/renderer.js';
 import type { Scene } from '/src/engine/renderer.js';
 import { InputAdapter } from '/src/engine/input.js';
 import { FpsMeter } from '/src/engine/fpsMeter.js';
+import { calculateArcadeSidecarLayout } from '/src/game/arcadeSidecars.js';
 import { calculateTouchPadLayout } from '/src/game/touchPadLayout.js';
 import { runGameUpdate } from '/src/game/update.js';
 import {
@@ -53,6 +54,8 @@ export interface MountOptions {
    * only controls whether it exists at all.
    */
   touchControls?: boolean;
+  /** Optional semantic desktop chrome placed outside the scaled stage. */
+  arcadeSidecars?: HTMLElement;
   /** Additional debug lines supplied by gameplay; read only when the HUD is visible. */
   debugLines?: () => readonly string[];
 }
@@ -115,6 +118,7 @@ export function mountGame(opts: MountOptions): MountedGame {
   // actions. We translate them into virtual holds on the same InputAdapter
   // the keyboard feeds, so gameplay never learns touch exists.
   const touchPad = (opts.touchControls ?? true) ? h('touch-pad') : null;
+  const arcadeSidecars = opts.arcadeSidecars ?? null;
   const onPadDown = (event: Event): void =>
     input.setVirtual((event as TouchPadActionEvent).detail.action, true);
   const onPadUp = (event: Event): void =>
@@ -139,8 +143,11 @@ export function mountGame(opts: MountOptions): MountedGame {
       'position:absolute;inset:0;overflow:hidden;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);',
   });
   shell.appendChild(stage);
+  if (arcadeSidecars) shell.appendChild(arcadeSidecars);
   if (touchPad) shell.appendChild(touchPad);
   opts.root.appendChild(shell);
+
+  const finePointerMedia = arcadeSidecars ? window.matchMedia('(pointer: fine)') : null;
 
   const applyStageLayout = (): void => {
     const shellRect = shell.getBoundingClientRect();
@@ -157,6 +164,26 @@ export function mountGame(opts: MountOptions): MountedGame {
       safeAreaInsets,
     });
     stage.style.transform = `translate(${layout.displayX}px, ${layout.displayY}px) scale(${layout.scale})`;
+
+    if (arcadeSidecars) {
+      const sidecarLayout = calculateArcadeSidecarLayout({
+        viewport,
+        safeAreaInsets,
+        stage: layout,
+        hasFinePointer: finePointerMedia?.matches ?? false,
+      });
+      arcadeSidecars.hidden = !sidecarLayout.visible;
+      arcadeSidecars.dataset.visible = String(sidecarLayout.visible);
+      const properties = {
+        '--sidecar-card-width': sidecarLayout.cardWidth,
+        '--sidecar-display-center-y': sidecarLayout.displayCenterY,
+        '--sidecar-left-x': sidecarLayout.leftX,
+        '--sidecar-right-x': sidecarLayout.rightX,
+      } as const;
+      for (const [property, value] of Object.entries(properties)) {
+        arcadeSidecars.style.setProperty(property, `${value}px`);
+      }
+    }
 
     if (touchPad) {
       const padLayout = calculateTouchPadLayout({ viewport, safeAreaInsets, stage: layout });
@@ -178,6 +205,7 @@ export function mountGame(opts: MountOptions): MountedGame {
   };
   applyStageLayout();
   window.addEventListener('resize', applyStageLayout);
+  finePointerMedia?.addEventListener('change', applyStageLayout);
 
   // Driving wall-clock for the FPS HUD. We use rAF timestamps via the loop's
   // start(); but the loop doesn't currently surface real dt. To keep the
@@ -240,6 +268,7 @@ export function mountGame(opts: MountOptions): MountedGame {
       touchPad?.removeEventListener('action-up', onPadUp);
       input.detach();
       window.removeEventListener('resize', applyStageLayout);
+      finePointerMedia?.removeEventListener('change', applyStageLayout);
       shell.remove();
     },
   };

@@ -39,6 +39,7 @@ function runStats(overrides: Partial<GameHudRunStats> = {}): GameHudRunStats {
     stageNumber: 1,
     unitSystem: 'imperial',
     isStageComplete: false,
+    isCruiseActive: true,
     cruiseTargetSpeedMetersPerSecond: 25,
     ...overrides,
   };
@@ -58,6 +59,7 @@ test('game HUD snapshot exposes formatted values and bounded instrument inputs',
       speedText: '70',
       speedUnitText: 'MPH',
       speedMetersPerSecondText: '31.3 m/s',
+      isCruiseActive: true,
       cruiseSpeedText: '56',
       speedLevel: 0.78232,
       cruiseSpeedLevel: 0.625,
@@ -104,6 +106,20 @@ test('one unit preference converts both speed and route distance from SI truth',
 
   assert.equal(formatDistanceMeters(1_609.344, 'imperial'), '1.0 mi');
   assert.equal(formatDistanceMeters(1_000, 'metric'), '1.0 km');
+});
+
+test('inactive cruise presents OFF without exposing a stale target or dial marker', () => {
+  const inactive = buildGameHudSnapshot(
+    truck({ speedMetersPerSecond: 20 }),
+    DEFAULT_TRUCK_TUNING,
+    createFuelState(),
+    undefined,
+    runStats({ isCruiseActive: false, cruiseTargetSpeedMetersPerSecond: 25 })
+  );
+
+  assert.equal(inactive.isCruiseActive, false);
+  assert.equal(inactive.cruiseSpeedText, 'OFF');
+  assert.equal(inactive.cruiseSpeedLevel, 0);
 });
 
 test('dial mapping is deterministic at rest, cruise, maximum, and overspeed', () => {

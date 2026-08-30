@@ -21,6 +21,7 @@ class FakeCanvasContext {
   lineWidth = 1;
   imageSmoothingEnabled = true;
   readonly imageSources: string[] = [];
+  readonly strokeColors: string[] = [];
 
   fillRect(_x: number, _y: number, _width: number, _height: number): void {}
   beginPath(): void {}
@@ -28,7 +29,9 @@ class FakeCanvasContext {
   lineTo(_x: number, _y: number): void {}
   closePath(): void {}
   fill(): void {}
-  stroke(): void {}
+  stroke(): void {
+    this.strokeColors.push(this.strokeStyle);
+  }
   save(): void {}
   restore(): void {}
   translate(_x: number, _y: number): void {}
@@ -126,11 +129,38 @@ class FakeCustomElements {
   }
 }
 
+class FakeMediaQueryList extends EventTarget {
+  matches = false;
+  changeListenerCount = 0;
+
+  override addEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions
+  ): void {
+    if (type === 'change') this.changeListenerCount += 1;
+    super.addEventListener(type, callback, options);
+  }
+
+  override removeEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions
+  ): void {
+    if (type === 'change') this.changeListenerCount -= 1;
+    super.removeEventListener(type, callback, options);
+  }
+}
+
 class FakeWindow extends EventTarget {
   readonly location = { href: 'http://localhost/?debug&routeFollow=1' };
+  readonly finePointerMedia = new FakeMediaQueryList();
+  readonly otherMedia = new FakeMediaQueryList();
 
-  matchMedia(): MediaQueryList {
-    return { matches: false } as MediaQueryList;
+  matchMedia(query: string): MediaQueryList {
+    return (
+      query === '(pointer: fine)' ? this.finePointerMedia : (this.otherMedia as unknown)
+    ) as MediaQueryList;
   }
 }
 
@@ -203,8 +233,22 @@ function keyDown(code: string): Event {
   return event;
 }
 
+function keyUp(code: string): Event {
+  const event = new Event('keyup');
+  Object.defineProperties(event, {
+    code: { value: code },
+    repeat: { value: false },
+  });
+  return event;
+}
+
 async function withRoadGame<T>(
-  callback: (root: FakeElement, raf: RafHarness, startRoadGame: StartRoadGame) => T
+  callback: (
+    root: FakeElement,
+    raf: RafHarness,
+    startRoadGame: StartRoadGame,
+    fakeWindow: FakeWindow
+  ) => T
 ): Promise<T> {
   const names = [
     'document',
@@ -245,7 +289,7 @@ async function withRoadGame<T>(
 
   try {
     const { startRoadGame } = await import('../../src/game/roadGame.ts');
-    return await callback(new FakeElement('main'), raf, startRoadGame);
+    return await callback(new FakeElement('main'), raf, startRoadGame, fakeWindow);
   } finally {
     for (const name of names) {
       const descriptor = previous.get(name);
@@ -256,7 +300,7 @@ async function withRoadGame<T>(
 }
 
 test('roadGame composes authored pullouts and patrol encounters into live gameplay', async () => {
-  await withRoadGame(async (root, raf, startRoadGame) => {
+  await withRoadGame(async (root, raf, startRoadGame, fakeWindow) => {
     const game = startRoadGame({
       root: root as unknown as HTMLElement,
       viewport: { width: 800, height: 500 },
@@ -292,6 +336,19 @@ test('roadGame composes authored pullouts and patrol encounters into live gamepl
     const context = walk(root).find(element => element.tagName === 'CANVAS')?.context;
     assert.ok(context);
     assert.ok(context.imageSources.includes(PATROL_SPRITE));
+    const sidecarRoots = walk(root).filter(
+      element => element.className === 'roll-on-arcade-sidecars'
+    );
+    assert.equal(sidecarRoots.length, 1);
+    assert.equal(sidecarRoots[0]?.children.length, 2);
+    assert.equal(fakeWindow.finePointerMedia.changeListenerCount, 1);
+    fakeWindow.dispatchEvent(new Event('resize'));
+    fakeWindow.dispatchEvent(new Event('resize'));
+    assert.equal(
+      walk(root).filter(element => element.className === 'roll-on-arcade-sidecars').length,
+      1,
+      'resize must update the existing sidecars rather than append another pair'
+    );
 
     const throttle = keyDown('ArrowUp');
     (globalThis.window as unknown as FakeWindow).dispatchEvent(throttle);
@@ -306,6 +363,127 @@ test('roadGame composes authored pullouts and patrol encounters into live gamepl
     assert.ok(raf.pendingCount() > 0, 'the mounted game remains live after pursuit starts');
     game.dispose();
     assert.equal(raf.pendingCount(), 0);
+    assert.equal(fakeWindow.finePointerMedia.changeListenerCount, 0);
+  });
+});
+
+test('roadGame derives each rendered camera from the truck current speed', async () => {
+  await withRoadGame(async (root, raf, startRoadGame) => {
+    const game = startRoadGame({
+      root: root as unknown as HTMLElement,
+      viewport: { width: 800, height: 500 },
+      route: straightTestRoute(5_000),
+      stageNumber: 1,
+      onRetry: () => {},
+      onExitToTitle: () => {},
+    });
+
+    raf.advance(0);
+    raf.advance(STEP_MS);
+    const debugHud = walk(root).find(element => element.className === 'roll-on-debug-hud');
+    assert.ok(debugHud);
+    const initialCamera = cameraDebugValues(debugHud.textContent);
+
+    (globalThis.window as unknown as FakeWindow).dispatchEvent(keyDown('ArrowUp'));
+    for (let frame = 2; frame <= 600; frame += 1) raf.advance(frame * STEP_MS);
+    const fastCamera = cameraDebugValues(debugHud.textContent);
+
+    assert.ok(fastCamera.pixelsPerMeter < initialCamera.pixelsPerMeter - 2);
+    assert.ok(fastCamera.anchorY > initialCamera.anchorY);
+    game.dispose();
+  });
+});
+
+test('roadGame starts with direct pedals and only retains speed after an explicit cruise command', async () => {
+  await withRoadGame(async (root, raf, startRoadGame) => {
+    const game = startRoadGame({
+      root: root as unknown as HTMLElement,
+      viewport: { width: 800, height: 500 },
+      route: straightTestRoute(5_000),
+      stageNumber: 1,
+      onRetry: () => {},
+      onExitToTitle: () => {},
+    });
+    const keyboard = globalThis.window as unknown as FakeWindow;
+
+    raf.advance(0);
+    raf.advance(STEP_MS);
+    const debugHud = walk(root).find(element => element.className === 'roll-on-debug-hud');
+    assert.ok(debugHud);
+    const initialSpeed = speedFromDebug(debugHud.textContent);
+    assert.ok(initialSpeed > 0, 'the opening must already be rolling');
+    assert.match(debugHud.textContent, /cruise: off/);
+    assert.equal(field(root, 'cruise').textContent, 'OFF');
+    const intro = walk(root).find(element => element.className === 'roll-on-stage-intro');
+    assert.ok(intro);
+    assert.equal(intro.hidden, false);
+    assert.deepEqual(
+      intro.children.map(child => child.textContent),
+      ['STAGE 1', 'ROLL ON!']
+    );
+
+    keyboard.dispatchEvent(keyDown('ArrowUp'));
+    for (let frame = 2; frame <= 180; frame += 1) raf.advance(frame * STEP_MS);
+    const speedUnderThrottle = speedFromDebug(debugHud.textContent);
+    assert.ok(speedUnderThrottle > initialSpeed, 'held gas must accelerate the truck directly');
+    assert.equal(intro.hidden, true, 'the non-blocking opening banner must clear itself');
+
+    keyboard.dispatchEvent(keyUp('ArrowUp'));
+    for (let frame = 181; frame <= 240; frame += 1) raf.advance(frame * STEP_MS);
+    const coastingSpeed = speedFromDebug(debugHud.textContent);
+    assert.ok(
+      coastingSpeed < speedUnderThrottle,
+      'released gas must coast without a hidden target'
+    );
+    assert.equal(field(root, 'cruise').textContent, 'OFF');
+
+    keyboard.dispatchEvent(keyDown('KeyC'));
+    raf.advance(241 * STEP_MS);
+    keyboard.dispatchEvent(keyUp('KeyC'));
+    raf.advance(242 * STEP_MS);
+    assert.doesNotMatch(debugHud.textContent, /cruise: off/);
+    assert.notEqual(field(root, 'cruise').textContent, 'OFF');
+
+    keyboard.dispatchEvent(keyDown('ArrowDown'));
+    raf.advance(243 * STEP_MS);
+    raf.advance(244 * STEP_MS);
+    assert.match(debugHud.textContent, /cruise: off/);
+    assert.equal(field(root, 'cruise').textContent, 'OFF');
+
+    game.dispose();
+  });
+});
+
+test('roadGame consumes horn presses and preserves the charge when no commuter can move', async () => {
+  await withRoadGame(async (root, raf, startRoadGame) => {
+    const game = startRoadGame({
+      root: root as unknown as HTMLElement,
+      viewport: { width: 800, height: 500 },
+      route: straightTestRoute(5_000),
+      stageNumber: 1,
+      onRetry: () => {},
+      onExitToTitle: () => {},
+    });
+    const keyboard = globalThis.window as unknown as FakeWindow;
+
+    raf.advance(0);
+    raf.advance(STEP_MS);
+    keyboard.dispatchEvent(keyDown('Space'));
+    raf.advance(2 * STEP_MS);
+
+    assert.equal(field(root, 'event').textContent, 'HORN - NO TARGET');
+    const context = walk(root).find(element => element.tagName === 'CANVAS')?.context;
+    assert.ok(context);
+    assert.ok(
+      context.strokeColors.some(color => color.startsWith('rgba(255, 95, 31,')),
+      'a failed horn attempt must render its red broken-wave response'
+    );
+    const debugHud = walk(root).find(element => element.className === 'roll-on-debug-hud');
+    assert.ok(debugHud);
+    assert.match(debugHud.textContent, /horn: ready/);
+
+    keyboard.dispatchEvent(keyUp('Space'));
+    game.dispose();
   });
 });
 
@@ -340,6 +518,26 @@ test('roadGame delegates terminal ownership and suppresses its fallback terminal
     const terminal = walk(root).find(element => element.className === 'roll-on-run-terminal');
     assert.ok(terminal);
     assert.equal(terminal.hidden, true);
+    assert.equal(
+      walk(root).filter(element => element.className.split(' ').includes('roll-on-sidecar')).length,
+      2,
+      'terminal flow must not duplicate sidecars'
+    );
     game.dispose();
   });
 });
+
+function cameraDebugValues(text: string): {
+  readonly anchorY: number;
+  readonly pixelsPerMeter: number;
+} {
+  const match = /camera: anchor \d+,(\d+) @ ([\d.]+) px\/m/.exec(text);
+  assert.ok(match, `expected camera telemetry, got ${text}`);
+  return { anchorY: Number(match[1]), pixelsPerMeter: Number(match[2]) };
+}
+
+function speedFromDebug(text: string): number {
+  const match = /speed: ([\d.]+) m\/s/.exec(text);
+  assert.ok(match, `expected speed telemetry, got ${text}`);
+  return Number(match[1]);
+}
